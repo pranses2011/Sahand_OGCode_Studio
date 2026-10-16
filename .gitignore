@@ -1,0 +1,26 @@
+# --- وابستگی‌ها و خروجی build ---
+# پوشهٔ وابستگی‌های Node (نصب مجدد با npm install)
+node_modules/
+# خروجی build فرانت‌اند (تولید مجدد با npm run build)
+dist/
+# خروجی build Rust/Tauri (تولید مجدد با cargo build / tauri build)
+src-tauri/target/
+src-tauri/gen/
+
+# --- فایل‌های محلی و موقت ---
+# لاگ‌های npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# فایل‌های محیطی؛ هرگز توکن یا کلید در مخزن قرار نگیرد
+.env
+.env.*
+!.env.example
+# فایل‌های موقت ادیتورها و سیستم‌عامل
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+# پوشهٔ موقت Vitest
+.vitest/
