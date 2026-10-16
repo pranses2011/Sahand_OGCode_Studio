@@ -15,6 +15,7 @@
 use crate::designer::spiral::{DesignerInput, DesignerOutput};
 use crate::gcode::lexer::lex_line;
 use crate::knowledge;
+use crate::toolpath::SegmentKind;
 use serde::{Deserialize, Serialize};
 
 /// نتیجهٔ اعتبارسنجی پیش از Save As — نمایش در «خلاصهٔ اعتبارسنجی»
@@ -32,8 +33,6 @@ pub struct SaveValidation {
     pub messages_fa: Vec<String>,
 }
 
-/// سریال‌سازی مسیر طراح به G-code — از IR واحد
-/// طبق الزام: «همان مسیر برای 3D preview و خروجی G-code»
 pub fn serialize_gcode(input: &DesignerInput, output: &DesignerOutput) -> String {
     let printer = &input.printer;
     let mut g = String::new();
@@ -52,6 +51,26 @@ pub fn serialize_gcode(input: &DesignerInput, output: &DesignerOutput) -> String
         printer.build_volume_mm[0],
         printer.build_volume_mm[1],
         printer.build_volume_mm[2]
+    ));
+    // کف — نسخهٔ ۱.۴: لایه‌های توپر + ادامهٔ vase
+    if input.floor.enabled {
+        g.push_str(&format!(
+            "; floor: {} solid layer(s), pattern={:?}, gap={:.2}mm, hole={:.1}mm\n",
+            input.floor.layers.clamp(1, 12),
+            input.floor.pattern,
+            input.floor.ring_gap_mm,
+            input.floor.center_hole_diameter_mm
+        ));
+    }
+    // سرعت‌ها — نمایش mm/s؛ F در فایل mm/min است (الزام G-code)
+    g.push_str(&format!(
+        "; speeds mm/s: wall={:.1} first_layer={:.1} floor={:.1} travel={:.1} retract={:.2}@{:.0}\n",
+        printer.effective_wall_mm_min() / 60.0,
+        printer.effective_first_layer_mm_min() / 60.0,
+        printer.effective_floor_mm_min() / 60.0,
+        printer.effective_travel_mm_min() / 60.0,
+        printer.retract_mm,
+        printer.retract_speed_mm_s,
     ));
     // چرخش فاز θ (درز/جهت‌گیری) — نسخهٔ ۱.۳
     g.push_str(&format!(
@@ -91,6 +110,18 @@ pub fn serialize_gcode(input: &DesignerInput, output: &DesignerOutput) -> String
         g.push_str("M83 ; relative E\n");
     }
 
+    // ---------- G28 خودکار — نسخهٔ ۱.۴ (استانداردسازی) ----------
+    // بدون home، مختصات مطلق بی‌معنی است. اگر کد start کاربر خودش
+    // G28 (یا $H گربر) ندارد، خودمان home می‌کنیم — همان رفتار
+    // اسلایسرها که home را تضمین می‌کنند.
+    let user_homes = printer.start_gcode.lines().any(|l| {
+        let code = l.split(';').next().unwrap_or("").trim().to_uppercase();
+        code.starts_with("G28") || code.contains(" G28") || code.starts_with("$H")
+    });
+    if !user_homes {
+        g.push_str("G28 ; home all axes\n");
+    }
+
     // ---------- انتظار دما + فن (نسخهٔ ۱.۳) ----------
     // پس از start_gcode کاربر (home/آماده‌سازی) و پیش از مسیر چاپ
     if printer.wait_for_temps {
@@ -110,44 +141,151 @@ pub fn serialize_gcode(input: &DesignerInput, output: &DesignerOutput) -> String
         g.push_str("M107 ; part fan off\n");
     }
 
-    // ---------- travel به نقطهٔ شروع ----------
-    // (segment اول IR همیشه travel است؛ آن را صراحتاً می‌نویسیم)
-    if let Some(first) = output.segments.first() {
-        if let (Some(_), Some(end)) = (first.start_mm, first.end_mm) {
-            g.push_str(&format!(
-                "G0 F{:.0} X{:.3} Y{:.3} Z{:.3}\n",
-                printer.travel_speed_mm_min, end[0], end[1], end[2]
-            ));
-        }
+    // ---------- صفر کردن E مطلق (استاندارد M82) ----------
+    if printer.absolute_e {
+        g.push_str("G92 E0 ; reset extruder position\n");
     }
 
-    // ---------- بدنهٔ مسیر از IR ----------
-    // فقط segmentهای چاپی نوشته می‌شوند (travel اول در بالا رفت)
-    // E: مطلق → شمارندهٔ تجمعی؛ نسبی → delta هر segment
-    let mut e_written = 0.0f64;
-    let mut prev_point: Option<[f64; 3]> = None;
-    for seg in output.segments.iter().skip(1) {
-        let Some(end) = seg.end_mm else { continue };
-        let e_delta = seg.e_delta_mm.unwrap_or(0.0);
-        let e_value = if printer.absolute_e {
-            e_written + e_delta
-        } else {
-            e_delta
-        };
-        e_written += e_delta;
+    // ---------- بدنهٔ مسیر از IR — قواعد اسلایسرهای استاندارد ----------
+    // نسخهٔ ۱.۴ (درخواست کاربر «فایل gcode خروجی رو استاندارد بکن»):
+    //   * travel → G0 بدون E (قبلاً G1 با E نوشته می‌شد!)؛
+    //   * F فقط هنگام «تغییر» سرعت (نه در هر خط)؛
+    //   * فقط محورهای تغییرکرده در هر خط (فایل فشرده‌تر و خواناتر)؛
+    //     خط نخست حرکت، هر سه محور را می‌نویسد (جای‌گیری صریح)؛
+    //   * رتراکشن دور travelهای بلند کف (G1 E±… F…) — مسیر مارپیچی
+    //     vase پیوسته است و رتراکشن نمی‌گیرد (زخم نمی‌اندازد)؛
+    //   * ;LAYER:n و ;TYPE:FLOOR / ;TYPE:WALL-OUTER برای viewerها.
+    let lh = printer.layer_height_mm.max(0.01);
+    let floor_layers = input.floor.layers.clamp(1, 12) as f64;
+    let floor_top = if input.floor.enabled {
+        input.floor.z_start_mm.max(0.0) + floor_layers * lh
+    } else {
+        0.0
+    };
+    let retract = printer.retract_mm.max(0.0);
+    let retract_f = printer.retract_speed_mm_s.max(1.0) * 60.0;
 
-        // ساده‌سازی: اگر نقطهٔ قبلی موجود و نزدیک است، فقط محورهای تغییرکرده
-        // می‌روند؛ برای سازگاری کامل همه می‌نویسیم (E با F فقط در تغییر سرعت)
-        let f_part = if Some(end) != prev_point && seg.feedrate_mm_min.is_some() {
-            format!(" F{:.0}", seg.feedrate_mm_min.unwrap())
+    let mut prev: Option<[f64; 3]> = output.segments.first().and_then(|s| s.start_mm);
+    let mut cur_f: f64 = 0.0;
+    let mut e_written = 0.0f64; // موضع فیلامنت (حالت مطلق)
+    let mut retracted = false;
+    let mut prev_was_extrusion = false;
+    let mut first_motion = true;
+    let mut layer_n: i64 = -1;
+    let mut layer_z = f64::NEG_INFINITY;
+    let mut cur_type = "";
+
+    for seg in output.segments.iter() {
+        let Some(end) = seg.end_mm else { continue };
+        let start = seg.start_mm.or(prev).unwrap_or(end);
+
+        // مرز لایه — فقط جابجایی‌های «پلکانی» (کف/شروع vase) لایهٔ جدیدند؛
+        // پله‌های ریز مارپیچ پیوسته (dz << lh) لایه نمی‌سازند (vase است)
+        if (end[2] - layer_z).abs() >= lh * 0.5 {
+            layer_n += 1;
+            layer_z = end[2];
+            g.push_str(&format!(";LAYER:{layer_n}\n"));
+        }
+        // ;TYPE — کف یا دیواره (برای viewerها و تفکیک بصری)
+        let want_type = if end[2] <= floor_top + lh * 0.25 {
+            "FLOOR"
         } else {
-            String::new()
+            "WALL-OUTER"
         };
-        g.push_str(&format!(
-            "G1 X{:.3} Y{:.3} Z{:.3} E{:.5}{}\n",
-            end[0], end[1], end[2], e_value, f_part
-        ));
-        prev_point = Some(end);
+        if want_type != cur_type {
+            cur_type = want_type;
+            g.push_str(&format!(";TYPE:{cur_type}\n"));
+        }
+
+        let seg_f = seg.feedrate_mm_min.unwrap_or(0.0);
+        let travel_len = {
+            let d = [
+                end[0] - start[0],
+                end[1] - start[1],
+                end[2] - start[2],
+            ];
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+        };
+
+        if seg.kind == SegmentKind::Travel {
+            // رتراکشن پیش از travel بلند — فقط وقتی اکستروژنی در کار بوده
+            if !retracted && retract > 0.0 && prev_was_extrusion && travel_len > 2.0 {
+                if printer.absolute_e {
+                    e_written -= retract;
+                    g.push_str(&format!("G1 E{:.5} F{:.0} ; retract\n", e_written, retract_f));
+                } else {
+                    g.push_str(&format!("G1 E-{:.5} F{:.0} ; retract\n", retract, retract_f));
+                }
+                retracted = true;
+                cur_f = retract_f;
+            }
+            // G0 — بدون E؛ F فقط هنگام تغییر
+            let mut line = String::from("G0");
+            if seg_f > 0.0 && (seg_f - cur_f).abs() > 0.5 {
+                line.push_str(&format!(" F{:.0}", seg_f));
+                cur_f = seg_f;
+            }
+            if first_motion || (end[0] - start[0]).abs() > 1e-4 {
+                line.push_str(&format!(" X{:.3}", end[0]));
+            }
+            if first_motion || (end[1] - start[1]).abs() > 1e-4 {
+                line.push_str(&format!(" Y{:.3}", end[1]));
+            }
+            if first_motion || (end[2] - start[2]).abs() > 1e-4 {
+                line.push_str(&format!(" Z{:.3}", end[2]));
+            }
+            g.push_str(&line);
+            g.push('\n');
+            first_motion = false;
+        } else {
+            // آنرتراکشن پس از travel (پیش از ادامهٔ چاپ)
+            if retracted {
+                if printer.absolute_e {
+                    e_written += retract;
+                    g.push_str(&format!("G1 E{:.5} F{:.0} ; unretract\n", e_written, retract_f));
+                } else {
+                    g.push_str(&format!("G1 E{:.5} F{:.0} ; unretract\n", retract, retract_f));
+                }
+                retracted = false;
+                cur_f = retract_f;
+            }
+            let e_delta = seg.e_delta_mm.unwrap_or(0.0);
+            let mut line = String::from("G1");
+            if first_motion || (end[0] - start[0]).abs() > 1e-4 {
+                line.push_str(&format!(" X{:.3}", end[0]));
+            }
+            if first_motion || (end[1] - start[1]).abs() > 1e-4 {
+                line.push_str(&format!(" Y{:.3}", end[1]));
+            }
+            if first_motion || (end[2] - start[2]).abs() > 1e-4 {
+                line.push_str(&format!(" Z{:.3}", end[2]));
+            }
+            if printer.absolute_e {
+                e_written += e_delta;
+                line.push_str(&format!(" E{:.5}", e_written));
+            } else {
+                line.push_str(&format!(" E{:.5}", e_delta));
+            }
+            if seg_f > 0.0 && (seg_f - cur_f).abs() > 0.5 {
+                line.push_str(&format!(" F{:.0}", seg_f));
+                cur_f = seg_f;
+            }
+            g.push_str(&line);
+            g.push('\n');
+            first_motion = false;
+        }
+        prev = Some(end);
+        prev_was_extrusion = seg.kind != SegmentKind::Travel;
+    }
+
+    // رتراکشن پایانی — پیش از کد end/G28 تا رشتهٔ اضافی نچکد
+    if !retracted && retract > 0.0 && prev_was_extrusion {
+        if printer.absolute_e {
+            e_written -= retract;
+            g.push_str(&format!("G1 E{:.5} F{:.0} ; retract\n", e_written, retract_f));
+        } else {
+            g.push_str(&format!("G1 E-{:.5} F{:.0} ; retract\n", retract, retract_f));
+        }
     }
 
     // ---------- کد end پروفایل ----------
@@ -398,10 +536,15 @@ mod tests {
         assert!(g.contains("M84"));
         // خطوط G1 واقعی
         assert!(g.lines().filter(|l| l.starts_with("G1")).count() > 50);
-        // E مطلق صعودی: مقادیر E خطوط G1 باید صعودی باشند
+        // E مطلق صعودی: مقادیر E خطوط «اکستروژن» G1 باید صعودی باشند؛
+        // خطوط رتراکشن/آنرتراکشن (با برچسب کامنت) استثنا هستند —
+        // رتراکشن استاندارد است و E را عمداً کاهش/افزایش می‌دهد
         let e_vals: Vec<f64> = g
             .lines()
-            .filter(|l| l.starts_with("G1") && l.contains("E"))
+            .filter(|l| {
+                l.starts_with("G1") && l.contains("E") && !l.contains("; retract")
+                    && !l.contains("; unretract")
+            })
             .filter_map(|l| {
                 // استخراج سادهٔ E از خط
                 l.split_whitespace()
@@ -470,8 +613,109 @@ mod tests {
         assert!((y - end[1]).abs() < 001.0); // گارد بزرگ فقط برای شکل؛ پایین دقیق
         assert!((y - end[1]).abs() < 0.001);
         assert!((z - end[2]).abs() < 0.001);
-        // تعداد G1 باید ≈ تعداد segmentهای چاپی باشد
-        assert_eq!(g1_lines.len(), out.segments.len() - 1);
+        // تعداد G1 «چاپی» باید ≈ تعداد segmentهای چاپی باشد
+        // (خطوط رتراکشن/آنرتراکشن استثنا — استاندارد ۱.۴)
+        let print_g1 = g1_lines
+            .iter()
+            .filter(|l| !l.contains("; retract") && !l.contains("; unretract"))
+            .count();
+        assert_eq!(print_g1, out.segments.len() - 1);
+    }
+
+    // ================= آزمون‌های استانداردسازی — نسخهٔ ۱.۴ =================
+
+    #[test]
+    fn test_gcode_standard_structure_floor() {
+        // کف فعال → ساختار اسلایسر-استاندارد: G0 بدون E برای travel،
+        // ;LAYER و ;TYPE، G28 خودکار، G92 E0، رتراکشن دور travelهای بلند
+        let mut inp = base_input();
+        inp.floor.enabled = true;
+        inp.floor.layers = 2;
+        inp.floor.pattern = crate::designer::FloorPattern::Grid; // travelهای بین‌ردیفی دارد
+        let out = compute(&inp);
+        let g = serialize_gcode(&inp, &out);
+
+        // G28 خودکار (start_gcode خالی است) + G92 E0
+        assert!(g.contains("G28 ; home all axes"), "G28 خودکار باید باشد");
+        assert!(g.contains("G92 E0"), "بازنشانی E مطلق");
+        // ;LAYER از ۰ و ;TYPE ها
+        assert!(g.contains(";LAYER:0"), "لایهٔ صفر");
+        assert!(g.contains(";LAYER:2"), "لایهٔ ۲ = شروع vase روی کف");
+        assert!(g.contains(";TYPE:FLOOR"));
+        assert!(g.contains(";TYPE:WALL-OUTER"));
+        // ترتیب: FLOOR قبل از WALL-OUTER
+        let i_floor = g.find(";TYPE:FLOOR").unwrap();
+        let i_wall = g.find(";TYPE:WALL-OUTER").unwrap();
+        assert!(i_floor < i_wall, "کف باید قبل از دیواره تایپ شود");
+        // G0 (travel) — بدون E!
+        let g0_lines: Vec<&str> = g.lines().filter(|l| l.starts_with("G0")).collect();
+        assert!(g0_lines.len() >= 2, "باید travel G0 باشد");
+        for l in &g0_lines {
+            assert!(!l.contains("E"), "G0 نباید E داشته باشد: {l}");
+        }
+        // رتراکشن دور travel بلند (Grid فاصله‌های > ۲mm دارد)
+        assert!(g.contains("; retract"), "رتراکشن استاندارد");
+        assert!(g.contains("; unretract"), "آنرتراکشن");
+        // F فقط هنگام تغییر: شمار F ها << شمار خطوط حرکتی
+        let f_count = g.lines().filter(|l| l.contains(" F")).count();
+        let move_count = g
+            .lines()
+            .filter(|l| l.starts_with("G0") || l.starts_with("G1"))
+            .count();
+        assert!(
+            (f_count as f64) < (move_count as f64) * 0.25,
+            "F فقط در تغییر سرعت: {f_count} از {move_count}"
+        );
+    }
+
+    #[test]
+    fn test_no_duplicate_g28_when_user_homes() {
+        // اگر start کد کاربر خودش G28 دارد → G28 خودکار ننویس (تکرار ممنوع)
+        let mut inp = base_input();
+        inp.printer.start_gcode = "G28 ; home\nG1 Z5 F600".into();
+        let out = compute(&inp);
+        let g = serialize_gcode(&inp, &out);
+        let g28_count = g.lines().filter(|l| {
+            let c = l.split(';').next().unwrap_or("").trim();
+            c.starts_with("G28") || c == "G28"
+        }).count();
+        // یک G28 کاربر + یک G28 پایانی استاندارد = ۲
+        assert_eq!(g28_count, 2, "G28 کاربر + پایان؛ بدون تکرار خودکار: {g28_count}");
+        assert!(!g.contains("G28 ; home all axes"), "G28 خودکار نباید باشد");
+    }
+
+    #[test]
+    fn test_gcode_travel_g0_no_e() {
+        // همهٔ travelهای IR باید G0 بدون E شوند (استاندارد؛
+        // قبلاً G1 با E نوشته می‌شد که اکستروژن صفر در حرکت خالی بود)
+        let mut inp = base_input();
+        inp.floor.enabled = true;
+        inp.floor.layers = 2;
+        let out = compute(&inp);
+        let g = serialize_gcode(&inp, &out);
+        let travels = out.segments.iter().filter(|s| s.kind == SegmentKind::Travel).count();
+        assert!(travels >= 2);
+        let g0_count = g.lines().filter(|l| l.starts_with("G0")).count();
+        assert_eq!(g0_count, travels, "هر travel = یک G0");
+    }
+
+    #[test]
+    fn test_speeds_appear_as_f_transitions() {
+        // گذار سرعت‌ها در F: لایهٔ اول (F1200) → لایهٔ ۲ کف (F1800) → دیواره (F2400)
+        let mut inp = base_input();
+        inp.floor.enabled = true;
+        inp.floor.layers = 2;
+        let out = compute(&inp);
+        let g = serialize_gcode(&inp, &out);
+        // توالی F ها باید شامل این سه مقدار باشد (به میلی‌متر بر دقیقه)
+        assert!(g.contains("F1200"), "سرعت لایهٔ اول");
+        assert!(g.contains("F1800"), "سرعت لایه‌های کف");
+        assert!(g.contains("F2400"), "سرعت دیواره");
+        // ترتیب گذار: F1200 قبل از F1800 قبل از F2400
+        let i1 = g.find("F1200").unwrap();
+        let i2 = g.find("F1800").unwrap();
+        let i3 = g.find("F2400").unwrap();
+        assert!(i1 < i2 && i2 < i3, "توالی سرعت‌ها: {i1} < {i2} < {i3}");
     }
 
     #[test]
