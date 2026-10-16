@@ -24,6 +24,9 @@ fn preset(
     travel_speed: f64,
     nozzle: f64,
 ) -> PrinterProfile {
+    // سرعت‌های mm/s نسخهٔ ۱.۴ — از همان سرعت‌های محافظه‌کارانهٔ vase مشتق
+    // می‌شوند: دیواره = print_speed/60، لایهٔ اول ۵۰٪، کف ۷۵٪
+    let wall_mm_s = (print_speed / 60.0 * 10.0).round() / 10.0;
     PrinterProfile {
         name: name.into(),
         status: "community".into(),
@@ -43,6 +46,13 @@ fn preset(
         bed_temp_c: 60.0,
         fan_percent: 100.0,
         wait_for_temps: true,
+        // سرعت‌ها — نسخهٔ ۱.۴ (mm/s)
+        wall_speed_mm_s: wall_mm_s,
+        first_layer_speed_mm_s: ((wall_mm_s * 0.5) * 10.0).round() / 10.0,
+        floor_speed_mm_s: ((wall_mm_s * 0.75) * 10.0).round() / 10.0,
+        travel_speed_mm_s: ((travel_speed / 60.0) * 10.0).round() / 10.0,
+        retract_mm: 0.8,
+        retract_speed_mm_s: 40.0,
         start_gcode: String::new(),
         end_gcode: String::new(),
     }

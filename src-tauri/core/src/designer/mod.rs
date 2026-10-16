@@ -83,11 +83,21 @@ pub struct FloorSettings {
     /// تعداد پرتوها در الگوی شعاعی (نسخهٔ ۱.۲)
     #[serde(default = "default_spokes")]
     pub spokes: u32,
+    /// تعداد لایه‌های کف (نسخهٔ ۱.۴ — درخواست کاربر).
+    /// کف به‌صورت توپر با این تعداد لایه چاپ می‌شود و سپس
+    /// حالت مارپیچی/vase از بالای کف ادامه می‌یابد.
+    #[serde(default = "default_floor_layers")]
+    pub layers: u32,
 }
 
 /// پیش‌فرض تعداد پرتوهای کف شعاعی
 fn default_spokes() -> u32 {
     12
+}
+
+/// پیش‌فرض تعداد لایه‌های کف — ۲ لایهٔ توپر استاندارد ظرف
+fn default_floor_layers() -> u32 {
+    2
 }
 
 impl Default for FloorSettings {
@@ -99,6 +109,7 @@ impl Default for FloorSettings {
             z_start_mm: 0.0,
             ring_gap_mm: 0.45,
             spokes: 12,
+            layers: default_floor_layers(),
         }
     }
 }
@@ -143,10 +154,77 @@ pub struct PrinterProfile {
     /// (توصیه‌شده روشن — چاپ روی بستر سرد پیچیدگی پیچ‌خوردگی دارد)
     #[serde(default = "default_true")]
     pub wait_for_temps: bool,
+    // ---------- تنظیمات سرعت — نسخهٔ ۱.۴ (درخواست کاربر: mm/s) ----------
+    /// سرعت چاپ دیوارهٔ مارپیچی (mm/s) — ۰ یعنی از print_speed_mm_min قدیمی پیروی کن
+    #[serde(default)]
+    pub wall_speed_mm_s: f64,
+    /// سرعت لایهٔ اول کف (mm/s) — ۰ یعنی ۵۰٪ سرعت دیواره (استاندارد اسلایسرها)
+    #[serde(default)]
+    pub first_layer_speed_mm_s: f64,
+    /// سرعت لایه‌های بعدی کف (mm/s) — ۰ یعنی ۷۵٪ سرعت دیواره
+    #[serde(default)]
+    pub floor_speed_mm_s: f64,
+    /// سرعت جابجایی/travel (mm/s) — ۰ یعنی از travel_speed_mm_min قدیمی پیروی کن
+    #[serde(default)]
+    pub travel_speed_mm_s: f64,
+    // ---------- رتراکشن — نسخهٔ ۱.۴ (استانداردسازی G-code) ----------
+    /// طول رتراکشن (mm) — ۰ یعنی بدون رتراکشن؛ فقط روی travelهای کف اعمال می‌شود
+    /// (مسیر مارپیچی vase پیوسته است و رتراکشن وسط آن زخم می‌اندازد)
+    #[serde(default = "default_retract_mm")]
+    pub retract_mm: f64,
+    /// سرعت رتراکشن/آنرتراکشن (mm/s)
+    #[serde(default = "default_retract_speed")]
+    pub retract_speed_mm_s: f64,
     /// کد start سفارشی (قبل از مسیر) — پیش‌نمایش و هشدار پیش از الحاق
     pub start_gcode: String,
     /// کد end سفارشی (بعد از مسیر)
     pub end_gcode: String,
+}
+
+/// پیش‌فرض طول رتراکشن — ۰٫۸mm (کوچک؛ مناسب دایرکت‌درایو،
+/// برای بودن مقدار را بالا ببرید — در UI مستند است)
+fn default_retract_mm() -> f64 {
+    0.8
+}
+
+/// پیش‌فرض سرعت رتراکشن — ۴۰ mm/s
+fn default_retract_speed() -> f64 {
+    40.0
+}
+
+impl PrinterProfile {
+    /// سرعت مؤثر دیواره (mm/min) — mm/s جدید بر mm/min قدیمی تقدم دارد
+    pub fn effective_wall_mm_min(&self) -> f64 {
+        if self.wall_speed_mm_s > 0.0 {
+            self.wall_speed_mm_s * 60.0
+        } else {
+            self.print_speed_mm_min
+        }
+    }
+    /// سرعت مؤثر travel (mm/min)
+    pub fn effective_travel_mm_min(&self) -> f64 {
+        if self.travel_speed_mm_s > 0.0 {
+            self.travel_speed_mm_s * 60.0
+        } else {
+            self.travel_speed_mm_min
+        }
+    }
+    /// سرعت مؤثر لایهٔ اول کف (mm/min) — پیش‌فرض ۵۰٪ دیواره (چسبندگی به میز)
+    pub fn effective_first_layer_mm_min(&self) -> f64 {
+        if self.first_layer_speed_mm_s > 0.0 {
+            self.first_layer_speed_mm_s * 60.0
+        } else {
+            self.effective_wall_mm_min() * 0.5
+        }
+    }
+    /// سرعت مؤثر لایه‌های بعدی کف (mm/min) — پیش‌فرض ۷۵٪ دیواره
+    pub fn effective_floor_mm_min(&self) -> f64 {
+        if self.floor_speed_mm_s > 0.0 {
+            self.floor_speed_mm_s * 60.0
+        } else {
+            self.effective_wall_mm_min() * 0.75
+        }
+    }
 }
 
 impl Default for PrinterProfile {
@@ -172,6 +250,13 @@ impl Default for PrinterProfile {
             bed_temp_c: default_bed_temp(),
             fan_percent: default_fan_percent(),
             wait_for_temps: true,
+            // سرعت‌ها — نسخهٔ ۱.۴: پیش‌فرض mm/s (معادل مقادیر mm/min بالا)
+            wall_speed_mm_s: 40.0,
+            first_layer_speed_mm_s: 20.0,
+            floor_speed_mm_s: 30.0,
+            travel_speed_mm_s: 100.0,
+            retract_mm: default_retract_mm(),
+            retract_speed_mm_s: default_retract_speed(),
             start_gcode: String::new(),
             end_gcode: String::new(),
         }
@@ -400,5 +485,43 @@ mod tests {
         assert!((back.printer.bed_temp_c - 80.0).abs() < 1e-9);
         assert!((back.printer.fan_percent - 30.0).abs() < 1e-9);
         assert!(!back.printer.wait_for_temps);
+    }
+
+    // ================= آزمون‌های نسخهٔ ۱.۴ =================
+
+    #[test]
+    fn test_old_project_json_loads_with_v14_defaults() {
+        // فایل ۱.۳ (بدون layers کف و بدون سرعت‌های mm/s) باید با
+        // پیش‌فرض‌های ۱.۴ بخواند: کف ۲ لایه، سرعت mm/s = ۰ (پیروی از mm/min قدیمی)،
+        // رتراکشن ۰٫۸mm@40mm/s
+        let old_json = r#"{"schema_version":1,"profile":[{"r":22.0,"h":0.0},{"r":30.0,"h":35.0},{"r":21.0,"h":100.0}],"form_height_mm":100.0,"form_bottom_diameter_mm":60.0,"form_top_diameter_mm":60.0,"taper_percent":0.0,"patterns":[],"textures":[],"floor":{"enabled":true,"center_hole_diameter_mm":8.0,"z_start_mm":0.0,"ring_gap_mm":0.45},"printer":{"name":"x","status":"unverified","build_volume_mm":[220,220,250],"nozzle_diameter_mm":0.4,"filament_diameter_mm":1.75,"line_width_mm":0.45,"layer_height_mm":0.25,"print_speed_mm_min":2400.0,"travel_speed_mm_min":6000.0,"flow_multiplier":1.0,"absolute_e":true,"start_gcode":"","end_gcode":""},"created_at_unix":0,"note":""}"#;
+        let p = validate_project(old_json).expect("پروژهٔ قدیمی باید بخواند");
+        assert_eq!(p.floor.layers, 2, "پیش‌فرض کف ۲ لایه");
+        assert_eq!(p.printer.wall_speed_mm_s, 0.0, "mm/s صفر = پیروی از mm/min");
+        assert_eq!(p.printer.travel_speed_mm_s, 0.0);
+        // حل تقدم: mm/min قدیمی معتبر می‌ماند
+        assert_eq!(p.printer.effective_wall_mm_min(), 2400.0);
+        assert_eq!(p.printer.effective_travel_mm_min(), 6000.0);
+        // مشتقات پیش‌فرض لایهٔ اول/کف
+        assert_eq!(p.printer.effective_first_layer_mm_min(), 1200.0);
+        assert_eq!(p.printer.effective_floor_mm_min(), 1800.0);
+        // رتراکشن پیش‌فرض
+        assert!((p.printer.retract_mm - 0.8).abs() < 1e-9);
+        assert!((p.printer.retract_speed_mm_s - 40.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_speed_resolution_mm_s_priority() {
+        // mm/s جدید بر mm/min قدیمی تقدم دارد
+        let mut p = PrinterProfile::default();
+        p.print_speed_mm_min = 2400.0;
+        p.wall_speed_mm_s = 55.0; // 3300 mm/min
+        assert_eq!(p.effective_wall_mm_min(), 3300.0);
+        p.travel_speed_mm_s = 150.0;
+        assert_eq!(p.effective_travel_mm_min(), 9000.0);
+        p.first_layer_speed_mm_s = 25.0;
+        assert_eq!(p.effective_first_layer_mm_min(), 1500.0);
+        p.floor_speed_mm_s = 40.0;
+        assert_eq!(p.effective_floor_mm_min(), 2400.0);
     }
 }
