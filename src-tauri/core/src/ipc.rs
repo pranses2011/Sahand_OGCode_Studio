@@ -10,7 +10,10 @@
 //! (از دیالوگ native پوسته) در save/read است.
 //! ============================================================================
 
-use crate::designer::spiral::{compute, DesignerInput, DesignerOutput};
+use crate::designer::spiral::{compute, DesignerInput};
+// re-export عمومی — پوستهٔ Tauri نوع را از ipc می‌خواند (قبلاً use خصوصی
+// بود و بیلد ویندوزی پوسته با E0603 می‌شکست)
+pub use crate::designer::spiral::DesignerOutput;
 use crate::designer::{validate_project, DesignerProject};
 use crate::export::{
     recompose_with_checksum, serialize_gcode, serialize_project, serialize_stl,
