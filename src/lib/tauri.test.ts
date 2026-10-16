@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import type { DesignerProject } from "./tauri";
 import {
   parseGcode, explainLine, saveAs, validateGcode,
   designerCompute, designerExportGcode, designerExportStl,
@@ -50,13 +51,13 @@ describe("پل IPC در محیط غیر-دسکتاپ (صداقت بدون داد
       taper_percent: 0, patterns: [], textures: [],
       floor: { enabled: false, center_hole_diameter_mm: 0, z_start_mm: 0, ring_gap_mm: 0.45 },
       printer: {
-        name: "x", status: "unverified", build_volume_mm: [220, 220, 250],
+        name: "x", status: "unverified", build_volume_mm: [220, 220, 250] as [number, number, number],
         nozzle_diameter_mm: 0.4, filament_diameter_mm: 1.75, line_width_mm: 0.45,
         layer_height_mm: 0.25, print_speed_mm_min: 2400, travel_speed_mm_min: 6000,
         flow_multiplier: 1, absolute_e: true, start_gcode: "", end_gcode: "",
       },
       created_at_unix: 0, note: "",
-    };
+    } satisfies DesignerProject;
     await expect(designerCompute(project)).rejects.toThrow();
     await expect(designerExportGcode(project)).rejects.toThrow();
     await expect(designerExportStl(project, "x.stl")).rejects.toThrow();
@@ -104,7 +105,7 @@ describe("fixtureهای سند TEST_GCODE_FIXTURES", () => {
     // fixture ۴ طبق سند TEST_GCODE_FIXTURES.md کامنت «only a comment» دارد
     // و برچسب TEST FIXTURE ONLY فقط در fixtureهای ۱، ۲، ۳، ۵ است
     for (const [name, text] of Object.entries(ALL_FIXTURES)) {
-      expect(text.length).toBeGreaterThan(20, `${name} خیلی کوتاه است`);
+      expect(text.length > 20, `${name} خیلی کوتاه است`).toBe(true);
       const hasMarker =
         text.includes("TEST FIXTURE") ||
         text.includes("this is only a comment");

@@ -22,7 +22,10 @@ rust-version = "1.77"
 [dependencies]
 # serde فقط برای شکل‌دادن به دادهٔ خروجی IPC؛ هسته خودش I/O انجام نمی‌دهد
 serde = { version = "1", features = ["derive"] }
+# برای سریال‌سازی snapshot وضعیت در LineDetail (ipc)
+serde_json = "1"
 
 [dev-dependencies]
-# برای آزمون‌های سریال‌سازی round-trip پروژه/IR
+# برای آزمون‌های round-trip پروژه/IR (حالا زیر dependencies هم هست؛ نگه‌داشته
+# می‌شود برای سازگاری اسکریپت‌های موجود)
 serde_json = "1"
