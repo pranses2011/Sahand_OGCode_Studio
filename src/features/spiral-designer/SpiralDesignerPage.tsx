@@ -178,6 +178,7 @@ function defaultProject(): DesignerProject {
     taper_percent: 0,
     profile_interpolation: "Spline",
     center_on_bed: true,
+    phase_start_deg: 0,
     patterns: [],
     textures: [],
     floor: { enabled: false, pattern: "Rings", center_hole_diameter_mm: 0, z_start_mm: 0, ring_gap_mm: 0.45, spokes: 12 },
@@ -188,6 +189,8 @@ function defaultProject(): DesignerProject {
       line_width_mm: 0.45, layer_height_mm: 0.25,
       print_speed_mm_min: 2400, travel_speed_mm_min: 6000,
       flow_multiplier: 1.0, absolute_e: true,
+      // ---- نسخهٔ ۱.۳: دما/فن (پیش‌فرض PLA عمومی) ----
+      nozzle_temp_c: 200, bed_temp_c: 60, fan_percent: 100, wait_for_temps: true,
       start_gcode: "", end_gcode: "",
     },
     created_at_unix: 0,
@@ -250,7 +253,17 @@ type SpotSelection =
   | { type: "pattern"; index: number }
   | { type: "texture"; index: number }
   | { type: "floor" }
+  | { type: "phase" }
   | null;
+
+/** پریست‌های ماده — «شروع مناسب رایج» نه عدد قطعی (قاعدهٔ صداقت) */
+const MATERIALS: { name: string; nozzle: number; bed: number; fan: number }[] = [
+  { name: "PLA — 200/60", nozzle: 200, bed: 60, fan: 100 },
+  { name: "PETG — 240/80", nozzle: 240, bed: 80, fan: 30 },
+  { name: "ABS — 250/100", nozzle: 250, bed: 100, fan: 0 },
+  { name: "TPU — 225/45", nozzle: 225, bed: 45, fan: 50 },
+  { name: "PLA ابریشمی — 215/65", nozzle: 215, bed: 65, fan: 100 },
+];
 
 export function SpiralDesignerPage(props: {
   onSendToEditor: (gcode: string) => void;
@@ -490,7 +503,14 @@ export function SpiralDesignerPage(props: {
     if (!path) return;
     try {
       const p = await loadProject(path);
-      commitProject({ ...defaultProject(), ...p, floor: { ...defaultProject().floor, ...p.floor } });
+      // ادغام با پیش‌فرض‌ها: پروژه‌های ۱.۲/۱.۱ فاز و دما ندارند →
+      // مقادیر پیش‌فرض ۱.۳ برایشان می‌نشیند (بدون از دست رفتن داده)
+      commitProject({
+        ...defaultProject(),
+        ...p,
+        printer: { ...defaultProject().printer, ...p.printer },
+        floor: { ...defaultProject().floor, ...p.floor },
+      });
       setNote("پروژه بارگذاری شد.");
     } catch (e) {
       // schema خراب → پروژهٔ جاری دست‌نخورده می‌ماند (الزام §7)
@@ -513,6 +533,21 @@ export function SpiralDesignerPage(props: {
   const spot: SpotHandle | null = useMemo(() => {
     if (!spotSel) return null;
     const height = Math.max(project.form_height_mm, 1);
+    if (spotSel.type === "phase") {
+      // ---- دیال چرخش فاز θ (نسخهٔ ۱.۳) ----
+      // دیال در ارتفاع کم (~۸٪ ارتفاع، بین ۳ تا ۱۲mm) روی شعاع واقعی فرم
+      const zDial = Math.min(Math.max(height * 0.08, 3), 12);
+      const r = meshRadiusAt(output?.mesh, zDial);
+      return {
+        kind: "phaseRotation",
+        zStart: zDial,
+        zEnd: null,
+        radius: Math.max(r, 8),
+        height,
+        bedOffset,
+        phaseDeg: project.phase_start_deg ?? 0,
+      };
+    }
     if (spotSel.type === "pattern") {
       const p = project.patterns[spotSel.index];
       if (!p) return null;
@@ -574,7 +609,10 @@ export function SpiralDesignerPage(props: {
 
     const height = Math.max(cur.form_height_mm, 1);
     let next: DesignerProject | null = null;
-    if (spotSel?.type === "pattern" && change.zStart !== undefined) {
+    if (change.phaseDeg !== undefined) {
+      // ---- چرخش فاز θ با اسپات (نسخهٔ ۱.۳) ----
+      next = { ...cur, phase_start_deg: change.phaseDeg };
+    } else if (spotSel?.type === "pattern" && change.zStart !== undefined) {
       const patterns = cur.patterns.map((x, j) =>
         j === spotSel.index ? {
           ...x,
@@ -747,6 +785,29 @@ export function SpiralDesignerPage(props: {
         {/* ================= گام ۲: الگو (کارت‌های تصویری بزرگ) ================= */}
         {step === 2 && (
           <div>
+            {/* ---- چرخش فاز θ — نسخهٔ ۱.۳ (درخواست کاربر) ---- */}
+            <div className="field">
+              <label>{fa.phaseRotate}</label>
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <input type="number" step="15" min="-360" max="360" style={{ width: 90 }}
+                  value={Math.round((project.phase_start_deg ?? 0) * 10) / 10}
+                  onChange={(e) => {
+                    const v = +e.target.value || 0;
+                    setP({ phase_start_deg: ((v % 360) + 360) % 360 });
+                  }} />
+                <span className="ltr" style={{ fontSize: 12, color: "var(--fg-2)" }}>°</span>
+                <button
+                  className={`btn small ${spotSel?.type === "phase" ? "primary" : ""}`}
+                  title={fa.spotPhaseRotate}
+                  onClick={() => setSpotSel(spotSel?.type === "phase" ? null : { type: "phase" })}
+                >🔄</button>
+              </div>
+              <span className="hint-text">{fa.phaseRotateHint}</span>
+              <span className="hint-text">{fa.phaseRotateSeam}</span>
+              {spotSel?.type === "phase" && (
+                <div className="spot-note">🔄 {fa.spotPhaseRotate} — Shift = چفت ۱۵°</div>
+              )}
+            </div>
             <p className="step-note">
               الگو <strong>هندسهٔ مدل</strong> را تغییر می‌دهد؛ اثر آن در <strong>STL</strong> هم باقی می‌ماند.
               روی کارت کلیک کنید تا افزوده شود؛ سپس با دکمهٔ 🎯 آن را روی نمای 3D جابه‌جا کنید.
@@ -981,6 +1042,49 @@ export function SpiralDesignerPage(props: {
                 <span className="dot" aria-hidden="true" /> {project.printer.name}
               </div>
             )}
+            {/* ---- تنظیمات دما و خنک‌کاری — نسخهٔ ۱.۳ (درخواست کاربر) ---- */}
+            <div className="field" style={{ marginTop: 10 }}>
+              <label>{fa.tempsTitle}</label>
+              <span className="hint-text">{fa.materialHint}</span>
+              <div className="preset-row">
+                {MATERIALS.map((m) => {
+                  const active = project.printer.nozzle_temp_c === m.nozzle
+                    && project.printer.bed_temp_c === m.bed
+                    && (project.printer.fan_percent ?? 100) === m.fan;
+                  return (
+                    <button key={m.name}
+                      className={`btn preset-btn small ${active ? "primary" : ""}`}
+                      onClick={() => setPrinter({
+                        nozzle_temp_c: m.nozzle,
+                        bed_temp_c: m.bed,
+                        fan_percent: m.fan,
+                      })}
+                    >
+                      <span>{m.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="field"><label>{fa.nozzleTemp}</label>
+              <input type="number" step="5" min="0" max="500" style={{ width: 100 }}
+                value={project.printer.nozzle_temp_c ?? 200}
+                onChange={(e) => setPrinter({ nozzle_temp_c: +e.target.value })} /></div>
+            <div className="field"><label>{fa.bedTemp}</label>
+              <input type="number" step="5" min="0" max="150" style={{ width: 100 }}
+                value={project.printer.bed_temp_c ?? 60}
+                onChange={(e) => setPrinter({ bed_temp_c: +e.target.value })} /></div>
+            <div className="field"><label>{fa.fanSpeed}</label>
+              <input type="number" step="5" min="0" max="100" style={{ width: 100 }}
+                value={project.printer.fan_percent ?? 100}
+                onChange={(e) => setPrinter({ fan_percent: +e.target.value })} /></div>
+            <label className="check-row">
+              <input type="checkbox" checked={project.printer.wait_for_temps !== false}
+                onChange={(e) => setPrinter({ wait_for_temps: e.target.checked })} />
+              {fa.waitTemps}
+            </label>
+            <span className="hint-text">{fa.waitTempsHint}</span>
+            <span className="hint-text">{fa.tempsZeroNote}</span>
             <div className="field"><label>{fa.nozzleDiameter}</label>
               <div style={{ display: "flex", gap: 4 }}>
                 {nozzlePresets.map((n) => (
