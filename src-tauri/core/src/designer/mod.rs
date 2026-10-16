@@ -129,6 +129,20 @@ pub struct PrinterProfile {
     pub flow_multiplier: f64,
     /// حالت E خروجی: مطلق (M82) یا نسبی (M83)
     pub absolute_e: bool,
+    // ---------- تنظیمات حرارتی — نسخهٔ ۱.۳ (درخواست کاربر) ----------
+    /// دمای هدف نازل (°C) — ۰ یعنی «کنترل دما در خروجی ننویس»
+    #[serde(default = "default_nozzle_temp")]
+    pub nozzle_temp_c: f64,
+    /// دمای هدف بستر/میز کار (°C) — ۰ یعنی عدم صدور فرمان دما
+    #[serde(default = "default_bed_temp")]
+    pub bed_temp_c: f64,
+    /// سرعت فن خنک‌کنندهٔ قطعه (٪ ۰..۱۰۰) — M106 S معادل ۰..۲۵۵
+    #[serde(default = "default_fan_percent")]
+    pub fan_percent: f64,
+    /// پس از تنظیم دما، با M190/M109 منتظر رسیدن به هدف بمانیم؟
+    /// (توصیه‌شده روشن — چاپ روی بستر سرد پیچیدگی پیچ‌خوردگی دارد)
+    #[serde(default = "default_true")]
+    pub wait_for_temps: bool,
     /// کد start سفارشی (قبل از مسیر) — پیش‌نمایش و هشدار پیش از الحاق
     pub start_gcode: String,
     /// کد end سفارشی (بعد از مسیر)
@@ -152,6 +166,12 @@ impl Default for PrinterProfile {
             travel_speed_mm_min: 6000.0, // 100 mm/s
             flow_multiplier: 1.0,
             absolute_e: true,
+            // پیش‌فرض‌های حرارتی — PLA عمومی (کاربر باید مطابق فیلامنت
+            // خود و پریست ماده تنظیم کند؛ راهنمای کاربر مستند کرده)
+            nozzle_temp_c: default_nozzle_temp(),
+            bed_temp_c: default_bed_temp(),
+            fan_percent: default_fan_percent(),
+            wait_for_temps: true,
             start_gcode: String::new(),
             end_gcode: String::new(),
         }
@@ -164,6 +184,21 @@ pub const PROJECT_SCHEMA_VERSION: u32 = 1;
 /// مرکز‌گذاری روی صفحهٔ چاپ — پیش‌فرض روشن (رفع باگ نسخهٔ ۱.۱: طرح روی 0,0)
 fn default_true() -> bool {
     true
+}
+
+/// پیش‌فرض دمای نازل (°C) — PLA عمومی
+fn default_nozzle_temp() -> f64 {
+    200.0
+}
+
+/// پیش‌فرض دمای بستر (°C) — PLA عمومی
+fn default_bed_temp() -> f64 {
+    60.0
+}
+
+/// پیش‌فرض فن (٪) — خنک‌کاری کامل برای PLA
+fn default_fan_percent() -> f64 {
+    100.0
 }
 
 /// کل پروژهٔ طراح قابل ذخیره/بازیابی
@@ -185,6 +220,11 @@ pub struct DesignerProject {
     /// مرکز‌گذاری فرم روی صفحهٔ چاپ — نسخهٔ ۱.۲ (پیش‌فرض روشن)
     #[serde(default = "default_true")]
     pub center_on_bed: bool,
+    /// چرخش کل فرم حول محور Z (درجه) — نسخهٔ ۱.۳.
+    /// زاویهٔ شروع مارپیچ/درز (seam) و جهت گلبرگ‌ها را تعیین می‌کند؛
+    /// با اسپات 🔄 روی نمای 3D هم قابل‌درگ است.
+    #[serde(default)]
+    pub phase_start_deg: f64,
     /// الگوهای هندسی فعال (ترتیب اعمال)
     pub patterns: Vec<PatternParams>,
     /// بافت‌های مسیر فعال
@@ -209,6 +249,7 @@ impl Default for DesignerProject {
             taper_percent: 0.0,
             profile_interpolation: Interpolation::Spline,
             center_on_bed: true,
+            phase_start_deg: 0.0,
             patterns: Vec::new(),
             textures: Vec::new(),
             floor: FloorSettings::default(),
@@ -326,5 +367,38 @@ mod tests {
         ] {
             assert!(!fp.fa().is_empty());
         }
+    }
+
+    // ================= آزمون‌های نسخهٔ ۱.۳ =================
+
+    #[test]
+    fn test_old_project_json_loads_with_v13_defaults() {
+        // فایل ۱.۲ (بدون phase_start_deg و بدون دماها) باید با
+        // پیش‌فرض‌های ۱.۳ بخواند: فاز ۰، نازل ۲۰۰، بستر ۶۰، فن ۱۰۰، انتظار روشن
+        let old_json = r#"{"schema_version":1,"profile":[{"r":22.0,"h":0.0},{"r":30.0,"h":35.0},{"r":21.0,"h":100.0}],"form_height_mm":100.0,"form_bottom_diameter_mm":60.0,"form_top_diameter_mm":60.0,"taper_percent":0.0,"patterns":[],"textures":[],"floor":{"enabled":true,"center_hole_diameter_mm":8.0,"z_start_mm":0.0,"ring_gap_mm":0.45},"printer":{"name":"x","status":"unverified","build_volume_mm":[220,220,250],"nozzle_diameter_mm":0.4,"filament_diameter_mm":1.75,"line_width_mm":0.45,"layer_height_mm":0.25,"print_speed_mm_min":2400.0,"travel_speed_mm_min":6000.0,"flow_multiplier":1.0,"absolute_e":true,"start_gcode":"","end_gcode":""},"created_at_unix":0,"note":""}"#;
+        let p = validate_project(old_json).expect("پروژهٔ قدیمی باید بخواند");
+        assert_eq!(p.phase_start_deg, 0.0);
+        assert!((p.printer.nozzle_temp_c - 200.0).abs() < 1e-9);
+        assert!((p.printer.bed_temp_c - 60.0).abs() < 1e-9);
+        assert!((p.printer.fan_percent - 100.0).abs() < 1e-9);
+        assert!(p.printer.wait_for_temps);
+    }
+
+    #[test]
+    fn test_project_roundtrip_phase_and_temps() {
+        // ذخیره/بازیابی فاز و دما بدون فقدان داده
+        let mut p = DesignerProject::default();
+        p.phase_start_deg = 137.5;
+        p.printer.nozzle_temp_c = 240.0;
+        p.printer.bed_temp_c = 80.0;
+        p.printer.fan_percent = 30.0;
+        p.printer.wait_for_temps = false;
+        let json = serde_json::to_string(&p).unwrap();
+        let back: DesignerProject = serde_json::from_str(&json).unwrap();
+        assert!((back.phase_start_deg - 137.5).abs() < 1e-9);
+        assert!((back.printer.nozzle_temp_c - 240.0).abs() < 1e-9);
+        assert!((back.printer.bed_temp_c - 80.0).abs() < 1e-9);
+        assert!((back.printer.fan_percent - 30.0).abs() < 1e-9);
+        assert!(!back.printer.wait_for_temps);
     }
 }
