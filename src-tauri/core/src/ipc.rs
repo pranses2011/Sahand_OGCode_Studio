@@ -389,13 +389,127 @@ pub fn designer_compute(project: DesignerProject) -> DesignerOutput {
             top_diameter_mm: project.form_top_diameter_mm,
             taper_percent: project.taper_percent,
             smoothing_passes: 0,
+            interpolation: project.profile_interpolation,
         },
         patterns: project.patterns.clone(),
         textures: project.textures.clone(),
         floor: project.floor.clone(),
+        center_on_bed: project.center_on_bed,
         printer: project.printer.clone(),
     };
     compute(&input)
+}
+
+// ============================================================================
+// دستور ۵-ب: دادهٔ پیش‌نمایش الگو/بافت برای کارت‌های تصویری UI
+// ============================================================================
+// هر الگو/بافت روی یک استوانهٔ نرمال‌شده (ارتفاع ۱، شعاع ۱) با پارامترهای
+// استاندارد ارزیابی می‌شود؛ UI از همین مقادیر «واقعی هسته» بندانگشتی می‌سازد
+// (قاعدهٔ صداقت: تصویر کارت = همان ریاضی خروجی، نه آیکون تزئینی).
+
+/// شبکهٔ مقادیر یک الگو/بافت — ردیف‌محور [rows × cols]
+#[derive(Debug, Clone, Serialize)]
+pub struct PreviewGrid {
+    pub rows: usize,
+    pub cols: usize,
+    /// مقادیر نرمال [−۱..۱] — انحراف شعاعی در (z, θ)
+    pub values: Vec<f64>,
+}
+
+/// پاسخ کامل دستور پیش‌نمایش
+#[derive(Debug, Clone, Serialize)]
+pub struct PreviewData {
+    /// کلید = نام variant الگو (Wave و…)
+    pub patterns: std::collections::BTreeMap<String, PreviewGrid>,
+    /// کلید = نام variant بافت (Ripple و…)
+    pub textures: std::collections::BTreeMap<String, PreviewGrid>,
+}
+
+/// ارزیابی همهٔ الگوها روی شبکهٔ استاندارد
+fn eval_patterns_grid() -> std::collections::BTreeMap<String, PreviewGrid> {
+    use crate::designer::pattern::{apply_patterns, PatternKind};
+    let rows = 56usize;
+    let cols = 112usize;
+    let mut map = std::collections::BTreeMap::new();
+    for kind in [
+        PatternKind::Wave, PatternKind::Petal, PatternKind::Twist, PatternKind::Flute,
+        PatternKind::Diamond, PatternKind::Chevron, PatternKind::Rings,
+        PatternKind::Scale, PatternKind::Facet, PatternKind::Braid,
+        PatternKind::Pineapple, PatternKind::Lotus, PatternKind::TwistedFlute,
+        PatternKind::Pearl, PatternKind::Meander, PatternKind::Brick,
+        PatternKind::Spikes,
+    ] {
+        // پارامترهای نمایشی استاندارد — همان پیش‌فرض UI
+        let params = crate::designer::pattern::PatternParams {
+            kind,
+            amplitude_mm: 1.0,
+            count: 8,
+            frequency: 1.0,
+            phase_deg: 0.0,
+            z_start_mm: 0.0,
+            z_end_mm: None,
+        };
+        let mut values = Vec::with_capacity(rows * cols);
+        for i in 0..rows {
+            let z = i as f64 / (rows as f64 - 1.0);
+            for j in 0..cols {
+                let theta = j as f64 * 2.0 * std::f64::consts::PI / cols as f64;
+                let (r, _) = apply_patterns(1.0, z, theta, 1.0, &[params.clone()]);
+                // انحراف از شعاع پایهٔ ۱ → [−۱..۱] تقریبی
+                values.push((r - 1.0).clamp(-1.0, 1.0));
+            }
+        }
+        map.insert(format!("{kind:?}"), PreviewGrid { rows, cols, values });
+    }
+    map
+}
+
+/// ارزیابی همهٔ بافت‌ها روی مسیر مارپیچی نرمال‌شده
+fn eval_textures_grid() -> std::collections::BTreeMap<String, PreviewGrid> {
+    use crate::designer::texture::{apply_texture, TextureKind};
+    let rows = 56usize;
+    let cols = 112usize;
+    let mut map = std::collections::BTreeMap::new();
+    for kind in [
+        TextureKind::Ripple, TextureKind::Weave, TextureKind::Stitch,
+        TextureKind::SpiralGroove, TextureKind::Hammered, TextureKind::Basket,
+        TextureKind::WoodGrain, TextureKind::Leather, TextureKind::Knurl,
+        TextureKind::Ocean, TextureKind::Bubbles, TextureKind::Rows,
+    ] {
+        let t = crate::designer::texture::TextureParams {
+            kind,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            radial: true,
+            phase_deg: 0.0,
+            fade_in_percent: 0.0,
+            fade_out_percent: 0.0,
+        };
+        let mut values = Vec::with_capacity(rows * cols);
+        // مسیر مارپیچی نمونه: θ یکنواخت، z یکنواخت، s متناسب
+        for i in 0..rows {
+            let z_norm = i as f64 / (rows as f64 - 1.0);
+            for j in 0..cols {
+                let theta = j as f64 * 2.0 * std::f64::consts::PI / cols as f64;
+                // طول مسیر تا این نقطه (شعاع ۱): تقریب خطی
+                let s = i as f64 * cols as f64 * (2.0 * std::f64::consts::PI / cols as f64);
+                let point = [theta.cos(), theta.sin(), z_norm];
+                let (out, _) = apply_texture(point, s, 1.0, z_norm, &[t.clone()]);
+                let r = (out[0] * out[0] + out[1] * out[1]).sqrt();
+                values.push((r - 1.0).clamp(-1.0, 1.0));
+            }
+        }
+        map.insert(format!("{kind:?}"), PreviewGrid { rows, cols, values });
+    }
+    map
+}
+
+/// دستور IPC: دادهٔ پیش‌نمایش برای کارت‌های الگو/بافت UI
+pub fn designer_preview_data() -> PreviewData {
+    PreviewData {
+        patterns: eval_patterns_grid(),
+        textures: eval_textures_grid(),
+    }
 }
 
 // ============================================================================
@@ -416,10 +530,12 @@ pub fn designer_export_gcode(project: DesignerProject) -> Result<String, String>
                 top_diameter_mm: validated.form_top_diameter_mm,
                 taper_percent: validated.taper_percent,
                 smoothing_passes: 0,
+                interpolation: validated.profile_interpolation,
             },
             patterns: validated.patterns,
             textures: validated.textures,
             floor: validated.floor,
+            center_on_bed: validated.center_on_bed,
             printer: validated.printer,
         },
         &output,
