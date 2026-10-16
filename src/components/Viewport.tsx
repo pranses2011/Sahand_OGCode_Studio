@@ -552,7 +552,8 @@ export function Viewport(props: ViewportProps) {
     group.name = "spot-group";
     const [ax, ay] = spot.bedOffset;
     const center = toThree([ax, ay, 0]); // مرکز محور در Three
-    const tube = Math.max(1.2, spot.radius * 0.05);
+    // ضخامت لوله: به‌اندازهٔ کافی کلفت تا با ماوس راحت گرفته شود (۹٪ شعاع)
+    const tube = Math.min(Math.max(spot.radius * 0.09, 1.8), 4.0);
 
     const makeRing = (
       z: number,
@@ -578,16 +579,17 @@ export function Viewport(props: ViewportProps) {
       if (spot.radius > 0.5) {
         group.add(makeRing(1.0, spot.radius, 0xf0883e, "spot-hole"));
       }
-      // نشانگر مرکز (نقطهٔ اسپات)
-      const dotGeo = new THREE.SphereGeometry(Math.max(1.5, tube * 1.6), 12, 12);
+      // نشانگر مرکز (نقطهٔ اسپات) — همان رفتار درگ حلقهٔ سوراخ
+      const dotGeo = new THREE.SphereGeometry(Math.max(2.2, tube * 1.6), 12, 12);
       const dotMat = new THREE.MeshBasicMaterial({ color: 0xf0883e });
       const dot = new THREE.Mesh(dotGeo, dotMat);
       dot.position.set(center[0], 1.0, center[2]);
+      dot.name = "spot-hole";
       group.add(dot);
     } else {
       // حلقهٔ شروع (نارنجی) — با نشانگر کروی «اسپات»
       group.add(makeRing(spot.zStart, spot.radius, 0xf0883e, "spot-start"));
-      const dotGeo = new THREE.SphereGeometry(Math.max(1.8, tube * 1.8), 12, 12);
+      const dotGeo = new THREE.SphereGeometry(Math.max(2.4, tube * 1.7), 12, 12);
       const dotMat = new THREE.MeshBasicMaterial({ color: 0xf0883e });
       const dot = new THREE.Mesh(dotGeo, dotMat);
       // نقطهٔ اسپات روی حلقهٔ شروع (سمت جلو)
@@ -597,6 +599,7 @@ export function Viewport(props: ViewportProps) {
         spot.zStart,
         center[2] - spot.radius * Math.sin(a) * 0.4
       );
+      dot.name = "spot-start";
       group.add(dot);
       // حلقهٔ پایان (آبی) — اگر بازهٔ محدود است
       if (spot.zEnd !== null) {
