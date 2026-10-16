@@ -25,6 +25,16 @@ pub enum PatternKind {
     Twist,
     /// شیار عمودی fluted: کانال‌های عمودی مثل ستون کلاسیک
     Flute,
+    /// لوزی (diamond): شبکهٔ لوزی از برجستگی‌ها — |sin(kθ)|·|sin(2πf·zn)|
+    Diamond,
+    /// مهری (chevron): زیگزاگ مورب پیچیده دور فرم — موج مثلثی
+    Chevron,
+    /// حلقهٔ افقی (rings): برجستگی‌های افقی مستقل از θ (مثل دیوارهٔ داسی)
+    Rings,
+    /// فلس (scale): ردیف‌های مورب فلس‌های هم‌پوشان — |sin| قوسی
+    Scale,
+    /// تراش‌خورده (facet): مقطع چندضلعی منتظم با عمق کنترل‌شونده
+    Facet,
 }
 
 impl PatternKind {
@@ -35,6 +45,11 @@ impl PatternKind {
             PatternKind::Petal => "گلبرگ (چندلوبی)",
             PatternKind::Twist => "پیچش",
             PatternKind::Flute => "شیار عمودی",
+            PatternKind::Diamond => "لوزی",
+            PatternKind::Chevron => "مهری (زیگزاگ)",
+            PatternKind::Rings => "حلقهٔ افقی",
+            PatternKind::Scale => "فلس",
+            PatternKind::Facet => "تراش‌خورده",
         }
     }
 }
@@ -149,6 +164,47 @@ fn pattern_value(p: &PatternParams, z: f64, theta: f64, total_height: f64) -> f6
             // نگاشت به بازهٔ [-1, 1] با گودی بیشتر
             c * c * 2.0 - 1.0
         }
+        // لوزی: شبکهٔ لوزی — برجستگی جایی که هر دو |sin| بیشینه‌اند؛
+        // گودال جایی که هر دو صفرند. قطر لوزی‌ها با count (زاویه‌ای) و
+        // frequency (عمودی) کنترل می‌شود.
+        PatternKind::Diamond => {
+            let a = (k * theta + phase).sin().abs();
+            let b = (2.0 * std::f64::consts::PI * p.frequency * zn).sin().abs();
+            a + b - 1.0
+        }
+        // مهری: موج مثلثی مورب — tri(x) = (2/π)·asin(sin(x))
+        // زیگزاگ تیز که با ارتفاع جابه‌جا می‌شود (چین‌مانند)
+        PatternKind::Chevron => {
+            let x = k * theta + phase + 2.0 * std::f64::consts::PI * p.frequency * zn;
+            (2.0 / std::f64::consts::PI) * x.sin().asin()
+        }
+        // حلقهٔ افقی: فقط وابسته به z — برجستگی‌های حلقه‌ای مثل دیوارهٔ داسی.
+        // count روی θ بی‌اثر است (صادقانه در UI توضیح داده می‌شود).
+        PatternKind::Rings => {
+            (2.0 * std::f64::consts::PI * p.frequency * zn + phase).sin()
+        }
+        // فلس: قوس‌های |sin| مورب — ردیف فلس‌های هم‌پوشان که با ارتفاع
+        // جابه‌جا می‌شوند (شبیه زره فلس‌دار)
+        PatternKind::Scale => {
+            let x = k * theta + phase + 2.0 * std::f64::consts::PI * p.frequency * zn;
+            x.sin().abs() * 2.0 - 1.0
+        }
+        // تراش‌خورده: مقطع k-ضلعی منتظم. منحنی چندضلعی:
+        //   r(θ) = R·cos(π/k)/cos(m) که m فاصلهٔ زاویه‌ای از مرکز وجه است.
+        // انحراف نرمال‌شده با amplitude (= عمق وجه)؛ گوشه‌ها روی شعاع پایه.
+        // با frequency>0 وجه‌ها به‌آرامی با ارتفاع می‌چرخند (چندضلعی مارپیچ).
+        PatternKind::Facet => {
+            let kk = k.max(3.0); // مثلث حداقل چندضلعی معتبر
+            let sector = 2.0 * std::f64::consts::PI / kk;
+            // زاویهٔ مؤثر (با چرخش تدریجی بر اساس ارتفاع)
+            let th_eff = theta + 2.0 * std::f64::consts::PI * p.frequency * zn;
+            let m = ((th_eff + phase).rem_euclid(sector) - sector / 2.0).abs();
+            // m ∈ [0, π/k] — فاصله از مرکز وجه؛ گوشه در m=π/k
+            let denom = m.min(std::f64::consts::PI / kk).cos().max(1e-9);
+            let ratio = (std::f64::consts::PI / kk).cos() / denom; // ∈ (0, 1]
+            // انحراف ≤ 0 (وجه‌ها به داخل می‌نشینند) — نرمال‌سازی به عمق کامل
+            -((1.0 - ratio) / (1.0 - (std::f64::consts::PI / kk).cos()).max(1e-9))
+        }
     };
     v * p.amplitude_mm * w
 }
@@ -188,18 +244,25 @@ mod tests {
     #[test]
     fn test_pattern_affects_radius() {
         // هر نوع الگو باید شعاع را در برخی زاویه‌ها تغییر دهد
-        for kind in [PatternKind::Wave, PatternKind::Petal, PatternKind::Twist, PatternKind::Flute]
+        for kind in [
+            PatternKind::Wave, PatternKind::Petal, PatternKind::Twist, PatternKind::Flute,
+            PatternKind::Diamond, PatternKind::Chevron, PatternKind::Rings,
+            PatternKind::Scale, PatternKind::Facet,
+        ]
         {
             let p = base_pattern(kind);
             let (r, _) = apply_patterns(20.0, 50.0, 0.5, 100.0, &[p]);
-            // در برخی θ تغییر می‌کند (تست چند θ)
+            // نمونه‌برداری از θ و z (Rings به θ وابسته نیست؛ به z وابسته است)
             let mut changed = false;
-            for i in 0..16 {
-                let theta = i as f64 * 0.4;
-                let (rr, _) = apply_patterns(20.0, 50.0, theta, 100.0, &[base_pattern(kind)]);
-                if (rr - 20.0).abs() > 1e-9 {
-                    changed = true;
-                    break;
+            'outer: for zi in 0..8 {
+                for ti in 0..16 {
+                    let theta = ti as f64 * 0.4;
+                    let z = 5.0 + zi as f64 * 11.0;
+                    let (rr, _) = apply_patterns(20.0, z, theta, 100.0, &[base_pattern(kind)]);
+                    if (rr - 20.0).abs() > 1e-9 {
+                        changed = true;
+                        break 'outer;
+                    }
                 }
             }
             assert!(changed, "{kind:?} هیچ اثری نداشت");
@@ -300,5 +363,100 @@ mod tests {
         let (r1, _) = apply_patterns(20.0, 30.0, 0.8, 100.0, &[p.clone()]);
         let (r2, _) = apply_patterns(20.0, 70.0, 0.8, 100.0, &[p]);
         assert!((r1 - r2).abs() < 1e-6, "شیار نباید با z تغییر کند");
+    }
+
+    #[test]
+    fn test_rings_independent_of_theta() {
+        // حلقهٔ افقی باید مستقل از θ باشد
+        let p = base_pattern(PatternKind::Rings);
+        let (r1, _) = apply_patterns(20.0, 50.0, 0.3, 100.0, &[p.clone()]);
+        let (r2, _) = apply_patterns(20.0, 50.0, 2.7, 100.0, &[p]);
+        assert!((r1 - r2).abs() < 1e-9, "r1={r1} r2={r2}");
+        // اما وابسته به z است
+        let (r3, _) = apply_patterns(20.0, 25.0, 0.3, 100.0, &[base_pattern(PatternKind::Rings)]);
+        assert!((r3 - r1).abs() > 0.1, "حلقه باید با z تغییر کند");
+    }
+
+    #[test]
+    fn test_diamond_lattice_extremes() {
+        // لوزی: هر دو |sin|=1 → بیشینه (+amplitude)؛ هر دو صفر → کمینه (-amplitude)
+        let mut p = base_pattern(PatternKind::Diamond);
+        p.amplitude_mm = 2.0;
+        p.frequency = 2.0;
+        // zn=0.25 → sin(2π·2·0.25)=sin(π)=0؛ k=8: θ=π/16 → sin(8·π/16)=sin(π/2)=1
+        let (r_peak_side, _) = apply_patterns(20.0, 25.0, std::f64::consts::PI / 16.0, 100.0, &[p.clone()]);
+        // a=1, b=0 → v=0 → r=20 (شبکهٔ لوزی: قلهٔ نه‌تایی نه گودال)
+        assert!((r_peak_side - 20.0).abs() < 1e-9);
+        // zn=0.25, θ=0 → a=0,b=0 → v=-1 → گودال کامل
+        let (r_valley, _) = apply_patterns(20.0, 25.0, 0.0, 100.0, &[p.clone()]);
+        assert!((r_valley - 18.0).abs() < 1e-9, "r_valley={r_valley}");
+        // قلهٔ لوزی: زاویه‌ای بیشینه + عمودی بیشینه → v=+1
+        // zn=0.125 → sin(2π·2·0.125)=sin(π/2)=1؛ θ=π/16 → a=1
+        let (r_peak, _) = apply_patterns(20.0, 12.5, std::f64::consts::PI / 16.0, 100.0, &[p]);
+        assert!((r_peak - 22.0).abs() < 1e-6, "r_peak={r_peak}");
+    }
+
+    #[test]
+    fn test_chevron_bounded() {
+        // موج مثلثی باید در [-1, 1] بماند (زیگزاگ تیز)
+        let p = base_pattern(PatternKind::Chevron);
+        for i in 0..200 {
+            let theta = i as f64 * 0.031;
+            let z = (i % 100) as f64;
+            let (r, _) = apply_patterns(20.0, z, theta, 100.0, &[p.clone()]);
+            assert!(r >= 20.0 - 1.5 - 1e-9 && r <= 20.0 + 1.5 + 1e-9, "r={r}");
+        }
+    }
+
+    #[test]
+    fn test_scale_scallops_are_positive_shifted() {
+        // فلس: |sin|·2-1 ∈ [-1, 1]؛ در صفرهای sin گودال کامل
+        let mut p = base_pattern(PatternKind::Scale);
+        p.amplitude_mm = 1.0;
+        p.frequency = 0.0;
+        // k=8: θ=π/8 → sin(π)=0 → v=-1
+        let (r_v, _) = apply_patterns(20.0, 50.0, std::f64::consts::PI / 8.0, 100.0, &[p.clone()]);
+        // θ=π/16 → sin(π/2)=1 → v=+1
+        let (r_p, _) = apply_patterns(20.0, 50.0, std::f64::consts::PI / 16.0, 100.0, &[p]);
+        assert!((r_v - 19.0).abs() < 1e-9, "r_v={r_v}");
+        assert!((r_p - 21.0).abs() < 1e-9, "r_p={r_p}");
+    }
+
+    #[test]
+    fn test_facet_polygon_corners_and_faces() {
+        // تراش‌خورده: گوشه‌های چندضلعی روی شعاع پایه، مرکز وجه به اندازهٔ
+        // عمق (amplitude) به داخل می‌نشیند.
+        // تقسیم‌بندی زاویه‌ای: مراکز وجه در θ = sector/2 + n·sector
+        let mut p = base_pattern(PatternKind::Facet);
+        p.amplitude_mm = 2.0;
+        p.count = 6; // شش‌ضلعی → sector=60°
+        p.frequency = 0.0;
+        // θ=0 → m=π/6 → گوشه → r = 20
+        let (r_corner, _) = apply_patterns(20.0, 50.0, 0.0, 100.0, &[p.clone()]);
+        // θ=30° (π/6) → m=0 → مرکز وجه → r = 20-2 = 18
+        let (r_face, _) = apply_patterns(20.0, 50.0, std::f64::consts::PI / 6.0, 100.0, &[p.clone()]);
+        assert!((r_corner - 20.0).abs() < 1e-6, "r_corner={r_corner}");
+        assert!((r_face - 18.0).abs() < 1e-6, "r_face={r_face}");
+        // انحراف همیشه ≤ 0 (وجه‌ها فقط به داخل)
+        for i in 0..72 {
+            let theta = i as f64 * std::f64::consts::PI / 36.0;
+            let (r, _) = apply_patterns(20.0, 50.0, theta, 100.0, &[p.clone()]);
+            assert!(r <= 20.0 + 1e-9, "r={r} نباید از پایه بیشتر شود");
+        }
+    }
+
+    #[test]
+    fn test_facet_frequency_rotates() {
+        // frequency>0 → وجه‌ها با ارتفاع می‌چرخند: همان θ در دو ارتفاع
+        // نتایج متفاوت می‌دهد (z=25 دقیقاً روی گوشهٔ چرخیده می‌افتد)
+        let mut p = base_pattern(PatternKind::Facet);
+        p.count = 4;
+        p.frequency = 1.0;
+        let (r1, _) = apply_patterns(20.0, 10.0, 0.0, 100.0, &[p.clone()]);
+        let (r2, _) = apply_patterns(20.0, 25.0, 0.0, 100.0, &[p]);
+        assert!(
+            (r1 - r2).abs() > 0.1,
+            "چندضلعی باید با ارتفاع بچرخد: r1={r1} r2={r2}"
+        );
     }
 }
