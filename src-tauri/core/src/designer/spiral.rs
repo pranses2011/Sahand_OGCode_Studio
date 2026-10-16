@@ -39,6 +39,10 @@ pub struct DesignerInput {
     pub floor: FloorSettings,
     /// مرکز‌گذاری فرم روی صفحهٔ چاپ — نسخهٔ ۱.۲ (رفع باگ 0,0)
     pub center_on_bed: bool,
+    /// چرخش کل فرم حول محور Z (درجه) — نسخهٔ ۱.۳.
+    /// زاویهٔ شروع مارپیچ = جای درز (seam) + جهت‌گیری الگوها؛
+    /// با اسپات 🔄 روی نمای 3D قابل‌درگ است.
+    pub phase_start_deg: f64,
     /// پرینتر
     pub printer: PrinterProfile,
 }
@@ -134,6 +138,12 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         ));
     }
 
+    // ---------- چرخش فاز θ — نسخهٔ ۱.۳ ----------
+    // زاویهٔ شروع مارپیچ حول محور Z: جای درز (seam) چاپ مارپیچی و
+    // جهت‌گیری گلبرگ‌ها/شیارها را می‌چرخاند. mesh و مسیر و کف همه
+    // «هم‌زاویه» می‌مانند تا پیش‌نمایش = خروجی (قاعدهٔ منبع واحد).
+    let phase0 = input.phase_start_deg.to_radians();
+
     // ---------- اعتبارسانی ورودی‌ها ----------
     if let Err(e) = crate::designer::profile::validate_profile(&input.profile) {
         diagnostics.push(Diagnostic::file_level(crate::diagnostics::Severity::Error, "E-PROFILE", e));
@@ -170,7 +180,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     let dz_per_step = layer_h / steps_per_rev as f64;
 
     // ---------- mesh پایه (برای STL) ----------
-    let mesh = build_mesh(input, &radius_fn, steps_per_rev, &mut diagnostics);
+    let mesh = build_mesh(input, &radius_fn, steps_per_rev, phase0, &mut diagnostics);
 
     // ---------- مسیر مارپیچی + بافت‌ها → IR ----------
     let mut segments: Vec<ToolpathSegment> = Vec::new();
@@ -178,8 +188,8 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     let mut next_id: u64 = 0;
     let mut collided_any = false;
 
-    // شروع از مرکز (travel به نقطهٔ اول)
-    let theta_start = 0.0f64;
+    // شروع از مرکز (travel به نقطهٔ اول) — زاویهٔ شروع = فاز θ
+    let theta_start = phase0;
     let z_start = layer_h; // نازل از ارتفاع لایهٔ اول
     let r0 = {
         let (r, clamped) =
@@ -227,8 +237,8 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     let mut clamped_radius_events = 0usize;
 
     for step in 1..=total_steps {
-        // θ پیوسته بالا می‌رود؛ z خطی با گام
-        let theta = step as f64 * d_theta;
+        // θ پیوسته بالا می‌رود (از فاز شروع)؛ z خطی با گام
+        let theta = phase0 + step as f64 * d_theta;
         let z = (z_start + step as f64 * dz_per_step).min(height + layer_h);
         let z_for_profile = (z - layer_h).clamp(0.0, height); // پروفایل از 0 تا height
 
@@ -299,8 +309,9 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         prev_point = point;
     }
 
-    // ---------- کف (اگر فعال) — ۵ الگوی نسخهٔ ۱.۲ ----------
-    let floor_segments = build_floor(input, &radius_fn, &mut next_id, &mut stats, bed_offset);
+    // ---------- کف (اگر فعال) — ۵ الگوی نسخهٔ ۱.۲؛ چرخش با فاز θ ----------
+    let floor_segments =
+        build_floor(input, &radius_fn, &mut next_id, &mut stats, bed_offset, phase0);
     let floor_count = floor_segments.len();
     // کف «قبل» از دیواره چاپ می‌شود؛ برای سادگی IR، در ادامهٔ segments
     // می‌آید ولی kind=Floor ندارد — به‌صورت Extrusion با z ثابت
@@ -352,7 +363,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     // ---------- خلاصهٔ فارسی ----------
     let est_time_min = estimate_time_min(&segments);
     let summary_fa = format!(
-        "فرم مارپیچی: ارتفاع {} mm، {} دور، {} قطعه مسیر{}؛ طول چاپ ≈ {} m؛ فیلامنت ≈ {} m؛ زمان تخمینی ≈ {} دقیقه",
+        "فرم مارپیچی: ارتفاع {} mm، {} دور، {} قطعه مسیر{}؛ طول چاپ ≈ {} m؛ فیلامنت ≈ {} m؛ زمان تخمینی ≈ {} دقیقه؛ فاز θ = {}°؛ دمای نازل/بستر = {}/{} °C",
         format_num(height),
         format_num(total_revolutions),
         segments.len(),
@@ -360,6 +371,9 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         format_num(stats.extrusion_length_mm / 1000.0),
         format_num(stats.total_e_mm / 1000.0),
         format_num(est_time_min),
+        format_num(input.phase_start_deg),
+        format_num(printer.nozzle_temp_c),
+        format_num(printer.bed_temp_c),
     );
 
     DesignerOutput {
@@ -378,6 +392,7 @@ fn build_mesh(
     input: &DesignerInput,
     radius_fn: &impl Fn(f64) -> f64,
     steps_per_rev: usize,
+    phase0: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> MeshData {
     let height = input.form.height_mm;
@@ -392,7 +407,8 @@ fn build_mesh(
     for i in 0..=rows {
         let z = i as f64 * height / rows as f64;
         for j in 0..=cols {
-            let theta = j as f64 * 2.0 * std::f64::consts::PI / cols as f64;
+            // چرخش شبکهٔ رأس‌ها با فاز θ (نسخهٔ ۱.۳)
+            let theta = phase0 + j as f64 * 2.0 * std::f64::consts::PI / cols as f64;
             // الگو روی mesh هم اعمال می‌شود (الگو ⇒ در STL می‌ماند)
             let (r, _) = apply_patterns(radius_fn(z), z, theta, height, &input.patterns);
             let r = r.max(0.0);
@@ -458,6 +474,7 @@ fn build_floor(
     next_id: &mut u64,
     stats: &mut ToolpathStats,
     bed_offset: [f64; 2],
+    phase0: f64,
 ) -> Vec<ToolpathSegment> {
     use crate::designer::FloorPattern;
 
@@ -527,8 +544,15 @@ fn build_floor(
     // مرکز کف روی صفحه
     let cx = bed_offset[0];
     let cy = bed_offset[1];
-    // نقطهٔ صفحه از مختصات دیسک (نسبت به محور)
-    let bed_pt = |x: f64, y: f64| [x + cx, y + cy, z];
+    // چرخش فاز θ — کل کف با فرم هم‌زاویه می‌چرخد (نسخهٔ ۱.۳)؛
+    // برای الگوهای متقارن (حلقه/شبکه) بی‌اثر و برای شعاعی معنادار
+    let (cph, sph) = (phase0.cos(), phase0.sin());
+    // نقطهٔ صفحه از مختصات دیسک (نسبت به محور) — با چرخش φ
+    let bed_pt = |x: f64, y: f64| {
+        let xr = x * cph - y * sph;
+        let yr = x * sph + y * cph;
+        [xr + cx, yr + cy, z]
+    };
 
     match floor.pattern {
         // ---------------- حلقه‌های هم‌مرکز (رفتار ۱.۰/۱.۱) ----------------
@@ -794,6 +818,7 @@ mod tests {
             textures: vec![],
             floor: crate::designer::FloorSettings::default(),
             center_on_bed: true,
+            phase_start_deg: 0.0,
             printer: PrinterProfile::default(),
         }
     }
@@ -887,6 +912,85 @@ mod tests {
         assert!(with_floor.segments.len() > no_floor.segments.len());
         // هشدار یا خلاصه باید کف را ذکر کند
         assert!(with_floor.summary_fa.contains("کف"));
+    }
+
+    // ================= آزمون‌های چرخش فاز θ — نسخهٔ ۱.۳ =================
+
+    #[test]
+    fn test_phase_rotates_start_point() {
+        // فاز ۹۰° → اولین نقطهٔ چاپ روی +Y محور (نه +X)
+        // مرکز‌گذاری خاموش تا مختصات نسبت به محور سنجیده شود
+        let mut inp = base_input();
+        inp.center_on_bed = false;
+        let p0 = compute(&inp);
+        // بدون چرخش: اولین اکستروژن نزدیک +X
+        let first0 = p0.segments[1].end_mm.unwrap();
+        assert!(first0[0] > 10.0, "x باید مثبت بزرگ باشد: {first0:?}");
+        assert!(first0[1].abs() < 5.0, "y باید نزدیک صفر باشد: {first0:?}");
+
+        inp.phase_start_deg = 90.0;
+        let p90 = compute(&inp);
+        let first90 = p90.segments[1].end_mm.unwrap();
+        // با چرخش ۹۰°: نقطه نزدیک +Y و x کوچک
+        assert!(first90[1] > 10.0, "y باید مثبت بزرگ باشد: {first90:?}");
+        assert!(first90[0].abs() < 5.0, "x باید نزدیک صفر باشد: {first90:?}");
+        // شعاع (فاصله از محور) تغییر نکرده
+        let r0 = (first0[0] * first0[0] + first0[1] * first0[1]).sqrt();
+        let r90 = (first90[0] * first90[0] + first90[1] * first90[1]).sqrt();
+        assert!((r0 - r90).abs() < 0.01, "شعاع نباید تغییر کند: {r0} vs {r90}");
+    }
+
+    #[test]
+    fn test_phase_rotates_mesh_consistently() {
+        // رأس j=0 ردیف z=0 دقیقاً روی زاویهٔ فاز می‌نشیند —
+        // mesh با مسیر هم‌زاویه می‌چرخد (منبع واحد)
+        let mut inp = base_input();
+        inp.center_on_bed = false;
+        inp.phase_start_deg = 90.0;
+        let out = compute(&inp);
+        // ردیف اول mesh: z=0، رأس اول (j=0) باید (≈0, +r) باشد
+        let v0 = out.mesh.vertices[0];
+        assert!(v0[2].abs() < 1e-9, "ردیف اول باید z=0 باشد");
+        assert!(v0[0].abs() < 0.01, "x رأس اول باید ≈0 باشد: {v0:?}");
+        assert!(v0[1] > 5.0, "y رأس اول باید مثبت بزرگ باشد: {v0:?}");
+        // شعاع همان ردیف با حالت بدون چرخش برابر است
+        let out0 = compute(&base_input());
+        let v00 = out0.mesh.vertices[0];
+        let r_a = (v0[0] * v0[0] + v0[1] * v0[1]).sqrt();
+        let r_b = (v00[0] * v00[0] + v00[1] * v00[1]).sqrt();
+        assert!((r_a - r_b).abs() < 0.01, "شعاع mesh نباید تغییر کند");
+    }
+
+    #[test]
+    fn test_phase_full_circle_equivalence() {
+        // چرخش ۳۶۰° = بدون چرخش (برای mesh و نقاط مسیر)
+        let mut inp = base_input();
+        inp.center_on_bed = false;
+        inp.phase_start_deg = 360.0;
+        let a = compute(&inp);
+        let mut base = base_input();
+        base.center_on_bed = false;
+        let b = compute(&base);
+        // اولین نقطهٔ چاپ
+        let pa = a.segments[1].end_mm.unwrap();
+        let pb = b.segments[1].end_mm.unwrap();
+        assert!((pa[0] - pb[0]).abs() < 0.01 && (pa[1] - pb[1]).abs() < 0.01);
+        // mesh هم همان است (مجموعهٔ رأس‌ها)
+        assert_eq!(a.mesh.vertices.len(), b.mesh.vertices.len());
+        for (va, vb) in a.mesh.vertices.iter().zip(b.mesh.vertices.iter()) {
+            assert!((va[0] - vb[0]).abs() < 0.01);
+            assert!((va[1] - vb[1]).abs() < 0.01);
+        }
+    }
+
+    #[test]
+    fn test_phase_in_summary() {
+        // خلاصهٔ فارسی فاز و دما را ذکر می‌کند (نسخهٔ ۱.۳)
+        let mut inp = base_input();
+        inp.phase_start_deg = 45.0;
+        let out = compute(&inp);
+        assert!(out.summary_fa.contains("فاز θ = 45"), "خلاصه: {}", out.summary_fa);
+        assert!(out.summary_fa.contains("200/60"), "دماها: {}", out.summary_fa);
     }
 
     #[test]
