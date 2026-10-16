@@ -24,6 +24,12 @@ pub enum TextureKind {
     Weave,
     /// بخیه‌ای stitch: پرش‌های گسستهٔ شعاعی مثل دوخت
     Stitch,
+    /// شیار مارپیچی: کانال پیوسته که دور دیواره می‌پیچد (زاویه + طول مسیر)
+    SpiralGroove,
+    /// چکشی: فرورفتگی‌های شبه‌تصادفی اما قطعی (hash کمی زاویه/ارتفاع)
+    Hammered,
+    /// سبدی: شبکهٔ متقاطع سینوسی دو جهته (طول مسیر × زاویه)
+    Basket,
 }
 
 impl TextureKind {
@@ -33,6 +39,9 @@ impl TextureKind {
             TextureKind::Ripple => "موجک (ریپل)",
             TextureKind::Weave => "تور بافته",
             TextureKind::Stitch => "بخیه‌ای",
+            TextureKind::SpiralGroove => "شیار مارپیچی",
+            TextureKind::Hammered => "چکشی",
+            TextureKind::Basket => "سبدی",
         }
     }
 }
@@ -102,6 +111,20 @@ fn fade_weight(t: &TextureParams, z_norm: f64) -> f64 {
     w_in.min(w_out)
 }
 
+/// hash قطعی (FxHash-مانند ساده) برای بافت چکشی — بدون RNG
+/// همان ورودی همیشه همان خروجی (قابل‌بازتولید در آزمون)
+fn deterministic_hash(a: i64, b: i64) -> i32 {
+    // ثابت‌های Fibonaccci hashing — پراکندگی خوب با عملیات ارزان
+    let mut h: u64 = 0x51_7c_c1_b7_27_22_0a_95_u64
+        .wrapping_add((a as u64).wrapping_mul(0x9E3779B97F4A7C15))
+        .wrapping_add((b as u64).wrapping_mul(0xC2B2AE3D27D4EB4F));
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xFF51AFD7ED558CCD);
+    h ^= h >> 33;
+    // نگاشت به i32 با حذف بیت علامت
+    ((h >> 32) as i32) & i32::MAX
+}
+
 /// اعمال بافت روی یک نقطهٔ مسیر
 /// ورودی/خروجی: (x, y, z) مختصات نقطه؛ s طول پیموده‌شدهٔ مسیر تا این نقطه (mm)؛
 /// r_base شعاع پایه (برای جهت شعاعی)؛ z_norm ارتفاع نسبی ۰..۱؛
@@ -129,6 +152,8 @@ pub fn apply_texture(
         // فاز طول مسیر: چند دوره تا اینجا
         let cycles = s / t.period_mm;
         let u = cycles * 2.0 * std::f64::consts::PI;
+        // زاویهٔ قطبی نقطه (برای بافت‌های وابسته به جهت دور محور)
+        let theta = y.atan2(x);
         let v = match t.kind {
             // موجک: سینوسی نرم روی طول مسیر
             TextureKind::Ripple => (u + ph).sin(),
@@ -143,6 +168,29 @@ pub fn apply_texture(
                 // sign(sine) با نرمی محدود
                 let s_ = (u + ph).sin();
                 if s_.abs() < 0.25 { s_ * 4.0 } else { s_.signum() }
+            }
+            // شیار مارپیچی: کانالی که هم به طول مسیر و هم به زاویه وابسته است
+            // — نتیجه: شیار پیوسته مورب دور دیواره (مثل رزوهٔ پیچ)
+            TextureKind::SpiralGroove => {
+                let w = (u + ph + theta * 3.0).sin();
+                // تیز کردن کف شیار با tanh نرم
+                (w * 2.0).tanh()
+            }
+            // چکشی: فرورفتگی‌های شبه‌تصادفی «قطعی» — hash کمی زاویه و ارتفاع؛
+            // بدون RNG/seed تصادفی: همان ورودی همیشه همان نتیجه (قابل‌بازتولید)
+            TextureKind::Hammered => {
+                // کوانتینه‌کردن فضای (زاویه، ارتفاع) به سلول‌های period-اندازه
+                let cell_a = (theta / (t.period_mm * 0.05 + 1e-9)).floor() as i64;
+                let cell_z = (z_norm * 200.0 / (t.period_mm + 1e-9)).floor() as i64;
+                let h = deterministic_hash(cell_a, cell_z);
+                // نگاشت hash به [-1, 1]
+                (h as f64 / i32::MAX as f64).clamp(-1.0, 1.0)
+            }
+            // سبدی: شبکهٔ متقاطع — سینوس طول مسیر × سینوس زاویه (تاریک/روشن متناوب)
+            TextureKind::Basket => {
+                let a = (u + ph).sin();
+                let b = (theta * 6.0 + ph).sin();
+                a * b
             }
         };
         let amount = v * t.amplitude_mm * w;
@@ -309,5 +357,139 @@ mod tests {
         // فاصلهٔ نقاط متوالی
         let pts = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 10.0, 0.0]];
         assert!((max_gap_after_texture(&pts) - 10.0).abs() < 1e-9);
+    }
+
+    // ================= آزمون‌های بافت‌های جدید =================
+
+    #[test]
+    fn test_spiral_groove_depends_on_angle() {
+        // شیار مارپیچی باید به زاویهٔ نقطه وابسته باشد (مورب دور دیواره)
+        let t = TextureParams {
+            kind: TextureKind::SpiralGroove,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            ..Default::default()
+        };
+        // دو زاویهٔ متفاوت با s یکسان → شعاع متفاوت
+        let (p1, _) = apply_texture([10.0, 0.0, 50.0], 1.0, 10.0, 0.5, &[t.clone()]);
+        // زاویهٔ 90°: نقطه (0, 10)
+        let (p2, _) = apply_texture([0.0, 10.0, 50.0], 1.0, 10.0, 0.5, &[t]);
+        let r1 = (p1[0] * p1[0] + p1[1] * p1[1]).sqrt();
+        let r2 = (p2[0] * p2[0] + p2[1] * p2[1]).sqrt();
+        assert!(
+            (r1 - r2).abs() > 0.05,
+            "شیار مارپیچی باید به زاویه وابسته باشد: r1={r1} r2={r2}"
+        );
+    }
+
+    #[test]
+    fn test_hammered_deterministic() {
+        // چکشی: همان ورودی → همان خروجی (قطعیت، بدون RNG)
+        let t = TextureParams {
+            kind: TextureKind::Hammered,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            ..Default::default()
+        };
+        let p = [10.0, 3.0, 50.0];
+        let (a1, _) = apply_texture(p, 10.0, 10.6, 0.5, &[t.clone()]);
+        let (a2, _) = apply_texture(p, 10.0, 10.6, 0.5, &[t.clone()]);
+        assert_eq!(a1, a2, "بافت چکشی باید قطعی باشد");
+        // سلول‌های مختلف → دست‌کم برخی مقادیر متفاوت (پراکندگی)
+        let mut distinct = std::collections::HashSet::new();
+        for i in 0..24 {
+            let ang = i as f64 * 0.26;
+            let (out, _) = apply_texture(
+                [10.0 * ang.cos(), 10.0 * ang.sin(), 50.0],
+                i as f64,
+                10.0,
+                0.5,
+                &[t.clone()],
+            );
+            let r = (out[0] * out[0] + out[1] * out[1]).sqrt();
+            distinct.insert((r * 1000.0).round() as i64);
+        }
+        assert!(distinct.len() > 6, "پراکندگی کم: {}", distinct.len());
+    }
+
+    #[test]
+    fn test_hammered_bounded() {
+        // چکشی: جابه‌جایی همیشه ≤ amplitude
+        let t = TextureParams {
+            kind: TextureKind::Hammered,
+            amplitude_mm: 0.8,
+            period_mm: 3.0,
+            ..Default::default()
+        };
+        for i in 0..100 {
+            let ang = i as f64 * 0.13;
+            let r0 = 12.0;
+            let (out, _) = apply_texture(
+                [r0 * ang.cos(), r0 * ang.sin(), 40.0],
+                i as f64 * 0.7,
+                r0,
+                (i % 10) as f64 / 10.0,
+                &[t.clone()],
+            );
+            let r = (out[0] * out[0] + out[1] * out[1]).sqrt();
+            assert!(r <= r0 + 0.8 + 1e-9 && r >= r0 - 0.8 - 1e-9, "r={r}");
+        }
+    }
+
+    #[test]
+    fn test_basket_cross_pattern() {
+        // سبدی: حاصل‌ضرب دو سینوس → در برخی نقاط صفر، در برخی غیرصفر
+        let t = TextureParams {
+            kind: TextureKind::Basket,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            ..Default::default()
+        };
+        // s=0 → sin(0)=0 → اثر صفر؛ θ=0 هم b=sin(0)=0
+        let (p0, _) = apply_texture([10.0, 0.0, 50.0], 0.0, 10.0, 0.5, &[t.clone()]);
+        let r0 = (p0[0] * p0[0] + p0[1] * p0[1]).sqrt();
+        assert!((r0 - 10.0).abs() < 1e-9, "r0={r0}");
+        // s=1 (sin(π/2)=1)، θ=π/12 → sin(6·π/12)=sin(π/2)=1 → اثر کامل +1
+        let ang = std::f64::consts::PI / 12.0;
+        let (p1, _) = apply_texture(
+            [10.0 * ang.cos(), 10.0 * ang.sin(), 50.0],
+            1.0,
+            10.0,
+            0.5,
+            &[t],
+        );
+        let r1 = (p1[0] * p1[0] + p1[1] * p1[1]).sqrt();
+        assert!((r1 - 11.0).abs() < 1e-6, "r1={r1}");
+    }
+
+    #[test]
+    fn test_all_new_textures_affect_some_point() {
+        // هر بافت جدید باید در برخی نقاط اثر داشته باشد
+        for kind in [TextureKind::SpiralGroove, TextureKind::Hammered, TextureKind::Basket] {
+            let t = TextureParams {
+                kind,
+                amplitude_mm: 1.0,
+                period_mm: 4.0,
+                ..Default::default()
+            };
+            let mut changed = false;
+            for i in 0..40 {
+                let ang = i as f64 * 0.17;
+                let s = i as f64 * 0.9;
+                let (out, _) = apply_texture(
+                    [10.0 * ang.cos(), 10.0 * ang.sin(), 50.0],
+                    s,
+                    10.0,
+                    0.5,
+                    &[t.clone()],
+                );
+                let r = (out[0] * out[0] + out[1] * out[1]).sqrt();
+                if (r - 10.0).abs() > 1e-6 {
+                    changed = true;
+                    break;
+                }
+            }
+            assert!(changed, "{kind:?} هیچ اثری نداشت");
+        }
     }
 }
