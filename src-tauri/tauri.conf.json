@@ -35,8 +35,8 @@
       },
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["English", "Persian"],
-        "displayLanguageSelector": true
+        "languages": ["English"],
+        "displayLanguageSelector": false
       }
     }
   }
