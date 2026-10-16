@@ -7,25 +7,164 @@
  *
  * تمایز حیاتی در UI (تأیید از پژوهش مرجع):
  *   الگو → هندسه (در STL می‌ماند)؛ بافت → مسیر نازل (فقط در G-code).
- *   این تمایز در متن پنل‌ها صراحتاً توضیح داده می‌شود (الزام §3 گام ۳).
+ *
+ * نسخهٔ ۱.۲ (درخواست‌های کاربر):
+ *   - کارت‌های بزرگ تصویری برای ۱۷ الگو / ۱۲ بافت / ۵ الگوی کف —
+ *     تصویرها از «همان ریاضی هستهٔ Rust» رندر می‌شوند (designer_preview_data)؛
+ *   - اسپات قابل‌درگ روی نمای 3D: بازهٔ z الگو/بافت و قطر سوراخ کف
+ *     با کشیدن حلقه‌ها مستقیماً جابه‌جا می‌شود؛
+ *   - مرکز‌گذاری طرح روی صفحهٔ چاپ (پیش‌فرض روشن — رفع باگ 0,0)؛
+ *   - درون‌یابی اسپلاین مونوتون پروفایل (پیش‌فرض — بدون لبهٔ تیز)؛
+ *   - واگرد/ازنوی کامل طراحی + ۶ استایل آمادهٔ قابل‌ویرایش.
  * ============================================================================
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProfileEditor } from "./ProfileEditor";
+import { SurfaceThumb, FloorThumb, ProfileMiniThumb } from "./Thumbs";
 import { Viewport } from "../../components/Viewport";
+import type { SpotHandle, SpotChange } from "../../components/Viewport";
 import { fa } from "../../i18n/fa";
 import type {
   DesignerProject, PatternParams, TextureParams, DesignerOutput,
-  SegmentsPayload, ProfilePoint, PrinterProfile,
+  SegmentsPayload, ProfilePoint, PrinterProfile, PreviewData,
+  FloorPatternKind, MeshData,
 } from "../../lib/tauri";
 import {
   designerCompute, designerExportGcode, designerExportStl,
   saveProject, loadProject, saveFileDialog, openFileDialog,
-  coreAvailable, printerPresets,
+  coreAvailable, printerPresets, designerPreviewData,
 } from "../../lib/tauri";
 
-/** پروژهٔ پیش‌فرض — گلدان آماده (قابل‌ویرایش) */
+// ============================================================================
+// فهرست الگوها/بافت‌ها/کف‌ها — ۱۷ الگو + ۱۲ بافت + ۵ کف (نسخهٔ ۱.۲)
+// ============================================================================
+
+const PATTERNS: { kind: PatternParams["kind"]; name: string; hint: string }[] = [
+  { kind: "Wave", name: "موج محوری", hint: "برجستگی سینوسی که با ارتفاع می‌چرخد" },
+  { kind: "Petal", name: "گلبرگ", hint: "گلبرگ‌های نرم دور فرم" },
+  { kind: "Twist", name: "پیچش", hint: "موج تاب‌خورده" },
+  { kind: "Flute", name: "شیار عمودی", hint: "کانال‌های عمودی ستون کلاسیک" },
+  { kind: "Diamond", name: "لوزی", hint: "شبکهٔ لوزی برجسته" },
+  { kind: "Chevron", name: "مهری", hint: "زیگزاگ مورب چین‌دار" },
+  { kind: "Rings", name: "حلقهٔ افقی", hint: "برجستگی‌های دور فرم مستقل از زاویه" },
+  { kind: "Scale", name: "فلس", hint: "فلس‌های مورب هم‌پوشان" },
+  { kind: "Facet", name: "تراش‌خورده", hint: "مقطع چندضلعی تراش‌خورده" },
+  { kind: "Braid", name: "رشته‌ای (طناب)", hint: "تارهای درهم‌بافته طناب" },
+  { kind: "Pineapple", name: "آناناسی", hint: "شبکهٔ لوزی تیز پوستهٔ آناناس" },
+  { kind: "Lotus", name: "نیلوفر (آبشاری)", hint: "ردیف گلبرگ‌های هم‌پوشان" },
+  { kind: "TwistedFlute", name: "شیار پیچان", hint: "شیارهایی که با ارتفاع می‌پیچند" },
+  { kind: "Pearl", name: "مروارید", hint: "دانه‌های گرد درهم" },
+  { kind: "Meander", name: "یونانی", hint: "بلوک‌های مربعی نقش یونانی" },
+  { kind: "Brick", name: "آجری", hint: "ردیف‌های نیم‌جابه‌جا دیوار آجری" },
+  { kind: "Spikes", name: "خاردار", hint: "خارهای مثلثی تیز" },
+];
+
+const TEXTURES: { kind: TextureParams["kind"]; name: string; hint: string }[] = [
+  { kind: "Ripple", name: "موجک (ریپل)", hint: "موج نرم روی طول مسیر" },
+  { kind: "Weave", name: "تور بافته", hint: "بالا/پایین متناوب تار و پود" },
+  { kind: "Stitch", name: "بخیه‌ای", hint: "پرش‌های گسسته مثل دوخت" },
+  { kind: "SpiralGroove", name: "شیار مارپیچی", hint: "کانال مورب دور دیواره" },
+  { kind: "Hammered", name: "چکشی", hint: "فرورفتگی‌های شبه‌تصادفی قطعی" },
+  { kind: "Basket", name: "سبدی", hint: "شبکهٔ متقاطع دو جهته" },
+  { kind: "WoodGrain", name: "رگهٔ چوب", hint: "الیاف کشیدهٔ چوب" },
+  { kind: "Leather", name: "چرم", hint: "دانه‌های ریز پوست/چرم" },
+  { kind: "Knurl", name: "آج رزوه", hint: "شیارهای متقاطع دستگیرهٔ آجدار" },
+  { kind: "Ocean", name: "موج دریا", hint: "موج‌های روان بی‌تکرار" },
+  { kind: "Bubbles", name: "حباب", hint: "فرورفتگی‌های گرد پراکنده" },
+  { kind: "Rows", name: "تخته‌ای", hint: "شیارهای افقی ردیف تخته‌ها" },
+];
+
+const FLOORS: { kind: FloorPatternKind; name: string; hint: string }[] = [
+  { kind: "Rings", name: "حلقه‌های هم‌مرکز", hint: "حلقه‌های تودرتو از بیرون به داخل" },
+  { kind: "Spiral", name: "مارپیچ پیوسته", hint: "یک مسیر پیوسته بدون travel — مناسب vase" },
+  { kind: "Grid", name: "شبکهٔ متقاطع", hint: "خطوط X و Y روی دیسک" },
+  { kind: "Radial", name: "پرتوهای شعاعی", hint: "پرتو از سوراخ مرکزی تا لبه" },
+  { kind: "ZigZag", name: "رفت‌وبرگشتی", hint: "ردیف‌های مارپیچی بدون درز" },
+];
+
+// ============================================================================
+// ۶ استایل آماده — ترکیب پروفایل + الگو + بافت (کاملاً قابل‌ویرایش)
+// ============================================================================
+
+interface StylePreset {
+  key: string;
+  name: string;
+  desc: string;
+  profile: ProfilePoint[];
+  height: number;
+  bottomD: number;
+  topD: number;
+  patterns: PatternParams[];
+  textures: TextureParams[];
+  floorPattern: FloorPatternKind;
+  floorHole: number;
+}
+
+const STYLE_PRESETS: StylePreset[] = [
+  {
+    key: "column",
+    name: "ستون کلاسیک",
+    desc: "شیارهای عمودی ۱۲تایی + کف حلقه‌ای",
+    profile: [{ r: 18, h: 0 }, { r: 19, h: 50 }, { r: 17, h: 95 }, { r: 21, h: 100 }],
+    height: 100, bottomD: 38, topD: 42,
+    patterns: [{ kind: "Flute", amplitude_mm: 1.8, count: 12, frequency: 0, phase_deg: 0, z_start_mm: 5, z_end_mm: 90 }],
+    textures: [],
+    floorPattern: "Rings", floorHole: 0,
+  },
+  {
+    key: "pineapple",
+    name: "آناناس",
+    desc: "شبکهٔ لوزی آناناسی + کف مارپیچ",
+    profile: [{ r: 20, h: 0 }, { r: 24, h: 30 }, { r: 22, h: 80 }, { r: 24, h: 100 }],
+    height: 100, bottomD: 42, topD: 46,
+    patterns: [{ kind: "Pineapple", amplitude_mm: 2.2, count: 10, frequency: 3, phase_deg: 0, z_start_mm: 0, z_end_mm: null }],
+    textures: [],
+    floorPattern: "Spiral", floorHole: 8,
+  },
+  {
+    key: "rope",
+    name: "طناب بافته",
+    desc: "رشته‌های درهم‌بافته + کف شبکه",
+    profile: [{ r: 16, h: 0 }, { r: 16, h: 100 }],
+    height: 90, bottomD: 34, topD: 34,
+    patterns: [{ kind: "Braid", amplitude_mm: 2.5, count: 6, frequency: 2, phase_deg: 0, z_start_mm: 0, z_end_mm: null }],
+    textures: [],
+    floorPattern: "Grid", floorHole: 0,
+  },
+  {
+    key: "lotus",
+    name: "نیلوفر آبی",
+    desc: "ردیف گلبرگ‌های آبشاری",
+    profile: [{ r: 12, h: 0 }, { r: 20, h: 20 }, { r: 28, h: 60 }, { r: 26, h: 100 }],
+    height: 100, bottomD: 26, topD: 52,
+    patterns: [{ kind: "Lotus", amplitude_mm: 2.0, count: 10, frequency: 2, phase_deg: 0, z_start_mm: 0, z_end_mm: null }],
+    textures: [],
+    floorPattern: "Radial", floorHole: 10,
+  },
+  {
+    key: "hammered",
+    name: "مس چکشی",
+    desc: "فرورفتگی‌های چکشی قطعی روی فرم ساده",
+    profile: [{ r: 22, h: 0 }, { r: 26, h: 40 }, { r: 20, h: 100 }],
+    height: 95, bottomD: 46, topD: 40,
+    patterns: [],
+    textures: [{ kind: "Hammered", amplitude_mm: 0.5, period_mm: 3.5, radial: true, phase_deg: 0, fade_in_percent: 5, fade_out_percent: 5 }],
+    floorPattern: "Rings", floorHole: 0,
+  },
+  {
+    key: "wood",
+    name: "چوب کهنه",
+    desc: "رگه‌های چوب + پیچش ملایم",
+    profile: [{ r: 18, h: 0 }, { r: 21, h: 60 }, { r: 17, h: 100 }],
+    height: 110, bottomD: 38, topD: 34,
+    patterns: [{ kind: "Twist", amplitude_mm: 1.2, count: 5, frequency: 1, phase_deg: 0, z_start_mm: 0, z_end_mm: null }],
+    textures: [{ kind: "WoodGrain", amplitude_mm: 0.45, period_mm: 5, radial: true, phase_deg: 0, fade_in_percent: 0, fade_out_percent: 0 }],
+    floorPattern: "ZigZag", floorHole: 0,
+  },
+];
+
+/** پروژهٔ پیش‌فرض — گلدان آماده (قابل‌ویرایش) با تنظیمات ۱.۲ */
 function defaultProject(): DesignerProject {
   return {
     schema_version: 1,
@@ -37,9 +176,11 @@ function defaultProject(): DesignerProject {
     form_bottom_diameter_mm: 44,
     form_top_diameter_mm: 42,
     taper_percent: 0,
+    profile_interpolation: "Spline",
+    center_on_bed: true,
     patterns: [],
     textures: [],
-    floor: { enabled: false, center_hole_diameter_mm: 0, z_start_mm: 0, ring_gap_mm: 0.45 },
+    floor: { enabled: false, pattern: "Rings", center_hole_diameter_mm: 0, z_start_mm: 0, ring_gap_mm: 0.45, spokes: 12 },
     printer: {
       name: "Custom / Unverified", status: "unverified",
       build_volume_mm: [220, 220, 250],
@@ -76,7 +217,12 @@ function toSegmentsPayload(out: DesignerOutput): SegmentsPayload {
     const s = out.segments[i];
     const start = s.start_mm ?? [0, 0, 0];
     const end = s.end_mm ?? start;
-    positions.splice(i * 6, 6, ...start, ...end);
+    positions[i * 6 + 0] = start[0];
+    positions[i * 6 + 1] = start[1];
+    positions[i * 6 + 2] = start[2];
+    positions[i * 6 + 3] = end[0];
+    positions[i * 6 + 4] = end[1];
+    positions[i * 6 + 5] = end[2];
     kinds[i] = KIND_NUM[String(s.kind)] ?? 5;
     source_lines[i] = s.source_line_index;
     ids[i] = s.id;
@@ -85,6 +231,26 @@ function toSegmentsPayload(out: DesignerOutput): SegmentsPayload {
   }
   return { revision: 1, positions, kinds, source_lines, ids, certainties, feedrates };
 }
+
+/** شعاع واقعی فرم در ارتفاع z — از mesh هسته (هندسهٔ صادقانه) */
+function meshRadiusAt(mesh: MeshData | undefined, z: number, tol = 3.0): number {
+  if (!mesh || mesh.vertices.length === 0) return 20;
+  let max = 0;
+  for (const v of mesh.vertices) {
+    if (Math.abs(v[2] - z) <= tol) {
+      const r = Math.hypot(v[0], v[1]);
+      if (r > max) max = r;
+    }
+  }
+  return max || 20;
+}
+
+/** انتخاب اسپات (برای درگ روی 3D) */
+type SpotSelection =
+  | { type: "pattern"; index: number }
+  | { type: "texture"; index: number }
+  | { type: "floor" }
+  | null;
 
 export function SpiralDesignerPage(props: {
   onSendToEditor: (gcode: string) => void;
@@ -98,16 +264,78 @@ export function SpiralDesignerPage(props: {
   const [note, setNote] = useState("");
   // پریست‌های ۲۰ پرینتر واقعی — از هستهٔ Rust بارگذاری می‌شود
   const [presets, setPresets] = useState<PrinterProfile[]>([]);
+  // دادهٔ پیش‌نمایش کارت‌ها (۱۷ الگو + ۱۲ بافت) از ریاضی واقعی هسته
+  const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   // پرسش تأیید خروجی‌های دارای هشدار بحرانی (الزام §8)
   const [confirmExport, setConfirmExport] = useState<null | (() => void)>(null);
+  // اسپات انتخاب‌شده برای درگ روی 3D
+  const [spotSel, setSpotSel] = useState<SpotSelection>(null);
   const debounceRef = useRef<number | null>(null);
 
-  // بارگذاری پریست‌های پرینتر از هسته (دسکتاپ یا پل dev)
+  // ---------------- واگرد/ازنو (نسخهٔ ۱.۲) ----------------
+  const historyRef = useRef<DesignerProject[]>([]);
+  const futureRef = useRef<DesignerProject[]>([]);
+  const [histLen, setHistLen] = useState(0);
+  const [futureLen, setFutureLen] = useState(0);
+  // درگ اسپات: یک قدم تاریخ در هر ژست (نه هر پیکسل)
+  const spotGestureRef = useRef<number | null>(null);
+  // نسخهٔ همیشه‌به‌روز پروژه برای جهش‌های تاریخ خارج از updater
+  // (StrictMode updaterها را دوبار اجرا می‌کند — جهش ref داخل updater ممنوع)
+  const projectRef = useRef(project);
+  projectRef.current = project;
+
+  /** ثبت تغییر پروژه با قدم تاریخ */
+  const commitProject = useCallback((next: DesignerProject) => {
+    historyRef.current.push(projectRef.current);
+    if (historyRef.current.length > 80) historyRef.current.shift();
+    futureRef.current = [];
+    setProject(next);
+    setHistLen(historyRef.current.length);
+    setFutureLen(0);
+  }, []);
+
+  const undo = useCallback(() => {
+    const prev = historyRef.current.pop();
+    if (!prev) return;
+    futureRef.current.push(projectRef.current);
+    setProject(prev);
+    setHistLen(historyRef.current.length);
+    setFutureLen(futureRef.current.length);
+  }, []);
+
+  const redo = useCallback(() => {
+    const next = futureRef.current.pop();
+    if (!next) return;
+    historyRef.current.push(projectRef.current);
+    setProject(next);
+    setHistLen(historyRef.current.length);
+    setFutureLen(futureRef.current.length);
+  }, []);
+
+  // میان‌بر کیبورد واگرد/ازنو (فقط در صفحهٔ طراح)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
+  // بارگذاری پریست‌های پرینتر و دادهٔ پیش‌نمایش از هسته
   useEffect(() => {
     if (!coreAvailable()) return;
     printerPresets()
       .then((list) => setPresets(list))
-      .catch(() => setPresets([])); // خطا → فهرست خالی و پیام گام ۵ همچنان صادقانه
+      .catch(() => setPresets([]));
+    designerPreviewData()
+      .then((d) => setPreviewData(d))
+      .catch(() => setPreviewData(null)); // بدون هسته → کارت‌های جایگزین صادقانه
   }, []);
 
   // ------------------------------------------------------------ محاسبهٔ زنده
@@ -136,53 +364,72 @@ export function SpiralDesignerPage(props: {
   useEffect(() => { recompute(project); /* eslint-disable-next-line */ }, []);
 
   // ------------------------------------------------------------ helpers
-  const setP = (patch: Partial<DesignerProject>) => setProject((p) => ({ ...p, ...patch }));
+  const setP = (patch: Partial<DesignerProject>) => commitProject({ ...project, ...patch });
   const setPrinter = (patch: Partial<DesignerProject["printer"]>) =>
-    setProject((p) => ({ ...p, printer: { ...p.printer, ...patch } }));
+    commitProject({ ...project, printer: { ...project.printer, ...patch } });
   const setFloor = (patch: Partial<DesignerProject["floor"]>) =>
-    setProject((p) => ({ ...p, floor: { ...p.floor, ...patch } }));
+    commitProject({ ...project, floor: { ...project.floor, ...patch } });
 
   const addPattern = (kind: PatternParams["kind"]) =>
-    setProject((p) => ({
-      ...p,
-      patterns: [...p.patterns, {
+    commitProject({
+      ...project,
+      patterns: [...project.patterns, {
         kind, amplitude_mm: 1.5, count: 8, frequency: 1,
         phase_deg: 0, z_start_mm: 0, z_end_mm: null,
       }],
-    }));
+    });
   const updatePattern = (i: number, patch: Partial<PatternParams>) =>
-    setProject((p) => ({
-      ...p,
-      patterns: p.patterns.map((x, j) => (j === i ? { ...x, ...patch } : x)),
-    }));
+    commitProject({
+      ...project,
+      patterns: project.patterns.map((x, j) => (j === i ? { ...x, ...patch } : x)),
+    });
   const removePattern = (i: number) =>
-    setProject((p) => ({ ...p, patterns: p.patterns.filter((_, j) => j !== i) }));
+    commitProject({ ...project, patterns: project.patterns.filter((_, j) => j !== i) });
 
   const addTexture = (kind: TextureParams["kind"]) =>
-    setProject((p) => ({
-      ...p,
-      textures: [...p.textures, {
+    commitProject({
+      ...project,
+      textures: [...project.textures, {
         kind, amplitude_mm: 0.4, period_mm: 4, radial: true,
         phase_deg: 0, fade_in_percent: 0, fade_out_percent: 0,
       }],
-    }));
+    });
   const updateTexture = (i: number, patch: Partial<TextureParams>) =>
-    setProject((p) => ({
-      ...p,
-      textures: p.textures.map((x, j) => (j === i ? { ...x, ...patch } : x)),
-    }));
+    commitProject({
+      ...project,
+      textures: project.textures.map((x, j) => (j === i ? { ...x, ...patch } : x)),
+    });
   const removeTexture = (i: number) =>
-    setProject((p) => ({ ...p, textures: p.textures.filter((_, j) => j !== i) }));
+    commitProject({ ...project, textures: project.textures.filter((_, j) => j !== i) });
 
-  const patternName: Record<PatternParams["kind"], string> = {
-    Wave: "موج محوری", Petal: "گلبرگ", Twist: "پیچش", Flute: "شیار عمودی",
-    Diamond: "لوزی", Chevron: "مهری (زیگزاگ)", Rings: "حلقهٔ افقی",
-    Scale: "فلس", Facet: "تراش‌خورده",
-  };
-  const textureName: Record<TextureParams["kind"], string> = {
-    Ripple: "موجک", Weave: "تور بافته", Stitch: "بخیه‌ای",
-    SpiralGroove: "شیار مارپیچی", Hammered: "چکشی", Basket: "سبدی",
-  };
+  /** اعمال استایل آماده — کاملاً قابل‌ویرایش بعد از اعمال */
+  const applyStyle = (sp: StylePreset) =>
+    commitProject({
+      ...project,
+      profile: sp.profile.map((p) => ({ ...p })),
+      form_height_mm: sp.height,
+      form_bottom_diameter_mm: sp.bottomD,
+      form_top_diameter_mm: sp.topD,
+      patterns: sp.patterns.map((p) => ({ ...p })),
+      textures: sp.textures.map((t) => ({ ...t })),
+      floor: {
+        ...project.floor,
+        enabled: true,
+        pattern: sp.floorPattern,
+        center_hole_diameter_mm: sp.floorHole,
+      },
+    });
+
+  const patternName = useMemo(() => {
+    const m: Record<string, string> = {};
+    PATTERNS.forEach((p) => (m[p.kind] = p.name));
+    return m;
+  }, []);
+  const textureName = useMemo(() => {
+    const m: Record<string, string> = {};
+    TEXTURES.forEach((t) => (m[t.kind] = t.name));
+    return m;
+  }, []);
 
   /** نازل‌های رایج (پیشنهادی نه دادهٔ ثابت — از پژوهش مرجع) */
   const nozzlePresets = [0.4, 0.6, 0.8];
@@ -243,7 +490,7 @@ export function SpiralDesignerPage(props: {
     if (!path) return;
     try {
       const p = await loadProject(path);
-      setProject(p);
+      commitProject({ ...defaultProject(), ...p, floor: { ...defaultProject().floor, ...p.floor } });
       setNote("پروژه بارگذاری شد.");
     } catch (e) {
       // schema خراب → پروژهٔ جاری دست‌نخورده می‌ماند (الزام §7)
@@ -254,12 +501,139 @@ export function SpiralDesignerPage(props: {
   const segPayload = output ? toSegmentsPayload(output) : null;
   const warningsFa = output?.diagnostics.map((d) => `${d.severity === "Error" ? "خطا" : "هشدار"} [${d.code}]: ${d.message_fa}`) ?? [];
 
+  // ---------------- اسپات: اتصال انتخاب به هندل‌های 3D ----------------
+  // (useMemo — آرایهٔ پایدار تا حلقه‌ها در هر رندر بازسازی نشوند)
+  const bedOffset = useMemo<[number, number]>(() =>
+    project.center_on_bed !== false
+      ? [project.printer.build_volume_mm[0] / 2, project.printer.build_volume_mm[1] / 2]
+      : [0, 0],
+    [project.center_on_bed, project.printer.build_volume_mm]
+  );
+
+  const spot: SpotHandle | null = useMemo(() => {
+    if (!spotSel) return null;
+    const height = Math.max(project.form_height_mm, 1);
+    if (spotSel.type === "pattern") {
+      const p = project.patterns[spotSel.index];
+      if (!p) return null;
+      const r = meshRadiusAt(output?.mesh, p.z_start_mm);
+      return {
+        kind: "patternRange",
+        zStart: p.z_start_mm,
+        zEnd: p.z_end_mm,
+        radius: Math.max(r, 6),
+        height,
+        bedOffset,
+      };
+    }
+    if (spotSel.type === "texture") {
+      const t = project.textures[spotSel.index];
+      if (!t) return null;
+      const zStart = (t.fade_in_percent / 100) * height;
+      const zEnd = height - (t.fade_out_percent / 100) * height;
+      const r = meshRadiusAt(output?.mesh, zStart + 2);
+      return {
+        kind: "textureFade",
+        zStart: Math.max(zStart, 0.5),
+        zEnd: zEnd > zStart + 1 ? zEnd : null,
+        radius: Math.max(r, 6),
+        height,
+        bedOffset,
+      };
+    }
+    // کف — سوراخ مرکزی
+    if (!project.floor.enabled || project.floor.center_hole_diameter_mm < 1) return null;
+    const rOuter = meshRadiusAt(output?.mesh, 0.5);
+    return {
+      kind: "floorHole",
+      zStart: 0.5,
+      zEnd: null,
+      radius: Math.min(project.floor.center_hole_diameter_mm / 2, rOuter - 1),
+      height,
+      bedOffset,
+    };
+  }, [spotSel, project, output, bedOffset]);
+
+  /** تغییر اسپات با درگ — نگاشت به فیلدهای پروژه + قدم تاریخ در هر ژست
+   *  (جهش ref خارج از updater — سازگار با StrictMode) */
+  const onSpotChange = useCallback((change: SpotChange) => {
+    const cur = projectRef.current;
+    // یک قدم تاریخ در آغاز ژست (۱۵۰۰ms بی‌حرکتی = پایان ژست)
+    if (spotGestureRef.current === null) {
+      historyRef.current.push(cur);
+      if (historyRef.current.length > 80) historyRef.current.shift();
+      futureRef.current = [];
+      setHistLen(historyRef.current.length);
+      setFutureLen(0);
+    } else {
+      clearTimeout(spotGestureRef.current);
+    }
+    spotGestureRef.current = window.setTimeout(() => {
+      spotGestureRef.current = null;
+    }, 1500);
+
+    const height = Math.max(cur.form_height_mm, 1);
+    let next: DesignerProject | null = null;
+    if (spotSel?.type === "pattern" && change.zStart !== undefined) {
+      const patterns = cur.patterns.map((x, j) =>
+        j === spotSel.index ? {
+          ...x,
+          z_start_mm: change.zStart!,
+          z_end_mm: x.z_end_mm !== null ? Math.max(x.z_end_mm, change.zStart! + 1) : null,
+        } : x
+      );
+      next = { ...cur, patterns };
+    } else if (spotSel?.type === "pattern" && change.zEnd !== undefined) {
+      const patterns = cur.patterns.map((x, j) =>
+        j === spotSel.index ? { ...x, z_end_mm: change.zEnd ?? null } : x
+      );
+      next = { ...cur, patterns };
+    } else if (spotSel?.type === "texture" && change.zStart !== undefined) {
+      const textures = cur.textures.map((x, j) =>
+        j === spotSel.index ? { ...x, fade_in_percent: (change.zStart! / height) * 100 } : x
+      );
+      next = { ...cur, textures };
+    } else if (spotSel?.type === "texture" && change.zEnd !== undefined && change.zEnd !== null) {
+      const textures = cur.textures.map((x, j) =>
+        j === spotSel.index ? { ...x, fade_out_percent: ((height - change.zEnd!) / height) * 100 } : x
+      );
+      next = { ...cur, textures };
+    } else if (spotSel?.type === "floor" && change.holeDiameter !== undefined) {
+      next = { ...cur, floor: { ...cur.floor, center_hole_diameter_mm: change.holeDiameter } };
+    }
+    if (next) setProject(next);
+  }, [spotSel]);
+
+  // شمارش فعال بودن هر الگو/بافت روی کارت‌ها
+  const patternCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    project.patterns.forEach((p) => {
+      m[p.kind] = (m[p.kind] ?? 0) + 1;
+    });
+    return m;
+  }, [project.patterns]);
+  const textureCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    project.textures.forEach((t) => {
+      m[t.kind] = (m[t.kind] ?? 0) + 1;
+    });
+    return m;
+  }, [project.textures]);
+
   // ------------------------------------------------------------ رندر
   return (
     <div className="designer-layout">
       {/* ---------- پنل کناری ۵ گام ---------- */}
       <div className="designer-side">
-        <h3 style={{ marginTop: 0, color: "var(--accent)" }}>{fa.designerTitle}</h3>
+        <div className="designer-head">
+          <h3 style={{ marginTop: 0, color: "var(--accent)", marginBottom: 0 }}>{fa.designerTitle}</h3>
+          <div className="history-btns">
+            <button className="btn small" disabled={histLen === 0} onClick={undo}
+              title="Ctrl+Z">{fa.designerUndo} ↶</button>
+            <button className="btn small" disabled={futureLen === 0} onClick={redo}
+              title="Ctrl+Y">{fa.designerRedo} ↷</button>
+          </div>
+        </div>
 
         <div className="steps">
           {[1, 2, 3, 4, 5].map((s) => (
@@ -285,18 +659,44 @@ export function SpiralDesignerPage(props: {
             />
             <div className="field">
               <label>{fa.presets}:</label>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button className="btn small" onClick={() => setP({ profile: [
+              <div className="preset-row">
+                <button className="btn preset-btn" onClick={() => setP({ profile: [
                   { r: 22, h: 0 }, { r: 28, h: 10 }, { r: 30, h: 35 },
                   { r: 26, h: 60 }, { r: 18, h: 80 }, { r: 17, h: 88 }, { r: 21, h: 100 },
-                ] })}>{fa.presetVase}</button>
-                <button className="btn small" onClick={() => setP({ profile: [
+                ] })}>
+                  <ProfileMiniThumb points={[{ r: 22, h: 0 }, { r: 28, h: 10 }, { r: 30, h: 35 }, { r: 26, h: 60 }, { r: 18, h: 80 }, { r: 17, h: 88 }, { r: 21, h: 100 }]} width={44} height={56} />
+                  <span>{fa.presetVase}</span>
+                </button>
+                <button className="btn preset-btn" onClick={() => setP({ profile: [
                   { r: 8, h: 0 }, { r: 15, h: 15 }, { r: 35, h: 90 }, { r: 40, h: 100 },
-                ] })}>{fa.presetLamp}</button>
-                <button className="btn small" onClick={() => setP({ profile: [
+                ] })}>
+                  <ProfileMiniThumb points={[{ r: 8, h: 0 }, { r: 15, h: 15 }, { r: 35, h: 90 }, { r: 40, h: 100 }]} width={44} height={56} />
+                  <span>{fa.presetLamp}</span>
+                </button>
+                <button className="btn preset-btn" onClick={() => setP({ profile: [
                   { r: 15, h: 0 }, { r: 18, h: 5 }, { r: 30, h: 60 }, { r: 32, h: 65 },
-                ] })}>{fa.presetPlanter}</button>
+                ] })}>
+                  <ProfileMiniThumb points={[{ r: 15, h: 0 }, { r: 18, h: 5 }, { r: 30, h: 60 }, { r: 32, h: 65 }]} width={44} height={56} />
+                  <span>{fa.presetPlanter}</span>
+                </button>
               </div>
+            </div>
+            {/* درون‌یابی: اسپلاین مونوتون (نسخهٔ ۱.۲) */}
+            <div className="field">
+              <label>{fa.interpolationMode}:</label>
+              <div className="radio-row" role="radiogroup" aria-label={fa.interpolationMode}>
+                <button
+                  className={`btn small ${project.profile_interpolation !== "Linear" ? "primary" : ""}`}
+                  role="radio" aria-checked={project.profile_interpolation !== "Linear"}
+                  onClick={() => setP({ profile_interpolation: "Spline" })}
+                >{fa.interpolationSpline}</button>
+                <button
+                  className={`btn small ${project.profile_interpolation === "Linear" ? "primary" : ""}`}
+                  role="radio" aria-checked={project.profile_interpolation === "Linear"}
+                  onClick={() => setP({ profile_interpolation: "Linear" })}
+                >{fa.interpolationLinear}</button>
+              </div>
+              <span className="hint-text">{fa.interpolationHint}</span>
             </div>
             <div className="field">
               <label>{fa.height}</label>
@@ -325,24 +725,63 @@ export function SpiralDesignerPage(props: {
           </div>
         )}
 
-        {/* ================= گام ۲: الگو ================= */}
-        {step === 2 && (
-          <div>
-            <p style={{ color: "var(--fg-1)", fontSize: 12 }}>
-              الگو <strong>هندسهٔ مدل</strong> را تغییر می‌دهد؛ اثر آن در <strong>STL</strong> هم باقی می‌ماند.
-            </p>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(Object.keys(patternName) as PatternParams["kind"][]).map((k) => (
-                <button key={k} className="btn small" onClick={() => addPattern(k)}>
-                  + {patternName[k]}
+        {/* ================= استایل‌های آماده ================= */}
+        {step === 1 && (
+          <div className="field" style={{ marginTop: 10 }}>
+            <label>{fa.stylePresets}:</label>
+            <span className="hint-text">{fa.stylePresetHint}</span>
+            <div className="style-grid">
+              {STYLE_PRESETS.map((sp) => (
+                <button key={sp.key} className="style-card" onClick={() => applyStyle(sp)}>
+                  <ProfileMiniThumb points={sp.profile} width={40} height={52} />
+                  <div className="style-meta">
+                    <strong>{sp.name}</strong>
+                    <span>{sp.desc}</span>
+                  </div>
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ================= گام ۲: الگو (کارت‌های تصویری بزرگ) ================= */}
+        {step === 2 && (
+          <div>
+            <p className="step-note">
+              الگو <strong>هندسهٔ مدل</strong> را تغییر می‌دهد؛ اثر آن در <strong>STL</strong> هم باقی می‌ماند.
+              روی کارت کلیک کنید تا افزوده شود؛ سپس با دکمهٔ 🎯 آن را روی نمای 3D جابه‌جا کنید.
+            </p>
+            <div className="card-grid">
+              {PATTERNS.map((p) => {
+                const count = patternCounts[p.kind] ?? 0;
+                return (
+                  <button
+                    key={p.kind}
+                    className={`asset-card ${count > 0 ? "active" : ""}`}
+                    onClick={() => addPattern(p.kind)}
+                    title={p.hint}
+                  >
+                    <SurfaceThumb grid={previewData?.patterns[p.kind]} variant="pattern" width={104} height={76} />
+                    <span className="asset-name">{p.name}</span>
+                    <span className="asset-badge">
+                      {count > 0 ? `${count}× ${fa.cardActive}` : `+ ${fa.cardAdd}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
             {project.patterns.map((pat, i) => (
-              <div className="pattern-item" key={i}>
+              <div className={`pattern-item ${spotSel?.type === "pattern" && spotSel.index === i ? "spot-selected" : ""}`} key={i}>
                 <div className="head">
                   <span className="name">{patternName[pat.kind]}</span>
-                  <button className="btn small danger" onClick={() => removePattern(i)}>×</button>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      className={`btn small ${spotSel?.type === "pattern" && spotSel.index === i ? "primary" : ""}`}
+                      title={fa.spotPatternRange}
+                      onClick={() => setSpotSel(spotSel?.type === "pattern" && spotSel.index === i ? null : { type: "pattern", index: i })}
+                    >🎯</button>
+                    <button className="btn small danger" onClick={() => removePattern(i)}>×</button>
+                  </div>
                 </div>
                 <div className="field"><label>{fa.patternAmplitude}</label>
                   <input type="number" step="0.1" min="0" value={pat.amplitude_mm}
@@ -364,30 +803,52 @@ export function SpiralDesignerPage(props: {
                     onChange={(e) => updatePattern(i, {
                       z_end_mm: e.target.value === "" ? null : +e.target.value,
                     })} /></div>
+                {spotSel?.type === "pattern" && spotSel.index === i && (
+                  <div className="spot-note">🎯 {fa.spotHint}</div>
+                )}
               </div>
             ))}
           </div>
         )}
 
-        {/* ================= گام ۳: بافت ================= */}
+        {/* ================= گام ۳: بافت (کارت‌های تصویری بزرگ) ================= */}
         {step === 3 && (
           <div>
-            <p style={{ color: "var(--fg-1)", fontSize: 12 }}>
+            <p className="step-note">
               بافت <strong>مسیر حرکت نازل</strong> را تعدیل می‌کند و در STL ذخیره <strong>نمی‌شود</strong>؛
-              فقط در G-code و پیش‌نمایش مسیر دیده می‌شود.
+              فقط در G-code و پیش‌نمایش مسیر دیده می‌شود. با 🎯 ناحیهٔ اعمال را روی 3D جابه‌جا کنید.
             </p>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(Object.keys(textureName) as TextureParams["kind"][]).map((k) => (
-                <button key={k} className="btn small" onClick={() => addTexture(k)}>
-                  + {textureName[k]}
-                </button>
-              ))}
+            <div className="card-grid">
+              {TEXTURES.map((t) => {
+                const count = textureCounts[t.kind] ?? 0;
+                return (
+                  <button
+                    key={t.kind}
+                    className={`asset-card texture ${count > 0 ? "active" : ""}`}
+                    onClick={() => addTexture(t.kind)}
+                    title={t.hint}
+                  >
+                    <SurfaceThumb grid={previewData?.textures[t.kind]} variant="texture" width={104} height={76} />
+                    <span className="asset-name">{t.name}</span>
+                    <span className="asset-badge">
+                      {count > 0 ? `${count}× ${fa.cardActive}` : `+ ${fa.cardAdd}`}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
             {project.textures.map((tex, i) => (
-              <div className="texture-item" key={i}>
+              <div className={`texture-item ${spotSel?.type === "texture" && spotSel.index === i ? "spot-selected" : ""}`} key={i}>
                 <div className="head">
                   <span className="name">{textureName[tex.kind]}</span>
-                  <button className="btn small danger" onClick={() => removeTexture(i)}>×</button>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      className={`btn small ${spotSel?.type === "texture" && spotSel.index === i ? "primary" : ""}`}
+                      title={fa.spotTextureFade}
+                      onClick={() => setSpotSel(spotSel?.type === "texture" && spotSel.index === i ? null : { type: "texture", index: i })}
+                    >🎯</button>
+                    <button className="btn small danger" onClick={() => removeTexture(i)}>×</button>
+                  </div>
                 </div>
                 <div className="field"><label>{fa.textureAmplitude}</label>
                   <input type="number" step="0.05" min="0" value={tex.amplitude_mm}
@@ -407,40 +868,88 @@ export function SpiralDesignerPage(props: {
                 <div className="field"><label>{fa.fade} ↑%</label>
                   <input type="number" step="5" min="0" max="100" value={tex.fade_out_percent}
                     onChange={(e) => updateTexture(i, { fade_out_percent: +e.target.value })} /></div>
+                {spotSel?.type === "texture" && spotSel.index === i && (
+                  <div className="spot-note">🎯 {fa.spotHint}</div>
+                )}
               </div>
             ))}
           </div>
         )}
 
-        {/* ================= گام ۴: کف ================= */}
+        {/* ================= گام ۴: کف (۵ الگوی تصویری) ================= */}
         {step === 4 && (
           <div>
-            <p style={{ color: "var(--fg-1)", fontSize: 12 }}>
-              حداقل دو گزینه: «بدون کف» و «کف هم‌مرکز با سوراخ مرکزی قابل‌تنظیم».
+            <p className="step-note">
+              پنج الگوی چاپ کف — همه مسیر واقعی تولید می‌کنند. نمای بالا هر الگو را نشان می‌دهد.
             </p>
-            <label style={{ display: "flex", gap: 8, alignItems: "center", margin: "10px 0" }}>
+            <label className="check-row">
               <input type="checkbox" checked={project.floor.enabled}
                 onChange={(e) => setFloor({ enabled: e.target.checked })} />
               {fa.floorEnabled}
             </label>
+            <div className="field">
+              <label>{fa.floorPattern}:</label>
+              <div className="card-grid floor">
+                {FLOORS.map((f) => (
+                  <button
+                    key={f.kind}
+                    className={`asset-card floor ${(project.floor.pattern ?? "Rings") === f.kind && project.floor.enabled ? "active" : ""}`}
+                    onClick={() => setFloor({ pattern: f.kind, enabled: true })}
+                    title={f.hint}
+                    disabled={!project.floor.enabled}
+                  >
+                    <FloorThumb kind={f.kind} hole={f.kind === "Radial" ? 0.22 : 0.16} size={84} />
+                    <span className="asset-name">{f.name}</span>
+                    {(project.floor.pattern ?? "Rings") === f.kind && project.floor.enabled && (
+                      <span className="asset-badge">{fa.cardActive}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="field"><label>{fa.floorHole}</label>
-              <input type="number" step="1" min="0" disabled={!project.floor.enabled}
-                value={project.floor.center_hole_diameter_mm}
-                onChange={(e) => setFloor({ center_hole_diameter_mm: +e.target.value })} /></div>
-            <div className="field"><label>فاصلهٔ حلقه‌های کف (mm)</label>
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <input type="number" step="1" min="0" disabled={!project.floor.enabled}
+                  value={project.floor.center_hole_diameter_mm}
+                  onChange={(e) => setFloor({ center_hole_diameter_mm: +e.target.value })} />
+                <button
+                  className={`btn small ${spotSel?.type === "floor" ? "primary" : ""}`}
+                  disabled={!project.floor.enabled || project.floor.center_hole_diameter_mm < 1}
+                  title={fa.spotFloorHole}
+                  onClick={() => setSpotSel(spotSel?.type === "floor" ? null : { type: "floor" })}
+                >🎯</button>
+              </div>
+              {spotSel?.type === "floor" && (
+                <span className="hint-text">🎯 قطر سوراخ را با کشیدن حلقه در نمای 3D تغییر دهید</span>
+              )}
+            </div>
+            <div className="field"><label>{fa.floorGap}</label>
               <input type="number" step="0.05" min="0.2" disabled={!project.floor.enabled}
                 value={project.floor.ring_gap_mm}
                 onChange={(e) => setFloor({ ring_gap_mm: +e.target.value })} /></div>
+            {(project.floor.pattern ?? "Rings") === "Radial" && (
+              <div className="field"><label>{fa.floorSpokes}</label>
+                <input type="number" step="1" min="3" max="96" disabled={!project.floor.enabled}
+                  value={project.floor.spokes ?? 12}
+                  onChange={(e) => setFloor({ spokes: Math.round(+e.target.value) || 12 })} /></div>
+            )}
           </div>
         )}
 
         {/* ================= گام ۵: پرینتر ================= */}
         {step === 5 && (
           <div>
-            <p style={{ color: "var(--fg-2)", fontSize: 11 }}>
+            <p className="step-note">
               {fa.printerProfileStatus}: <strong className="ltr">{project.printer.status}</strong> —
               presetها دادهٔ ثابت نیستند؛ قبل از چاپ صحت‌سنجی کنید.
             </p>
+            {/* مرکز‌گذاری روی صفحه (نسخهٔ ۱.۲ — رفع باگ 0,0) */}
+            <label className="check-row">
+              <input type="checkbox" checked={project.center_on_bed !== false}
+                onChange={(e) => setP({ center_on_bed: e.target.checked })} />
+              {fa.centerOnBed}
+            </label>
+            <span className="hint-text">{fa.centerOnBedHint}</span>
             {/* انتخاب از ۲۰ پریست پرینتر واقعی (وضعیت community) */}
             <div className="field">
               <label>{fa.printerPresets}</label>
@@ -449,7 +958,7 @@ export function SpiralDesignerPage(props: {
                 value={presets.some((x) => x.name === project.printer.name) ? project.printer.name : ""}
                 onChange={(e) => {
                   const p = presets.find((x) => x.name === e.target.value);
-                  if (p) setProject((prev) => ({ ...prev, printer: { ...p } }));
+                  if (p) commitProject({ ...project, printer: { ...p } });
                 }}
               >
                 <option value="">— انتخاب از فهرست —</option>
@@ -460,7 +969,7 @@ export function SpiralDesignerPage(props: {
                 ))}
               </select>
               {presets.length > 0 && (
-                <span style={{ color: "var(--fg-2)", fontSize: 11 }}>
+                <span className="hint-text">
                   {presets.length} مدل — مشخصات از صفحات رسمی سازنده‌ها؛
                   وضعیت همه community است (تست دستی نداده‌ایم).
                 </span>
@@ -535,9 +1044,11 @@ export function SpiralDesignerPage(props: {
           segments={segPayload}
           highlightIds={new Set()}
           filter={{ mode: "all", upToId: 0 }}
-          buildVolume={project.floor.enabled || step === 5
+          buildVolume={project.center_on_bed !== false || project.floor.enabled || step === 5
             ? [project.printer.build_volume_mm[0], project.printer.build_volume_mm[1], project.printer.build_volume_mm[2]]
             : null}
+          spot={spot}
+          onSpotChange={onSpotChange}
           emptyMessage={busy ? "در حال محاسبه…" : fa.openHint}
           webglMessage={fa.webglMissing}
           extrusionColor={props.extrusionColor}
