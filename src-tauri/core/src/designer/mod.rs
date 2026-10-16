@@ -26,32 +26,79 @@ pub mod texture;
 // re-export های پرکاربرد
 pub use pattern::{PatternKind, PatternParams};
 pub use printer_presets::{brand_fa, printer_presets};
-pub use profile::{ProfilePreset, ProfilePoint};
+pub use profile::{Interpolation, ProfilePreset, ProfilePoint};
 pub use spiral::{DesignerInput, DesignerOutput};
 pub use texture::{TextureKind, TextureParams};
 
 use serde::{Deserialize, Serialize};
+
+/// الگوی چاپ کف — نسخهٔ ۱.۲ (درخواست کاربر: الگوهای کف بیشتر)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FloorPattern {
+    /// حلقه‌های هم‌مرکز از بیرون به داخل (رفتار ۱.۰/۱.۱)
+    Rings,
+    /// مارپیچ آرشیمدسی پیوسته از مرکز (بدون travel — مناسب vase-mode)
+    Spiral,
+    /// شبکهٔ متقاطع: خطوط موازی X و Y روی دیسک
+    Grid,
+    /// پرتوهای شعاعی از سوراخ مرکزی تا لبه
+    Radial,
+    /// ردیف‌های رفت‌وبرگشتی (مارپیچ خطی) روی دیسک
+    ZigZag,
+}
+
+impl Default for FloorPattern {
+    fn default() -> Self {
+        FloorPattern::Rings
+    }
+}
+
+impl FloorPattern {
+    /// نام فارسی برای UI
+    pub fn fa(&self) -> &'static str {
+        match self {
+            FloorPattern::Rings => "حلقه‌های هم‌مرکز",
+            FloorPattern::Spiral => "مارپیچ پیوسته",
+            FloorPattern::Grid => "شبکهٔ متقاطع",
+            FloorPattern::Radial => "پرتوهای شعاعی",
+            FloorPattern::ZigZag => "رفت‌وبرگشتی",
+        }
+    }
+}
 
 /// تنظیمات کف دیسکی — گام ۴ گردش‌کار
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FloorSettings {
     /// آیا کف ساخته شود
     pub enabled: bool,
+    /// الگوی چاپ کف (نسخهٔ ۱.۲ — پیش‌فرض حلقه‌های هم‌مرکز)
+    #[serde(default)]
+    pub pattern: FloorPattern,
     /// قطر سوراخ مرکزی کف (mm) — 0 یعنی بدون سوراخ
     pub center_hole_diameter_mm: f64,
     /// ارتفاع شروع کف (معمولاً 0)
     pub z_start_mm: f64,
     /// فاصلهٔ خطوط هم‌مرکز کف (mm) — معمولاً برابر line width
     pub ring_gap_mm: f64,
+    /// تعداد پرتوها در الگوی شعاعی (نسخهٔ ۱.۲)
+    #[serde(default = "default_spokes")]
+    pub spokes: u32,
+}
+
+/// پیش‌فرض تعداد پرتوهای کف شعاعی
+fn default_spokes() -> u32 {
+    12
 }
 
 impl Default for FloorSettings {
     fn default() -> Self {
         Self {
             enabled: false,
+            pattern: FloorPattern::Rings,
             center_hole_diameter_mm: 0.0,
             z_start_mm: 0.0,
             ring_gap_mm: 0.45,
+            spokes: 12,
         }
     }
 }
@@ -114,6 +161,11 @@ impl Default for PrinterProfile {
 /// فایل پروژهٔ طراح — قالب JSON نسخه‌دار (الزام §7)
 pub const PROJECT_SCHEMA_VERSION: u32 = 1;
 
+/// مرکز‌گذاری روی صفحهٔ چاپ — پیش‌فرض روشن (رفع باگ نسخهٔ ۱.۱: طرح روی 0,0)
+fn default_true() -> bool {
+    true
+}
+
 /// کل پروژهٔ طراح قابل ذخیره/بازیابی
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignerProject {
@@ -126,6 +178,13 @@ pub struct DesignerProject {
     pub form_bottom_diameter_mm: f64,
     pub form_top_diameter_mm: f64,
     pub taper_percent: f64,
+    /// روش درون‌یابی پروفایل — نسخهٔ ۱.۲ (پیش‌فرض اسپلاین مونوتون؛
+    /// فایل‌های قدیمی بدون این فیلد هم اسپلاین می‌گیرند)
+    #[serde(default)]
+    pub profile_interpolation: Interpolation,
+    /// مرکز‌گذاری فرم روی صفحهٔ چاپ — نسخهٔ ۱.۲ (پیش‌فرض روشن)
+    #[serde(default = "default_true")]
+    pub center_on_bed: bool,
     /// الگوهای هندسی فعال (ترتیب اعمال)
     pub patterns: Vec<PatternParams>,
     /// بافت‌های مسیر فعال
@@ -148,6 +207,8 @@ impl Default for DesignerProject {
             form_bottom_diameter_mm: 60.0,
             form_top_diameter_mm: 60.0,
             taper_percent: 0.0,
+            profile_interpolation: Interpolation::Spline,
+            center_on_bed: true,
             patterns: Vec::new(),
             textures: Vec::new(),
             floor: FloorSettings::default(),
@@ -235,5 +296,35 @@ mod tests {
         let p = PrinterProfile::default();
         assert_eq!(p.status, "unverified");
         assert!(p.build_volume_mm[0] > 0.0);
+    }
+
+    // ================= آزمون‌های نسخهٔ ۱.۲ =================
+
+    #[test]
+    fn test_old_project_json_loads_with_defaults() {
+        // فایل ۱.۱ بدون فیلدهای جدید باید با پیش‌فرض‌های ۱.۲ بارگذاری شود:
+        // center_on_bed=true، interpolation=Spline، floor.pattern=Rings
+        let old_json = r#"{"schema_version":1,"profile":[{"r":22.0,"h":0.0},{"r":30.0,"h":35.0},{"r":21.0,"h":100.0}],"form_height_mm":100.0,"form_bottom_diameter_mm":60.0,"form_top_diameter_mm":60.0,"taper_percent":0.0,"patterns":[],"textures":[],"floor":{"enabled":true,"center_hole_diameter_mm":8.0,"z_start_mm":0.0,"ring_gap_mm":0.45},"printer":{"name":"x","status":"unverified","build_volume_mm":[220,220,250],"nozzle_diameter_mm":0.4,"filament_diameter_mm":1.75,"line_width_mm":0.45,"layer_height_mm":0.25,"print_speed_mm_min":2400.0,"travel_speed_mm_min":6000.0,"flow_multiplier":1.0,"absolute_e":true,"start_gcode":"","end_gcode":""},"created_at_unix":0,"note":""}"#;
+        let p = validate_project(old_json).expect("پروژهٔ قدیمی باید بخواند");
+        assert!(p.center_on_bed, "پیش‌فرض مرکز‌گذاری روشن");
+        assert_eq!(p.profile_interpolation, Interpolation::Spline);
+        assert_eq!(p.floor.pattern, FloorPattern::Rings);
+        assert_eq!(p.floor.spokes, 12);
+        assert!(p.floor.enabled);
+        assert!((p.floor.center_hole_diameter_mm - 8.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_floor_pattern_names() {
+        // هر الگوی کف نام فارسی دارد (برای کارت‌های UI)
+        for fp in [
+            FloorPattern::Rings,
+            FloorPattern::Spiral,
+            FloorPattern::Grid,
+            FloorPattern::Radial,
+            FloorPattern::ZigZag,
+        ] {
+            assert!(!fp.fa().is_empty());
+        }
     }
 }
