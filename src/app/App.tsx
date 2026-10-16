@@ -17,16 +17,23 @@ import { fa } from "../i18n/fa";
 
 type Tab = "editor" | "designer";
 
+/** تحویل G-code طراح به ویرایشگر — seq تضمین می‌کند هر ارسال، remount تازه بگیرد */
+interface DesignerHandoff {
+  content: string;
+  seq: number;
+}
+
 export function App() {
   const [tab, setTab] = useState<Tab>("editor");
-  // متنی که طراح برای ویرایشگر می‌فرستد — با بازکردن در تب ویرایشگر مصرف می‌شود
-  const [pendingFromDesigner, setPendingFromDesigner] = useState<string | null>(null);
+  // G-code تحویلی طراح — تا ارسال بعدی نگه داشته می‌شود تا key پایدار بماند
+  // (باگ قبلی: پاک‌شدن فوری pending باعث remount بدون محتوا می‌شد)
+  const [handoff, setHandoff] = useState<DesignerHandoff | null>(null);
   // رنگ رشتهٔ چاپ (اکستروژن) در پیش‌نمایش سه‌بعدی — صرفاً نمایشی
   const [filamentColor, setFilamentColor] = useState<string>(storedFilamentColor);
 
   /** دریافت G-code از طراح و پرش به ویرایشگر */
   const handleSendToEditor = useCallback((gcode: string) => {
-    setPendingFromDesigner(gcode);
+    setHandoff((h) => ({ content: gcode, seq: (h?.seq ?? 0) + 1 }));
     setTab("editor");
   }, []);
 
@@ -58,10 +65,9 @@ export function App() {
 
       {tab === "editor" ? (
         <GcodeEditorPage
-          key={pendingFromDesigner ? "from-designer" : "normal"}
-          initialContent={pendingFromDesigner}
-          initialName={pendingFromDesigner ? "spiral-designer-output.gcode" : null}
-          onConsumed={() => setPendingFromDesigner(null)}
+          key={handoff ? `handoff-${handoff.seq}` : "normal"}
+          initialContent={handoff?.content ?? null}
+          initialName={handoff ? "spiral-designer-output.gcode" : null}
           extrusionColor={filamentColor}
         />
       ) : (

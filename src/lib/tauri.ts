@@ -189,17 +189,18 @@ export interface DesignerProject {
   note: string;
 }
 
-/** خروجی موتور طراح — معادل DesignerOutput در Rust */
+/** خروجی موتور طراح — معادل DesignerOutput در Rust.
+ *  kind و certainty از enumهای Rust به‌صورت نام variant (رشته) می‌آیند. */
 export interface ToolpathSegmentLite {
   id: number;
   source_line_index: number;
-  kind: number;
+  kind: string;
   start_mm: number[] | null;
   end_mm: number[] | null;
   e_delta_mm: number | null;
   feedrate_mm_min: number | null;
   layer_index: number | null;
-  certainty: number;
+  certainty: string;
 }
 
 export interface MeshData {

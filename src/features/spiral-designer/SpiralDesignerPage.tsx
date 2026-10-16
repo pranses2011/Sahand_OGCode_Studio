@@ -54,7 +54,16 @@ function defaultProject(): DesignerProject {
   };
 }
 
-/** تبدیل خروجی طراح به payload viewport — همان IR واحد */
+/** تبدیل خروجی طراح به payload viewport — همان IR واحد
+ *  توجه: SegmentKind/Certainty در Rust به‌صورت رشتهٔ نام variant سریال می‌شوند
+ *  (enum بدون داده)؛ اینجا به کد عددی viewport نگاشت می‌شوند. */
+const KIND_NUM: Record<string, number> = {
+  Extrusion: 0, Travel: 1, Retract: 2, Unretract: 3, Arc: 4, Unknown: 5,
+};
+const CERTAINTY_NUM: Record<string, number> = {
+  Known: 0, Approximate: 1, Unknown: 2,
+};
+
 function toSegmentsPayload(out: DesignerOutput): SegmentsPayload {
   const n = out.segments.length;
   const positions: number[] = new Array(n * 6);
@@ -68,10 +77,10 @@ function toSegmentsPayload(out: DesignerOutput): SegmentsPayload {
     const start = s.start_mm ?? [0, 0, 0];
     const end = s.end_mm ?? start;
     positions.splice(i * 6, 6, ...start, ...end);
-    kinds[i] = s.kind;
+    kinds[i] = KIND_NUM[String(s.kind)] ?? 5;
     source_lines[i] = s.source_line_index;
     ids[i] = s.id;
-    certainties[i] = s.certainty;
+    certainties[i] = CERTAINTY_NUM[String(s.certainty)] ?? 2;
     feedrates[i] = s.feedrate_mm_min ?? NaN;
   }
   return { revision: 1, positions, kinds, source_lines, ids, certainties, feedrates };

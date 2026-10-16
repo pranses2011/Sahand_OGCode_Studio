@@ -101,6 +101,12 @@ function rustCoreDevBridge(): Plugin {
 export default defineConfig({
   // بدون فونت/اسکریپت خارجی؛ همه‌چیز از src بارگذاری می‌شود
   plugins: [react(), rustCoreDevBridge()],
+  // سرور توسعه روی 1420 — همان devUrl که tauri.conf.json انتظار دارد
+  // (strictPort: اگر اشغال بود خطای صریح بده، نه جابه‌جایی بی‌خبر)
+  server: {
+    port: 1420,
+    strictPort: true,
+  },
   // خروجی build به پوشهٔ dist می‌رود که tauri.conf.json به آن اشاره می‌کند
   build: {
     // sourcemap برای build نهایی لازم نیست؛ حجم باندل دسکتاپ را کم نگه می‌دارد
