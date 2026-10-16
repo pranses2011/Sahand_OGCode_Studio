@@ -17,6 +17,11 @@
  *   - «اسپات» قابل‌درگ: حلقه‌های نارنجی/آبی روی فرم برای جابه‌جایی
  *     بازهٔ z الگو/بافت و شعاع سوراخ کف با کشیدن مستقیم در نمای 3D.
  *
+ * نسخهٔ ۱.۳:
+ *   - اسپات «دیال چرخش فاز θ»: حلقهٔ بنفش با نشانگر و پیکان مماسی؛
+ *     کشیدن نشانگر حول محور، زاویهٔ درز/جهت‌گیری فرم را می‌چرخاند
+ *     (درگ مطلق روی صفحهٔ افقی؛ Shift = چفت ۱۵ درجه).
+ *
  * معماری رندر: LineSegments با BufferGeometry واحد + رنگ per-vertex.
  * برجسته‌سازی: بازنویسی رنگ رأس‌های segmentهای انتخاب‌شده (بدون ساخت
  * شیء جدید → سریع حتی با صدها هزار segment).
@@ -47,7 +52,7 @@ export interface ViewportCallbacks {
 /** اسپات جابه‌جایی الگو/بافت/کف روی نمای 3D — نسخهٔ ۱.۲ */
 export interface SpotHandle {
   /** چه چیزی را جابه‌جا می‌کند */
-  kind: "patternRange" | "textureFade" | "floorHole";
+  kind: "patternRange" | "textureFade" | "floorHole" | "phaseRotation";
   /** بازهٔ فعلی (mm) — zEnd null یعنی تا بالای فرم */
   zStart: number;
   zEnd: number | null;
@@ -57,6 +62,8 @@ export interface SpotHandle {
   height: number;
   /** مرکز محور فرم روی صفحه (mm) — از center_on_bed */
   bedOffset: [number, number];
+  /** زاویهٔ فعلی فاز (درجه) — فقط برای phaseRotation (نسخهٔ ۱.۳) */
+  phaseDeg?: number;
 }
 
 /** رویداد تغییر اسپات با درگ */
@@ -64,6 +71,8 @@ export interface SpotChange {
   zStart?: number;
   zEnd?: number | null;
   holeDiameter?: number;
+  /** چرخش فاز θ (درجه ۰..۳۶۰) — نسخهٔ ۱.۳ */
+  phaseDeg?: number;
 }
 
 export interface ViewportProps extends ViewportCallbacks {
@@ -104,6 +113,21 @@ function toThree(p: [number, number, number]): [number, number, number] {
   return [p[0], p[2], -p[1]];
 }
 
+/** زاویهٔ فاز از مختصات نسبی صفحهٔ افقی Three — خالص و قابل‌آزمون.
+ * Three: (x, z) = (x_gc, −y_gc) → θ_gc = atan2(−z, x)؛ خروجی [0..۳۶۰) */
+export function dialAngleDeg(relX: number, relZ: number): number {
+  let deg = (Math.atan2(-relZ, relX) * 180) / Math.PI;
+  deg = ((deg % 360) + 360) % 360;
+  return deg;
+}
+
+/** چفت زاویه به گام‌های مساوی (مثلاً ۱۵°) — Shift هنگام درگ */
+export function snapDeg(deg: number, step: number): number {
+  if (step <= 0) return deg;
+  const snapped = Math.round(deg / step) * step;
+  return ((snapped % 360) + 360) % 360;
+}
+
 export function Viewport(props: ViewportProps) {
   const holderRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -116,7 +140,7 @@ export function Viewport(props: ViewportProps) {
   stateRef.current = props;
   // حلقه‌های اسپات (برای درگ و پاک‌سازی)
   const spotGroupRef = useRef<THREE.Group | null>(null);
-  const spotDragRef = useRef<null | { which: "start" | "end" | "hole"; lastX: number; lastY: number }>(null);
+  const spotDragRef = useRef<null | { which: "start" | "end" | "hole" | "phase"; lastX: number; lastY: number }>(null);
 
   // رنگ اکستروژن قابل‌انتخاب (رشتهٔ چاپ) — بازسازی فقط با تغییر مقدار
   const extrusionColor = useMemo(
@@ -226,9 +250,12 @@ export function Viewport(props: ViewportProps) {
         const hits = raycaster.intersectObjects(spotGroup.children, false);
         if (hits.length > 0 && e.button === 0) {
           const name = hits[0].object.name || "";
-          if (name === "spot-start" || name === "spot-end" || name === "spot-hole") {
+          if (name === "spot-start" || name === "spot-end" || name === "spot-hole" || name === "spot-phase") {
             spotDragRef.current = {
-              which: name === "spot-start" ? "start" : name === "spot-end" ? "end" : "hole",
+              which: name === "spot-start" ? "start"
+                : name === "spot-end" ? "end"
+                : name === "spot-hole" ? "hole"
+                : "phase",
               lastX: e.clientX,
               lastY: e.clientY,
             };
@@ -260,6 +287,30 @@ export function Viewport(props: ViewportProps) {
             // افقی → قطر سوراخ (mm)
             const d = Math.max(0, spot.radius * 2 + dx * k * 2);
             cb({ holeDiameter: d });
+          } else if (drag.which === "phase") {
+            // ---- دیال چرخش فاز θ (نسخهٔ ۱.۳) ----
+            // درگ مطلق: برخورد پرتو ماوس با صفحهٔ افقی دیال → زاویه
+            const sg = spotGroupRef.current;
+            const ud = (sg?.userData ?? {}) as { phaseCenter?: [number, number]; phaseZ?: number };
+            if (ud.phaseCenter && typeof ud.phaseZ === "number") {
+              const rect = renderer.domElement.getBoundingClientRect();
+              const ndc = new THREE.Vector2(
+                ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                -((e.clientY - rect.top) / rect.height) * 2 + 1
+              );
+              raycaster.setFromCamera(ndc, camera);
+              const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(ud.phaseZ as number));
+              const hit = new THREE.Vector3();
+              if (raycaster.ray.intersectPlane(plane, hit)) {
+                const relX = hit.x - ud.phaseCenter[0];
+                const relZ = hit.z - ud.phaseCenter[1];
+                if (Math.hypot(relX, relZ) > 2.5) {
+                  let deg = dialAngleDeg(relX, relZ);
+                  if (e.shiftKey) deg = snapDeg(deg, 15); // چفت ۱۵°
+                  cb({ phaseDeg: deg });
+                }
+              }
+            }
           } else {
             const dz = -dy * k;
             if (drag.which === "start") {
@@ -586,6 +637,47 @@ export function Viewport(props: ViewportProps) {
       dot.position.set(center[0], 1.0, center[2]);
       dot.name = "spot-hole";
       group.add(dot);
+    } else if (spot.kind === "phaseRotation") {
+      // ---- دیال چرخش فاز θ (نسخهٔ ۱.۳) ----
+      // حلقهٔ بنفش کم‌رنگ + نشانگر روی زاویهٔ فعلی + پیکان مماسی
+      // (جهت افزایش θ). درگ نشانگر حول محور = چرخش فرم.
+      const dialR = Math.max(spot.radius * 1.18 + 4, 12);
+      const zDial = Math.max(spot.zStart, 1.2);
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(dialR, tube * 0.5, 8, 72),
+        new THREE.MeshBasicMaterial({ color: 0xb06ce0, transparent: true, opacity: 0.4 })
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(center[0], zDial, center[2]);
+      ring.name = "spot-phase";
+      group.add(ring);
+      // نشانگر روی زاویهٔ فعلی θ (G-code: x=cosθ, y=sinθ → سه: z=−sinθ)
+      const th = ((spot.phaseDeg ?? 0) * Math.PI) / 180;
+      const mx = center[0] + dialR * Math.cos(th);
+      const mz = center[2] - dialR * Math.sin(th);
+      const dotGeo = new THREE.SphereGeometry(Math.max(2.8, tube * 2.0), 14, 14);
+      const dotMat = new THREE.MeshBasicMaterial({ color: 0xb06ce0 });
+      const dot = new THREE.Mesh(dotGeo, dotMat);
+      dot.position.set(mx, zDial, mz);
+      dot.name = "spot-phase";
+      group.add(dot);
+      // پیکان مماسی — جهت افزایش θ (پادساعت‌گرد G-code)
+      const tangent = new THREE.Vector3(-Math.sin(th), 0, -Math.cos(th)).normalize();
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(tube * 1.15, tube * 2.8, 10),
+        new THREE.MeshBasicMaterial({ color: 0xb06ce0 })
+      );
+      cone.position.set(
+        mx + tangent.x * tube * 2.6,
+        zDial,
+        mz + tangent.z * tube * 2.6
+      );
+      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
+      cone.name = "spot-phase";
+      group.add(cone);
+      // مرکز دیال برای درگ مطلق (برخورد پرتو با صفحهٔ افقی)
+      group.userData.phaseCenter = [center[0], center[2]];
+      group.userData.phaseZ = zDial;
     } else {
       // حلقهٔ شروع (نارنجی) — با نشانگر کروی «اسپات»
       group.add(makeRing(spot.zStart, spot.radius, 0xf0883e, "spot-start"));
@@ -635,7 +727,10 @@ export function Viewport(props: ViewportProps) {
         <span><span className="sw" style={{ background: "#ff7a28" }} />انتخاب‌شده</span>
         {props.spot && (
           <span className="spot-hint">
-            <span className="sw" style={{ background: "#f0883e" }} />اسپات: بکشید و جابه‌جا کنید
+            <span className="sw" style={{ background: props.spot.kind === "phaseRotation" ? "#b06ce0" : "#f0883e" }} />
+            {props.spot.kind === "phaseRotation"
+              ? "اسپات θ: نشانگر بنفش را حول محور بچرخانید (Shift = ۱۵°)"
+              : "اسپات: بکشید و جابه‌جا کنید"}
           </span>
         )}
       </div>
