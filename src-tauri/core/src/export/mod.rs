@@ -53,6 +53,26 @@ pub fn serialize_gcode(input: &DesignerInput, output: &DesignerOutput) -> String
         printer.build_volume_mm[1],
         printer.build_volume_mm[2]
     ));
+    // چرخش فاز θ (درز/جهت‌گیری) — نسخهٔ ۱.۳
+    g.push_str(&format!(
+        "; phase_start={:.1}deg nozzle_temp={:.0}C bed_temp={:.0}C fan={:.0}%\n",
+        input.phase_start_deg,
+        printer.nozzle_temp_c,
+        printer.bed_temp_c,
+        printer.fan_percent,
+    ));
+
+    // ---------- دماها — نسخهٔ ۱.۳ (درخواست کاربر) ----------
+    // ترتیب استاندارد اسلایسرها: M140/M104 (تنظیم هدف، بدون انتظار) پیش از
+    // کد start کاربر تا گرم‌شدن موازی با home/آماده‌سازی انجام شود؛ سپس
+    // M190/M109 (انتظار) پیش از شروع چاپ. دمای ۰ = «فرمان صادر نکن».
+    g.push_str("; --- temperatures (designer settings) ---\n");
+    if printer.bed_temp_c > 0.0 {
+        g.push_str(&format!("M140 S{:.0} ; set bed target\n", printer.bed_temp_c));
+    }
+    if printer.nozzle_temp_c > 0.0 {
+        g.push_str(&format!("M104 S{:.0} ; set nozzle target\n", printer.nozzle_temp_c));
+    }
 
     // ---------- کد start پروفایل (پیش‌نمایش‌شده در UI) ----------
     if !printer.start_gcode.trim().is_empty() {
@@ -69,6 +89,25 @@ pub fn serialize_gcode(input: &DesignerInput, output: &DesignerOutput) -> String
         g.push_str("M82 ; absolute E\n");
     } else {
         g.push_str("M83 ; relative E\n");
+    }
+
+    // ---------- انتظار دما + فن (نسخهٔ ۱.۳) ----------
+    // پس از start_gcode کاربر (home/آماده‌سازی) و پیش از مسیر چاپ
+    if printer.wait_for_temps {
+        if printer.bed_temp_c > 0.0 {
+            g.push_str(&format!("M190 S{:.0} ; wait for bed\n", printer.bed_temp_c));
+        }
+        if printer.nozzle_temp_c > 0.0 {
+            g.push_str(&format!("M109 S{:.0} ; wait for nozzle\n", printer.nozzle_temp_c));
+        }
+    }
+    // فن خنک‌کنندهٔ قطعه — درصد به S 0..255 (M106 مستند در knowledge)
+    let fan = printer.fan_percent.clamp(0.0, 100.0);
+    if fan > 0.0 {
+        let s = (fan / 100.0 * 255.0).round() as u32;
+        g.push_str(&format!("M106 S{s} ; part fan {:.0}%\n", fan));
+    } else {
+        g.push_str("M107 ; part fan off\n");
     }
 
     // ---------- travel به نقطهٔ شروع ----------
@@ -338,6 +377,7 @@ mod tests {
             textures: vec![],
             floor: FloorSettings::default(),
             center_on_bed: true,
+            phase_start_deg: 0.0,
             printer: PrinterProfile::default(),
         }
     }
@@ -574,4 +614,95 @@ mod tests {
         let pos_m84 = g.find("M84").unwrap();
         assert!(pos_end_marker < pos_m84);
     }
+
+    // ================= آزمون‌های دما/فن/فاز — نسخهٔ ۱.۳ =================
+
+    #[test]
+    fn test_default_temps_in_gcode() {
+        // پیش‌فرض: PLA عمومی — M140/M104 (تنظیم) + M190/M109 (انتظار) + فن ۱۰۰٪
+        let inp = base_input();
+        let out = compute(&inp);
+        let g = serialize_gcode(&inp, &out);
+        assert!(g.contains("M140 S60 ; set bed target"));
+        assert!(g.contains("M104 S200 ; set nozzle target"));
+        assert!(g.contains("M190 S60 ; wait for bed"));
+        assert!(g.contains("M109 S200 ; wait for nozzle"));
+        assert!(g.contains("M106 S255"));
+        // ترتیب: تنظیم دما قبل از start کاربر؛ انتظار دما بعد از آن
+        let pos_set = g.find("M140 S60").unwrap();
+        let pos_user = g.find("start gcode (user profile)");
+        let pos_wait = g.find("M190 S60").unwrap();
+        let pos_travel = g.find("G0 ").unwrap();
+        assert!(pos_set < pos_travel);
+        assert!(pos_wait < pos_travel);
+        if let Some(pu) = pos_user {
+            assert!(pos_set < pu, "تنظیم دما باید قبل از start کاربر باشد");
+            assert!(pu < pos_wait, "انتظار دما باید بعد از start کاربر باشد");
+        }
+        // هدر شامل فاز و دماست
+        assert!(g.contains("phase_start=0.0deg"));
+        assert!(g.contains("nozzle_temp=200C"));
+    }
+
+    #[test]
+    fn test_zero_temps_omit_commands() {
+        // دمای ۰ = «کنترل دما ننویس» — هیچ M104/M140/M106/M190/M109 میانی نیست
+        // (پایان‌بندی M104 S0 / M140 S0 / M107 همچنان هست)
+        let mut inp = base_input();
+        inp.printer.nozzle_temp_c = 0.0;
+        inp.printer.bed_temp_c = 0.0;
+        inp.printer.fan_percent = 0.0;
+        let out = compute(&inp);
+        let g = serialize_gcode(&inp, &out);
+        assert!(!g.contains("set bed target"));
+        assert!(!g.contains("set nozzle target"));
+        assert!(!g.contains("wait for bed"));
+        assert!(!g.contains("wait for nozzle"));
+        // فن خاموش صریح
+        assert!(g.contains("M107 ; part fan off"));
+    }
+
+    #[test]
+    fn test_no_wait_mode() {
+        // wait_for_temps=false → فقط M140/M104 بدون M190/M109
+        let mut inp = base_input();
+        inp.printer.wait_for_temps = false;
+        let out = compute(&inp);
+        let g = serialize_gcode(&inp, &out);
+        assert!(g.contains("M140 S60 ; set bed target"));
+        assert!(g.contains("M104 S200 ; set nozzle target"));
+        assert!(!g.contains("M190 S"));
+        assert!(!g.contains("M109 S"));
+    }
+
+    #[test]
+    fn test_fan_percent_conversion() {
+        // ۵۰٪ → S128 (رند 127.5)؛ مقادیر خارج بازه clamp می‌شوند
+        let mut inp = base_input();
+        inp.printer.fan_percent = 50.0;
+        let out = compute(&inp);
+        let g = serialize_gcode(&inp, &out);
+        assert!(g.contains("M106 S128"), "S باید 128 باشد:\n{g}");
+        // بیش از ۱۰۰٪ → clamp به ۲۵۵
+        inp.printer.fan_percent = 300.0;
+        let out2 = compute(&inp);
+        let g2 = serialize_gcode(&inp, &out2);
+        assert!(g2.contains("M106 S255"));
+    }
+
+    #[test]
+    fn test_petg_temps_recipe() {
+        // سناریوی واقعی: PETG — ۲۴۰/۸۰ با فن ۳۰٪
+        let mut inp = base_input();
+        inp.printer.nozzle_temp_c = 240.0;
+        inp.printer.bed_temp_c = 80.0;
+        inp.printer.fan_percent = 30.0;
+        let out = compute(&inp);
+        let g = serialize_gcode(&inp, &out);
+        assert!(g.contains("M104 S240 ; set nozzle target"));
+        assert!(g.contains("M140 S80 ; set bed target"));
+        assert!(g.contains("M109 S240 ; wait for nozzle"));
+        assert!(g.contains("M106 S77")); // 30% → 76.5 → رند 77
+    }
 }
+
