@@ -56,6 +56,9 @@ pub struct DesignerOutput {
     pub line_count: usize,
     /// mesh مثلثی فرم (برای STL) — الگوها اعمال شده‌اند، بافت‌ها نه
     pub mesh: MeshData,
+    /// نمونه‌های شعاع بیرونی (z, r) — نسخهٔ ۱.۴: اسپات UI بدون انتقال mesh کامل
+    #[serde(default)]
+    pub radius_samples: Vec<[f64; 2]>,
     /// آمار مسیر
     pub stats: ToolpathStats,
     /// هشدارها
@@ -151,6 +154,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
             segments: vec![],
             line_count: 0,
             mesh: MeshData { vertices: vec![], triangles: vec![] },
+            radius_samples: vec![],
             stats: ToolpathStats::default(),
             diagnostics,
             layers: vec![],
@@ -188,12 +192,31 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     let mut next_id: u64 = 0;
     let mut collided_any = false;
 
-    // شروع از مرکز (travel به نقطهٔ اول) — زاویهٔ شروع = فاز θ
+    // ---------- نمونه‌های شعاع فرم — نسخهٔ ۱.۴ (کارایی preview) ----------
+    // UI اسپات‌ها از همین نمونه‌ها شعاع واقعی را می‌خواند؛ mesh کامل
+    // فقط برای STL صادر می‌شود و دیگر در هر تغییر اسلایدر منتقل نمی‌شود.
+    let radius_samples = build_radius_samples(&radius_fn, &input.patterns, height);
+
+    // ---------- کف چندلایه — «قبل» از دیواره (نسخهٔ ۱.۴) ----------
+    // رفع باگ ۱.۳: کف به انتهای segments اضافه می‌شد و در G-code بعد از
+    // کل دیواره چاپ می‌شد — یعنی کف عملاً پرینت نمی‌شد و نازل پس از
+    // اتمام فرم به کف می‌رفت. ترتیب صحیح: کف لایه‌به‌لایه، سپس vase.
+    let (floor_segments, floor_top_z) =
+        build_floor(input, &radius_fn, &mut next_id, &mut stats, bed_offset, phase0);
+    let floor_count = floor_segments.len();
+    segments.extend(floor_segments);
+
+    // شروع مارپیچ — زاویهٔ شروع = فاز θ؛ z از «بالای کف» (نسخهٔ ۱.۴)
     let theta_start = phase0;
-    let z_start = layer_h; // نازل از ارتفاع لایهٔ اول
+    let z_start = if input.floor.enabled && floor_count > 0 {
+        floor_top_z + layer_h // اولین لایهٔ vase روی سطح کف
+    } else {
+        layer_h // بدون کف: از ارتفاع لایهٔ اول
+    };
     let r0 = {
+        // شعاع نقطهٔ نخست = شکل در انتهای کف (profile z=0) — نه z لایه
         let (r, clamped) =
-            apply_patterns(radius_fn(z_start.min(height)), z_start, theta_start, height, &input.patterns);
+            apply_patterns(radius_fn(0.0), 0.0, theta_start, height, &input.patterns);
         if clamped {
             collided_any = true;
         }
@@ -201,9 +224,9 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     };
     let first_point_model = [r0 * theta_start.cos(), r0 * theta_start.sin(), z_start];
 
-    // بافت روی نقطهٔ اول (در فضای مدل — نسبت به محور)
+    // بافت روی نقطهٔ اول (در فضای مدل — نسبت به محور)؛ zn=0 = انتهای کف
     let (first_point_model, c1) =
-        apply_texture(first_point_model, 0.0, r0, z_start / height, &input.textures);
+        apply_texture(first_point_model, 0.0, r0, 0.0, &input.textures);
     collided_any |= c1;
     // انتقال به مختصات صفحه (مرکز‌گذاری)
     let first_point = [
@@ -212,8 +235,11 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         first_point_model[2],
     ];
 
-    // travel اولیه از مرکز صفحه — بدون اکستروژن
-    let mut prev_point = [bed_offset[0], bed_offset[1], layer_h];
+    // travel اولیه — از آخرین نقطهٔ کف (اگر هست) وگرنه مرکز صفحه
+    let mut prev_point = segments
+        .last()
+        .and_then(|s| s.end_mm)
+        .unwrap_or([bed_offset[0], bed_offset[1], z_start]);
     let seg = ToolpathSegment {
         id: next_id,
         source_line_index: 0,
@@ -221,7 +247,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         start_mm: Some(prev_point),
         end_mm: Some(first_point),
         e_delta_mm: None,
-        feedrate_mm_min: Some(printer.travel_speed_mm_min),
+        feedrate_mm_min: Some(printer.effective_travel_mm_min()),
         layer_index: None,
         certainty: Certainty::Known,
     };
@@ -239,8 +265,9 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     for step in 1..=total_steps {
         // θ پیوسته بالا می‌رود (از فاز شروع)؛ z خطی با گام
         let theta = phase0 + step as f64 * d_theta;
-        let z = (z_start + step as f64 * dz_per_step).min(height + layer_h);
-        let z_for_profile = (z - layer_h).clamp(0.0, height); // پروفایل از 0 تا height
+        let z = (z_start + step as f64 * dz_per_step).min(z_start + height);
+        // پروفایل از 0 تا height — شکل از بالای کف (z_start) شروع می‌شود
+        let z_for_profile = (z - z_start).clamp(0.0, height);
 
         // شعاع با الگوها
         let (r, clamped) = apply_patterns(
@@ -298,7 +325,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
             start_mm: Some(prev_point),
             end_mm: Some(point),
             e_delta_mm: Some(e_delta),
-            feedrate_mm_min: Some(printer.print_speed_mm_min),
+            feedrate_mm_min: Some(printer.effective_wall_mm_min()),
             layer_index: None, // مارپیچ: لایهٔ گسسته نه (الزام)
             certainty: Certainty::Known,
         };
@@ -308,14 +335,6 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         segments.push(seg);
         prev_point = point;
     }
-
-    // ---------- کف (اگر فعال) — ۵ الگوی نسخهٔ ۱.۲؛ چرخش با فاز θ ----------
-    let floor_segments =
-        build_floor(input, &radius_fn, &mut next_id, &mut stats, bed_offset, phase0);
-    let floor_count = floor_segments.len();
-    // کف «قبل» از دیواره چاپ می‌شود؛ برای سادگی IR، در ادامهٔ segments
-    // می‌آید ولی kind=Floor ندارد — به‌صورت Extrusion با z ثابت
-    segments.extend(floor_segments);
 
     // ---------- هشدارها ----------
     if clamped_radius_events > 0 {
@@ -367,7 +386,11 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         format_num(height),
         format_num(total_revolutions),
         segments.len(),
-        if floor_count > 0 { format!(" (+{floor_count} قطعهٔ کف)") } else { String::new() },
+        if floor_count > 0 {
+            format!(" (+{floor_count} قطعهٔ کف در {} لایه)", input.floor.layers.clamp(1, 12))
+        } else {
+            String::new()
+        },
         format_num(stats.extrusion_length_mm / 1000.0),
         format_num(stats.total_e_mm / 1000.0),
         format_num(est_time_min),
@@ -380,6 +403,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         segments,
         line_count: total_steps + 1,
         mesh,
+        radius_samples,
         stats,
         diagnostics,
         layers: Vec::new(), // مارپیچ: بدون لایهٔ گسسته
@@ -464,9 +488,17 @@ fn build_mesh(
     MeshData { vertices, triangles }
 }
 
-/// ساخت کف دیسکی با ۵ الگو — گام ۴ (نسخهٔ ۱.۲)
+/// ساخت کف دیسکی چندلایه با ۵ الگو — گام ۴ (نسخهٔ ۱.۴)
 /// همهٔ الگوها مسیر واقعی تولید می‌کنند (الزام: «مسیر واقعی تولید کن»).
 /// مختصات در فضای صفحه (با bed_offset) برگردانده می‌شود.
+///
+/// تغییرات نسخهٔ ۱.۴ (درخواست کاربر):
+///   * `floor.layers` لایهٔ توپر — پس از اتمام کف، حالت vase ادامه می‌یابد؛
+///   * لایهٔ اول با سرعت first_layer (آرام‌تر = چسبندگی به میز)، لایه‌های
+///     بعدی کف با سرعت floor، travelها با سرعت travel؛
+///   * لایه‌های فرد الگوهای خطی ۹۰° چرخیده چاپ می‌شوند (cross-hatch
+///     استاندارد برای استحکام کف)؛ Radial نیم‌گام پرتو جابه‌جا می‌شود؛
+///   * خروجی دوم: z لایهٔ آخر کف (سطح بالای کف) برای شروع مارپیچ.
 #[allow(clippy::too_many_lines)]
 fn build_floor(
     input: &DesignerInput,
@@ -475,10 +507,10 @@ fn build_floor(
     stats: &mut ToolpathStats,
     bed_offset: [f64; 2],
     phase0: f64,
-) -> Vec<ToolpathSegment> {
+) -> (Vec<ToolpathSegment>, f64) {
     use crate::designer::FloorPattern;
 
-    /// افزودن segment کمکی (travel یا extrusion)
+    /// افزودن segment کمکی (travel یا extrusion) با سرعت صریح
     fn push_seg(
         out: &mut Vec<ToolpathSegment>,
         next_id: &mut u64,
@@ -487,7 +519,7 @@ fn build_floor(
         end: [f64; 3],
         kind: SegmentKind,
         e: Option<f64>,
-        printer: &PrinterProfile,
+        feed_mm_min: f64,
     ) {
         let seg = ToolpathSegment {
             id: *next_id,
@@ -496,11 +528,7 @@ fn build_floor(
             start_mm: Some(start),
             end_mm: Some(end),
             e_delta_mm: e,
-            feedrate_mm_min: Some(if kind == SegmentKind::Travel {
-                printer.travel_speed_mm_min
-            } else {
-                printer.print_speed_mm_min
-            }),
+            feedrate_mm_min: Some(feed_mm_min),
             layer_index: None,
             certainty: Certainty::Known,
         };
@@ -509,7 +537,7 @@ fn build_floor(
         out.push(seg);
     }
 
-    /// اکستروژن بین دو نقطهٔ صفحه با E متناسب طول
+    /// اکستروژن بین دو نقطه با E متناسب طول و سرعت صریح
     fn push_extrusion(
         out: &mut Vec<ToolpathSegment>,
         next_id: &mut u64,
@@ -517,6 +545,7 @@ fn build_floor(
         start: [f64; 3],
         end: [f64; 3],
         printer: &PrinterProfile,
+        feed_mm_min: f64,
     ) {
         let d = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
         let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
@@ -527,16 +556,19 @@ fn build_floor(
             printer.filament_diameter_mm,
             printer.flow_multiplier,
         );
-        push_seg(out, next_id, stats, start, end, SegmentKind::Extrusion, Some(e), printer);
+        push_seg(out, next_id, stats, start, end, SegmentKind::Extrusion, Some(e), feed_mm_min);
     }
 
-    let mut out = Vec::new();
+    let mut out: Vec<ToolpathSegment> = Vec::new();
     if !input.floor.enabled {
-        return out;
+        return (out, 0.0);
     }
     let floor = &input.floor;
     let printer = &input.printer;
-    let z = floor.z_start_mm.max(printer.layer_height_mm * 0.5).max(0.2);
+    let lh = printer.layer_height_mm.max(0.01);
+    // تعداد لایه‌های کف — نسخهٔ ۱.۴ (گیر ۱..۱۲ برای ایمنی)
+    let layers = floor.layers.clamp(1, 12) as usize;
+    let z_base = floor.z_start_mm.max(0.0);
     // شعاع بیرونی کف = شعاع پایین فرم
     let r_outer = radius_fn(0.0).max(0.5);
     let r_hole = (floor.center_hole_diameter_mm / 2.0).clamp(0.0, r_outer - 1.0);
@@ -544,233 +576,227 @@ fn build_floor(
     // مرکز کف روی صفحه
     let cx = bed_offset[0];
     let cy = bed_offset[1];
-    // چرخش فاز θ — کل کف با فرم هم‌زاویه می‌چرخد (نسخهٔ ۱.۳)؛
-    // برای الگوهای متقارن (حلقه/شبکه) بی‌اثر و برای شعاعی معنادار
-    let (cph, sph) = (phase0.cos(), phase0.sin());
-    // نقطهٔ صفحه از مختصات دیسک (نسبت به محور) — با چرخش φ
-    let bed_pt = |x: f64, y: f64| {
-        let xr = x * cph - y * sph;
-        let yr = x * sph + y * cph;
-        [xr + cx, yr + cy, z]
-    };
+    // سرعت‌های مؤثر — نسخهٔ ۱.۴
+    let travel_feed = printer.effective_travel_mm_min();
+    let first_feed = printer.effective_first_layer_mm_min();
+    let floor_feed = printer.effective_floor_mm_min();
+    // نقطهٔ جاری نازل — بین لایه‌ها پیوسته می‌ماند (travel بین لایه‌ها)
+    let mut point = [cx, cy, (z_base + lh).max(0.2)];
 
-    match floor.pattern {
-        // ---------------- حلقه‌های هم‌مرکز (رفتار ۱.۰/۱.۱) ----------------
-        FloorPattern::Rings => {
-            let mut r = r_outer;
-            let mut point = bed_pt(r, 0.0);
-            // travel به شروع کف
-            push_seg(
-                &mut out,
-                next_id,
-                stats,
-                bed_pt(0.0, 0.0),
-                point,
-                SegmentKind::Travel,
-                None,
-                printer,
-            );
-            while r > r_hole + gap {
-                let steps = ((2.0 * std::f64::consts::PI * r / 2.0).ceil() as usize).clamp(24, 360);
-                let d_theta = 2.0 * std::f64::consts::PI / steps as f64;
-                for i in 1..=steps {
-                    let theta = i as f64 * d_theta;
-                    let np = bed_pt(r * theta.cos(), r * theta.sin());
-                    push_extrusion(&mut out, next_id, stats, point, np, printer);
+    let mut z_top = 0.0f64;
+    for layer_idx in 0..layers {
+        let z = (z_base + (layer_idx + 1) as f64 * lh).max(0.2);
+        z_top = z;
+        let feed = if layer_idx == 0 { first_feed } else { floor_feed };
+        // چرخش متقاطع لایه‌ها (cross-hatch استاندارد کف):
+        // Grid/ZigZag لایهٔ فرد ۹۰°؛ Radial نیم‌گام پرتو؛ بقیه متقارن
+        let rot = match floor.pattern {
+            FloorPattern::Grid | FloorPattern::ZigZag => {
+                if layer_idx % 2 == 1 { std::f64::consts::FRAC_PI_2 } else { 0.0 }
+            }
+            FloorPattern::Radial => {
+                if layer_idx % 2 == 1 {
+                    std::f64::consts::PI / floor.spokes.clamp(3, 96) as f64
+                } else {
+                    0.0
+                }
+            }
+            _ => 0.0,
+        };
+        // چرخش فاز θ — کل کف با فرم هم‌زاویه می‌چرخد (نسخهٔ ۱.۳)؛
+        // برای الگوهای متقارن (حلقه/شبکه) بی‌اثر و برای شعاعی معنادار
+        let (cph, sph) = ((phase0 + rot).cos(), (phase0 + rot).sin());
+        // نقطهٔ صفحه از مختصات دیسک (نسبت به محور) — با چرخش φ+rot
+        let bed_pt = |x: f64, y: f64| {
+            let xr = x * cph - y * sph;
+            let yr = x * sph + y * cph;
+            [xr + cx, yr + cy, z]
+        };
+
+        match floor.pattern {
+            // ---------------- حلقه‌های هم‌مرکز (رفتار ۱.۰/۱.۱) ----------------
+            FloorPattern::Rings => {
+                let mut r = r_outer;
+                // travel به شروع حلقهٔ بیرونی (از نقطهٔ جاری — پیوستگی لایه‌ها)
+                let start = bed_pt(r, 0.0);
+                push_seg(&mut out, next_id, stats, point, start, SegmentKind::Travel, None, travel_feed);
+                point = start;
+                while r > r_hole + gap {
+                    let steps = ((2.0 * std::f64::consts::PI * r / 2.0).ceil() as usize).clamp(24, 360);
+                    let d_theta = 2.0 * std::f64::consts::PI / steps as f64;
+                    for i in 1..=steps {
+                        let theta = i as f64 * d_theta;
+                        let np = bed_pt(r * theta.cos(), r * theta.sin());
+                        push_extrusion(&mut out, next_id, stats, point, np, printer, feed);
+                        point = np;
+                    }
+                    r -= gap;
+                    if r <= r_hole {
+                        break;
+                    }
+                    let inner = bed_pt(r * 0.997, 0.0);
+                    push_seg(&mut out, next_id, stats, point, inner, SegmentKind::Travel, None, travel_feed);
+                    point = inner;
+                }
+            }
+
+            // ---------------- مارپیچ آرشیمدسی پیوسته ----------------
+            // r(θ) = r_start + gap·θ/2π — یک مسیر پیوسته بدون travel
+            // (بهترین گزینه برای کف حالت vase: بدون زخم travel)
+            FloorPattern::Spiral => {
+                let r_start = if r_hole > 0.5 { r_hole } else { (gap * 0.5).max(0.3) };
+                let mut theta = 0.0f64;
+                let mut r = r_start;
+                // گام زاویه‌ای تطبیقی: قوس ≈ ۲mm
+                let start = bed_pt(r, 0.0);
+                push_seg(&mut out, next_id, stats, point, start, SegmentKind::Travel, None, travel_feed);
+                point = start;
+                let d_theta_max = 0.35; // حداکثر ~۲۰ درجه هر گام
+                while r < r_outer {
+                    let d_theta = (2.0 / r.max(0.5)).min(d_theta_max).max(0.02);
+                    theta += d_theta;
+                    r = r_start + gap * theta / (2.0 * std::f64::consts::PI);
+                    let r_clamped = r.min(r_outer);
+                    let np = bed_pt(r_clamped * theta.cos(), r_clamped * theta.sin());
+                    push_extrusion(&mut out, next_id, stats, point, np, printer, feed);
                     point = np;
                 }
-                r -= gap;
-                if r <= r_hole {
-                    break;
-                }
-                let inner = bed_pt(r * 0.997, 0.0);
-                push_seg(
-                    &mut out,
-                    next_id,
-                    stats,
-                    point,
-                    inner,
-                    SegmentKind::Travel,
-                    None,
-                    printer,
-                );
-                point = inner;
             }
-        }
 
-        // ---------------- مارپیچ آرشیمدسی پیوسته ----------------
-        // r(θ) = r_start + gap·θ/2π — یک مسیر پیوسته بدون travel
-        // (بهترین گزینه برای کف حالت vase: بدون زخم travel)
-        FloorPattern::Spiral => {
-            let r_start = if r_hole > 0.5 { r_hole } else { (gap * 0.5).max(0.3) };
-            let mut theta = 0.0f64;
-            let mut r = r_start;
-            // گام زاویه‌ای تطبیقی: قوس ≈ ۲mm
-            let mut point = bed_pt(r, 0.0);
-            push_seg(
-                &mut out,
-                next_id,
-                stats,
-                bed_pt(0.0, 0.0),
-                point,
-                SegmentKind::Travel,
-                None,
-                printer,
-            );
-            let d_theta_max = 0.35; // حداکثر ~۲۰ درجه هر گام
-            while r < r_outer {
-                let d_theta = (2.0 / r.max(0.5)).min(d_theta_max).max(0.02);
-                theta += d_theta;
-                r = r_start + gap * theta / (2.0 * std::f64::consts::PI);
-                let r_clamped = r.min(r_outer);
-                let np = bed_pt(r_clamped * theta.cos(), r_clamped * theta.sin());
-                push_extrusion(&mut out, next_id, stats, point, np, printer);
-                point = np;
+            // ---------------- شبکهٔ متقاطع (X سپس Y) ----------------
+            FloorPattern::Grid => {
+                // ردیف‌های هر دو جهت؛ ترتیب: 0، +g، −g، +2g، −2g…
+                let mut rows: Vec<f64> = Vec::new();
+                let mut k = 0u32;
+                loop {
+                    let off = k as f64 * gap;
+                    if off > r_outer && k > 0 {
+                        break;
+                    }
+                    rows.push(off);
+                    if off > 0.0 {
+                        rows.push(-off);
+                    }
+                    k += 1;
+                    if k > 2000 {
+                        break;
+                    }
+                }
+                for axis in 0..2 {
+                    for (idx, &y) in rows.iter().enumerate() {
+                        if y.abs() > r_outer {
+                            continue;
+                        }
+                        let half = (r_outer * r_outer - y * y).max(0.0).sqrt();
+                        if half <= gap * 0.8 {
+                            continue;
+                        }
+                        let (a, b) = if axis == 0 {
+                            (bed_pt(-half, y), bed_pt(half, y))
+                        } else {
+                            (bed_pt(y, -half), bed_pt(y, half))
+                        };
+                        // جهت‌گیری یک‌درمیان برای کاهش travel
+                        let (a, b) = if idx % 2 == 0 { (a, b) } else { (b, a) };
+                        push_seg(&mut out, next_id, stats, point, a, SegmentKind::Travel, None, travel_feed);
+                        push_extrusion(&mut out, next_id, stats, a, b, printer, feed);
+                        point = b;
+                    }
+                }
             }
-        }
 
-        // ---------------- شبکهٔ متقاطع (X سپس Y) ----------------
-        FloorPattern::Grid => {
-            let mut point = bed_pt(0.0, 0.0);
-            // ردیف‌های هر دو جهت؛ ترتیب: 0، +g، −g، +2g، −2g…
-            let mut rows: Vec<f64> = Vec::new();
-            let mut k = 0u32;
-            loop {
-                let off = k as f64 * gap;
-                if off > r_outer && k > 0 {
-                    break;
-                }
-                rows.push(off);
-                if off > 0.0 {
-                    rows.push(-off);
-                }
-                k += 1;
-                if k > 2000 {
-                    break;
-                }
-            }
-            for axis in 0..2 {
-                for (idx, &y) in rows.iter().enumerate() {
-                    if y.abs() > r_outer {
-                        continue;
-                    }
-                    let half = (r_outer * r_outer - y * y).max(0.0).sqrt();
-                    if half <= gap * 0.8 {
-                        continue;
-                    }
-                    let (a, b) = if axis == 0 {
-                        (bed_pt(-half, y), bed_pt(half, y))
-                    } else {
-                        (bed_pt(y, -half), bed_pt(y, half))
-                    };
-                    // جهت‌گیری یک‌درمیان برای کاهش travel
-                    let (a, b) = if idx % 2 == 0 { (a, b) } else { (b, a) };
-                    push_seg(
-                        &mut out,
-                        next_id,
-                        stats,
-                        point,
-                        a,
-                        SegmentKind::Travel,
-                        None,
-                        printer,
-                    );
-                    push_extrusion(&mut out, next_id, stats, a, b, printer);
+            // ---------------- پرتوهای شعاعی ----------------
+            FloorPattern::Radial => {
+                let spokes = floor.spokes.clamp(3, 96) as usize;
+                let r_in = r_hole.max(0.3);
+                // شروع از اولین پرتو — travel از نقطهٔ جاری
+                let a0 = bed_pt(r_in, 0.0);
+                push_seg(&mut out, next_id, stats, point, a0, SegmentKind::Travel, None, travel_feed);
+                point = a0;
+                for i in 0..spokes {
+                    let ang = i as f64 * 2.0 * std::f64::consts::PI / spokes as f64;
+                    let a = bed_pt(r_in * ang.cos(), r_in * ang.sin());
+                    let b = bed_pt(r_outer * ang.cos(), r_outer * ang.sin());
+                    // travel به ابتدای پرتو (از داخل به بیرون چاپ می‌کنیم)
+                    push_seg(&mut out, next_id, stats, point, a, SegmentKind::Travel, None, travel_feed);
+                    push_extrusion(&mut out, next_id, stats, a, b, printer, feed);
                     point = b;
                 }
             }
-        }
 
-        // ---------------- پرتوهای شعاعی ----------------
-        FloorPattern::Radial => {
-            let spokes = floor.spokes.clamp(3, 96) as usize;
-            let mut point = bed_pt(r_hole.max(0.3), 0.0);
-            push_seg(
-                &mut out,
-                next_id,
-                stats,
-                bed_pt(0.0, 0.0),
-                point,
-                SegmentKind::Travel,
-                None,
-                printer,
-            );
-            for i in 0..spokes {
-                let ang = i as f64 * 2.0 * std::f64::consts::PI / spokes as f64;
-                let a = bed_pt(r_hole.max(0.3) * ang.cos(), r_hole.max(0.3) * ang.sin());
-                let b = bed_pt(r_outer * ang.cos(), r_outer * ang.sin());
-                // travel به ابتدای پرتو (از داخل به بیرون چاپ می‌کنیم)
-                push_seg(
-                    &mut out,
-                    next_id,
-                    stats,
-                    point,
-                    a,
-                    SegmentKind::Travel,
-                    None,
-                    printer,
-                );
-                push_extrusion(&mut out, next_id, stats, a, b, printer);
-                point = b;
-            }
-        }
-
-        // ---------------- رفت‌وبرگشتی (مارپیچ خطی) ----------------
-        // ردیف‌های موازی از -r تا +r که به‌صورت مارپیچ به هم وصل می‌شوند —
-        // بدون travel در میانهٔ کف (بهترین پوشش بدون درز)
-        FloorPattern::ZigZag => {
-            // ردیف‌ها با گام gap از پایین دیسک تا بالا
-            let n_rows = ((2.0 * r_outer) / gap).floor() as usize;
-            if n_rows == 0 {
-                return out;
-            }
-            let row_y = |idx: usize| -r_outer + idx as f64 * gap;
-            // شروع از اولین ردیف
-            let half0 = (r_outer * r_outer - row_y(0) * row_y(0)).max(0.0).sqrt();
-            let mut point = bed_pt(-half0, row_y(0));
-            push_seg(
-                &mut out,
-                next_id,
-                stats,
-                bed_pt(0.0, 0.0),
-                point,
-                SegmentKind::Travel,
-                None,
-                printer,
-            );
-            for idx in 0..=n_rows {
-                let y = row_y(idx);
-                if y > r_outer {
-                    break;
+            // ---------------- رفت‌وبرگشتی (مارپیچ خطی) ----------------
+            // ردیف‌های موازی از -r تا +r که به‌صورت مارپیچ به هم وصل می‌شوند —
+            // بدون travel در میانهٔ کف (بهترین پوشش بدون درز)
+            FloorPattern::ZigZag => {
+                // ردیف‌ها با گام gap از پایین دیسک تا بالا
+                let n_rows = ((2.0 * r_outer) / gap).floor() as usize;
+                if n_rows == 0 {
+                    return (out, z_top);
                 }
-                let half = (r_outer * r_outer - y * y).max(0.0).sqrt();
-                if half < gap * 0.5 {
-                    continue;
-                }
-                let (a, b) = if idx % 2 == 0 {
-                    (bed_pt(-half, y), bed_pt(half, y))
-                } else {
-                    (bed_pt(half, y), bed_pt(-half, y))
-                };
-                // اتصال مارپیچی به ردیف قبلی (فقط اگر فاصله معنا‌دار باشد)
-                let conn = [
-                    a[0] - point[0],
-                    a[1] - point[1],
-                    a[2] - point[2],
-                ];
-                let conn_len = (conn[0] * conn[0] + conn[1] * conn[1]).sqrt();
-                if conn_len > 0.05 {
-                    push_extrusion(&mut out, next_id, stats, point, a, printer);
-                }
-                push_extrusion(&mut out, next_id, stats, a, b, printer);
-                point = b;
-                if idx > 4000 {
-                    break; // محدودیت ایمنی
+                let row_y = |idx: usize| -r_outer + idx as f64 * gap;
+                // شروع از اولین ردیف — travel از نقطهٔ جاری
+                let half0 = (r_outer * r_outer - row_y(0) * row_y(0)).max(0.0).sqrt();
+                let start = bed_pt(-half0, row_y(0));
+                push_seg(&mut out, next_id, stats, point, start, SegmentKind::Travel, None, travel_feed);
+                point = start;
+                for idx in 0..=n_rows {
+                    let y = row_y(idx);
+                    if y > r_outer {
+                        break;
+                    }
+                    let half = (r_outer * r_outer - y * y).max(0.0).sqrt();
+                    if half < gap * 0.5 {
+                        continue;
+                    }
+                    let (a, b) = if idx % 2 == 0 {
+                        (bed_pt(-half, y), bed_pt(half, y))
+                    } else {
+                        (bed_pt(half, y), bed_pt(-half, y))
+                    };
+                    // اتصال مارپیچی به ردیف قبلی (فقط اگر فاصله معنا‌دار باشد)
+                    let conn = [
+                        a[0] - point[0],
+                        a[1] - point[1],
+                        a[2] - point[2],
+                    ];
+                    let conn_len = (conn[0] * conn[0] + conn[1] * conn[1]).sqrt();
+                    if conn_len > 0.05 {
+                        push_extrusion(&mut out, next_id, stats, point, a, printer, feed);
+                    }
+                    push_extrusion(&mut out, next_id, stats, a, b, printer, feed);
+                    point = b;
+                    if idx > 4000 {
+                        break; // محدودیت ایمنی
+                    }
                 }
             }
         }
     }
-    out
+    (out, z_top)
+}
+
+/// نمونه‌گیری شعاع بیرونی فرم در ۱۲۹ ارتفاع — نسخهٔ ۱.۴
+/// برای اسپات UI (شعاع واقعی فرم در هر z) بدون انتقال mesh کامل؛
+/// الگوها لحاظ می‌شوند (max روی ۱۶ زاویه) — بافت‌ها نه (فقط مسیرند).
+fn build_radius_samples(
+    radius_fn: &impl Fn(f64) -> f64,
+    patterns: &[crate::designer::pattern::PatternParams],
+    height: f64,
+) -> Vec<[f64; 2]> {
+    let mut v = Vec::with_capacity(129);
+    for i in 0..=128usize {
+        let z = height * i as f64 / 128.0;
+        let mut r_max = 0.0f64;
+        for k in 0..16usize {
+            let th = k as f64 * std::f64::consts::PI / 8.0;
+            let (r, _) = apply_patterns(radius_fn(z), z, th, height, patterns);
+            if r > r_max {
+                r_max = r;
+            }
+        }
+        v.push([z, r_max.max(0.1)]);
+    }
+    v
 }
 
 /// تخمین زمان چاپ بر اساس طول/سرعت segmentها (دقیقه) — برچسب «تقریبی»
@@ -912,6 +938,174 @@ mod tests {
         assert!(with_floor.segments.len() > no_floor.segments.len());
         // هشدار یا خلاصه باید کف را ذکر کند
         assert!(with_floor.summary_fa.contains("کف"));
+    }
+
+    // ================= آزمون‌های نسخهٔ ۱.۴ — کف چندلایه + سرعت =================
+
+    #[test]
+    fn test_floor_prints_before_wall() {
+        // باگ ۱.۳: کف به «انتهای» مسیر اضافه می‌شد (بعد از کل دیواره).
+        // اکنون کف باید «قبل» از دیواره چاپ شود: همهٔ segmentهای کف
+        // (z پایین) قبل از همهٔ segmentهای دیواره (z بالا) می‌آیند.
+        let mut inp = base_input();
+        inp.floor.enabled = true;
+        inp.floor.layers = 2;
+        let lh = inp.printer.layer_height_mm;
+        let out = compute(&inp);
+        let floor_top = 2.0 * lh; // سطح بالای کف
+        // مرز کف/دیواره را پیدا کن: آخرین segment با z ≤ floor_top
+        let last_floor_idx = out
+            .segments
+            .iter()
+            .rposition(|s| s.end_mm.map(|e| e[2] <= floor_top + 1e-6).unwrap_or(false))
+            .expect("باید segment کف وجود داشته باشد");
+        // هیچ segment دیواره (z > floor_top) نباید قبل از مرز باشد
+        for (i, s) in out.segments.iter().enumerate() {
+            if let Some(e) = s.end_mm {
+                if e[2] > floor_top + 1e-6 {
+                    assert!(
+                        i > last_floor_idx,
+                        "segment دیواره (z={:.2}) قبل از کف (ایندکس {i} ≤ {last_floor_idx})",
+                        e[2]
+                    );
+                }
+            }
+        }
+        // و اولین segment اصلاً باید مربوط به کف باشد (travel به حلقهٔ بیرونی)
+        let first_end = out.segments[0].end_mm.unwrap();
+        assert!(first_end[2] <= floor_top + 1e-6, "اولین segment باید کف باشد");
+    }
+
+    #[test]
+    fn test_floor_multi_layer_z_levels() {
+        // layers=3 → اکستروژن‌های کف در ۳ سطح z متمایز
+        let mut inp = base_input();
+        inp.floor.enabled = true;
+        inp.floor.layers = 3;
+        let lh = inp.printer.layer_height_mm;
+        let out = compute(&inp);
+        let floor_top = 3.0 * lh;
+        let mut z_levels: Vec<f64> = Vec::new();
+        for s in &out.segments {
+            if s.kind == SegmentKind::Extrusion {
+                if let Some(e) = s.end_mm {
+                    if e[2] <= floor_top + 1e-6 {
+                        if !z_levels.iter().any(|z| (z - e[2]).abs() < lh * 0.25) {
+                            z_levels.push(e[2]);
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            z_levels.len() >= 3,
+            "باید ≥۳ سطح z در کف باشد ولی {} سطح یافت شد: {z_levels:?}",
+            z_levels.len()
+        );
+    }
+
+    #[test]
+    fn test_spiral_starts_above_floor() {
+        // اولین اکستروژن دیواره باید دقیقاً بالای سطح کف باشد:
+        // z = floor_top + layer_height (اولین لایهٔ vase روی کف)
+        let mut inp = base_input();
+        inp.floor.enabled = true;
+        inp.floor.layers = 2;
+        let lh = inp.printer.layer_height_mm;
+        let out = compute(&inp);
+        let floor_top = 2.0 * lh;
+        let first_wall = out
+            .segments
+            .iter()
+            .find(|s| s.kind == SegmentKind::Extrusion && s.end_mm.map(|e| e[2] > floor_top + 1e-6).unwrap_or(false))
+            .expect("باید segment دیواره باشد");
+        let z = first_wall.end_mm.unwrap()[2];
+        assert!(
+            (z - (floor_top + lh)).abs() < lh * 0.51,
+            "اولین لایهٔ vase باید z≈{:.3} باشد نه {:.3}",
+            floor_top + lh,
+            z
+        );
+        // و بدون کف، همان رفتار قدیمی: شروع از layer_height
+        let no_floor = compute(&base_input());
+        let first0 = no_floor
+            .segments
+            .iter()
+            .find(|s| s.kind == SegmentKind::Extrusion)
+            .unwrap();
+        // «شروع» اولین اکستروژن روی لایهٔ اول است (پایانش یک گام dz بالاتر)
+        let z0 = first0.start_mm.unwrap()[2];
+        assert!((z0 - lh).abs() < 1e-9, "بدون کف: شروع از layer_height");
+    }
+
+    #[test]
+    fn test_floor_speeds_by_layer() {
+        // سرعت‌ها — لایهٔ اول کف آرام‌تر از لایه‌های بعدی و از دیواره
+        let mut inp = base_input();
+        inp.floor.enabled = true;
+        inp.floor.layers = 2;
+        let out = compute(&inp);
+        let lh = inp.printer.layer_height_mm;
+        let floor_top = 2.0 * lh;
+        let first_layer_feed = out
+            .segments
+            .iter()
+            .find(|s| s.kind == SegmentKind::Extrusion && s.end_mm.map(|e| e[2] <= lh + 1e-6).unwrap_or(false))
+            .expect("اکستروژن لایهٔ اول کف")
+            .feedrate_mm_min
+            .unwrap();
+        let second_layer_feed = out
+            .segments
+            .iter()
+            .find(|s| s.kind == SegmentKind::Extrusion && s.end_mm.map(|e| e[2] > lh + 1e-6 && e[2] <= floor_top + 1e-6).unwrap_or(false))
+            .expect("اکستروژن لایهٔ دوم کف")
+            .feedrate_mm_min
+            .unwrap();
+        let wall_feed = out
+            .segments
+            .iter()
+            .find(|s| s.kind == SegmentKind::Extrusion && s.end_mm.map(|e| e[2] > floor_top + 1e-6).unwrap_or(false))
+            .expect("اکستروژن دیواره")
+            .feedrate_mm_min
+            .unwrap();
+        // پیش‌فرض: دیواره ۲۴۰۰ (mm_min قدیمی) → اول ۱۲۰۰، کف ۱۸۰۰
+        assert!((first_layer_feed - 1200.0).abs() < 1e-6, "لایهٔ اول = {first_layer_feed}");
+        assert!((second_layer_feed - 1800.0).abs() < 1e-6, "لایهٔ دوم کف = {second_layer_feed}");
+        assert!((wall_feed - 2400.0).abs() < 1e-6, "دیواره = {wall_feed}");
+        assert!(first_layer_feed < second_layer_feed);
+        assert!(second_layer_feed < wall_feed);
+    }
+
+    #[test]
+    fn test_floor_layers_change_segment_count() {
+        // لایه‌های بیشتر → segmentهای بیشتر (کف ضخیم‌تر)
+        let mut inp = base_input();
+        inp.floor.enabled = true;
+        inp.floor.layers = 1;
+        let one = compute(&inp).segments.len();
+        inp.floor.layers = 4;
+        let four = compute(&inp).segments.len();
+        assert!(four > one, "۴ لایه ({four}) باید بیشتر از ۱ لایه ({one}) باشد");
+    }
+
+    #[test]
+    fn test_radius_samples_present() {
+        // ۱۲۹ نمونه (z, r) برای اسپات UI — بدون الگو تقریباً ثابت
+        let out = compute(&base_input());
+        assert_eq!(out.radius_samples.len(), 129);
+        assert!((out.radius_samples[0][0] - 0.0).abs() < 1e-9, "شروع از z=0");
+        // با الگو: نمونه‌ها دامنهٔ بیشتری دارند (max روی θ)
+        let mut inp = base_input();
+        inp.patterns.push(PatternParams {
+            kind: crate::designer::pattern::PatternKind::Petal,
+            amplitude_mm: 4.0,
+            count: 6,
+            ..Default::default()
+        });
+        let with_pat = compute(&inp);
+        // در میانهٔ ارتفاع، شعاع با الگو ≥ بدون الگو
+        let mid = 64;
+        assert!(with_pat.radius_samples[mid][1] >= out.radius_samples[mid][1] - 1e-9);
     }
 
     // ================= آزمون‌های چرخش فاز θ — نسخهٔ ۱.۳ =================
@@ -1156,10 +1350,11 @@ mod tests {
 
     #[test]
     fn test_floor_spiral_is_continuous() {
-        // کف مارپیچی: فقط یک travel اولیه — بقیه پیوسته چاپی است
-        // (مزیت اعلام‌شدهٔ این الگو در UI)
+        // کف مارپیچی تک‌لایه: فقط یک travel شروع کف + یک travel شروع دیواره
+        // (مزیت اعلام‌شدهٔ این الگو در UI)؛ لایه‌های بیشتر طبعاً travel بین‌لایه دارند
         let mut inp = base_input();
         inp.floor.enabled = true;
+        inp.floor.layers = 1;
         inp.floor.pattern = crate::designer::FloorPattern::Spiral;
         let out = compute(&inp);
         // فقط travel اولیهٔ دیواره + travel شروع کف = ۲ travel
