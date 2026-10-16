@@ -1,0 +1,11 @@
+[package]
+name = "gcode-cli"
+version = "1.1.0"
+description = "CLI توسعهٔ G-code Studio — همان هستهٔ gcode-core از stdin/stdout برای پل dev مرورگر"
+edition = "2021"
+publish = false
+
+[dependencies]
+gcode-core = { path = "../core" }
+serde = "1"
+serde_json = "1"
