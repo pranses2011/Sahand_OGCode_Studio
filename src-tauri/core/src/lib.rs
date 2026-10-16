@@ -20,6 +20,7 @@ pub mod knowledge;
 pub mod gcode;
 pub mod toolpath;
 
-// این ماژول‌ها در مراحل بعدی پروژه اضافه می‌شوند:
-// pub mod designer;
+pub mod designer;
+
+// این ماژول در مرحلهٔ بعدی اضافه می‌شود:
 // pub mod export;

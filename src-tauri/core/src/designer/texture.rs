@@ -175,7 +175,7 @@ pub fn apply_texture(
 /// (الزام: «اگر texture باعث جداشدن مسیر… هشدار بساز»)
 /// خروجی: بیشینهٔ فاصلهٔ بین نقاط متوالی (mm)
 pub fn max_gap_after_texture(points: &[[f64; 3]]) -> f64 {
-    let mut max_gap = 0.0;
+    let mut max_gap: f64 = 0.0;
     for w in points.windows(2) {
         let d = [
             w[1][0] - w[0][0],
@@ -198,6 +198,7 @@ mod tests {
     #[test]
     fn test_ripple_modulates_radius() {
         // موجک باید شعاع نقطه را تغییر دهد
+        // s=0 → sin(0)=0؛ s=1 (ربع دوره با period=4) → sin(π/2)=1 → بیشینه
         let p = [10.0, 0.0, 50.0];
         let t = TextureParams {
             kind: TextureKind::Ripple,
@@ -206,10 +207,9 @@ mod tests {
             ..Default::default()
         };
         let (p1, _) = apply_texture(p, 0.0, 10.0, 0.5, &[t.clone()]);
-        let (p2, _) = apply_texture(p, 2.0, 10.0, 0.5, &[t]); // نیم‌دوره بعد
+        let (p2, _) = apply_texture(p, 1.0, 10.0, 0.5, &[t]);
         let r1 = (p1[0] * p1[0] + p1[1] * p1[1]).sqrt();
         let r2 = (p2[0] * p2[0] + p2[1] * p2[1]).sqrt();
-        // در s=0 سینوس صفر و در s=2 (نیم‌دوره) بیشینه است
         assert!((r1 - 10.0).abs() < 1e-9);
         assert!((r2 - 11.0).abs() < 1e-9, "r2 = {r2}");
     }
@@ -234,6 +234,7 @@ mod tests {
     #[test]
     fn test_vertical_direction() {
         // radial=false → فقط z تغییر می‌کند، شعاع ثابت
+        // s=1 → sin(π/2)=1 → z+1
         let t = TextureParams {
             kind: TextureKind::Ripple,
             amplitude_mm: 1.0,
@@ -242,7 +243,7 @@ mod tests {
             ..Default::default()
         };
         let p = [10.0, 0.0, 50.0];
-        let (out, _) = apply_texture(p, 2.0, 10.0, 0.5, &[t]);
+        let (out, _) = apply_texture(p, 1.0, 10.0, 0.5, &[t]);
         assert!((out[0] - 10.0).abs() < 1e-9);
         assert!((out[1] - 0.0).abs() < 1e-9);
         assert!((out[2] - 51.0).abs() < 1e-9);
@@ -261,16 +262,17 @@ mod tests {
         };
         let p = [10.0, 0.0, 50.0];
         // z_norm=0 → وزن صفر
-        let (out0, _) = apply_texture(p, 2.0, 10.0, 0.0, &[t.clone()]);
+        let (out0, _) = apply_texture(p, 1.0, 10.0, 0.0, &[t.clone()]);
         assert_eq!(out0, p);
-        // وسط فرم → وزن ۱
-        let (out_mid, _) = apply_texture(p, 2.0, 10.0, 0.5, &[t]);
+        // وسط فرم → وزن ۱ و s=1 → sin(π/2)=1
+        let (out_mid, _) = apply_texture(p, 1.0, 10.0, 0.5, &[t]);
         assert!(out_mid != p);
     }
 
     #[test]
     fn test_collision_detection() {
         // بافت بزرگ‌تر از شعاع → برخورد
+        // s=3 → sin(3π/2)=-1 → شعاع منفی
         let t = TextureParams {
             kind: TextureKind::Ripple,
             amplitude_mm: 20.0,
@@ -278,8 +280,6 @@ mod tests {
             ..Default::default()
         };
         let p = [5.0, 0.0, 50.0];
-        // s=2 → مقدار منفی سینوس؟ s=2 با period 4 → نیم‌دوره → sin(π)=0
-        // بهتر: s=3 → sin(3π/2)=-1 → r منفی
         let (_, collided) = apply_texture(p, 3.0, 5.0, 0.5, &[t]);
         assert!(collided);
     }

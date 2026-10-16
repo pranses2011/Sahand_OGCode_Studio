@@ -116,10 +116,10 @@ pub fn sort_by_height(points: &mut [ProfilePoint]) {
 /// اعمال اصلاح فرم: مقیاس ارتفاع/قطر + taper + smoothing
 /// این تابع «شعاع مؤثر در ارتفاع z» را به‌صورت تابع بسته برمی‌گرداند تا
 /// زنجیرهٔ pattern/spiral همان را مصرف کند (یک منبع واحد).
-pub fn build_radius_fn(
-    points: &[ProfilePoint],
-    adjust: &FormAdjust,
-) -> impl Fn(f64) -> f64 + '_ {
+pub fn build_radius_fn<'a>(
+    points: &'a [ProfilePoint],
+    adjust: &'a FormAdjust,
+) -> impl Fn(f64) -> f64 + use<'a> {
     // ---------- آماده‌سازی نقاط مقیاس‌شده ----------
     // مقیاس ارتفاع: h → h * (height / max_h)
     // مقیاس شعاع پایین/بالا: خطی بین ضریب پایین و بالا روی h نرمال‌شده

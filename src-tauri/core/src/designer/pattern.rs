@@ -128,9 +128,11 @@ fn pattern_value(p: &PatternParams, z: f64, theta: f64, total_height: f64) -> f6
         PatternKind::Wave => {
             (k * theta + phase + 2.0 * std::f64::consts::PI * p.frequency * zn).sin()
         }
-        // گلبرگ: |cos|^n شکل گلبرگ می‌سازد (لبه‌های تیز بین lobes)
+        // گلبرگ: cos² شکل گلبرگ می‌سازد (لبه‌های تیز بین lobes)
+        // ریاضی: cos²(x) دورهٔ π دارد و در هر دوره یک بیشینه؛ پس cos²(kθ/2)
+        // در یک دور کامل (θ∈[0,2π)) دقیقاً k گلبرگ می‌سازد
         PatternKind::Petal => {
-            let c = (k * theta + phase).cos();
+            let c = (k * theta * 0.5 + phase).cos();
             // توان ۲ گلبرگ‌های نرم‌تر می‌سازد
             c * c
         }
@@ -217,9 +219,11 @@ mod tests {
     #[test]
     fn test_negative_radius_clamped() {
         // شعاع منفی باید clamp شود و هشدار برگردد
+        // آرگومان سینوس: 8θ + 2π·1·0.5 = 8θ + π؛ برای مقدار -1 → 8θ+π = 3π/2 → θ = π/16
         let mut p = base_pattern(PatternKind::Wave);
         p.amplitude_mm = 100.0; // از شعاع پایه بزرگ‌تر
-        let (r, clamped) = apply_patterns(5.0, 50.0, 3.14159, 100.0, &[p]);
+        let theta = std::f64::consts::PI / 16.0;
+        let (r, clamped) = apply_patterns(5.0, 50.0, theta, 100.0, &[p]);
         assert_eq!(r, 0.0);
         assert!(clamped);
     }
