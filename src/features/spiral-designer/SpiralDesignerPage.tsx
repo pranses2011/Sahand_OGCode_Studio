@@ -16,6 +16,13 @@
  *   - مرکز‌گذاری طرح روی صفحهٔ چاپ (پیش‌فرض روشن — رفع باگ 0,0)؛
  *   - درون‌یابی اسپلاین مونوتون پروفایل (پیش‌فرض — بدون لبهٔ تیز)؛
  *   - واگرد/ازنوی کامل طراحی + ۶ استایل آمادهٔ قابل‌ویرایش.
+ *
+ * نسخهٔ ۱.۴ (درخواست‌های کاربر):
+ *   - پیش‌نمایش با پیلود تخت سریع (designer_viewport) — بدون mesh و بدون
+ *     JSON شیءمحور؛ شعاع اسپات از radius_samples — رفع لگ/وقفهٔ نمایشگر؛
+ *   - کف چندلایه (انتخاب تعداد لایه) — سپس ادامهٔ vase؛
+ *   - تنظیمات سرعت به mm/s (لایهٔ اول/کف/دیواره/travel) + رتراکشن؛
+ *   - اسپات الگو/بافت روی سطح مدل: درگ عمودی = ارتفاع، افقی = زاویهٔ فاز.
  * ============================================================================
  */
 
@@ -26,12 +33,12 @@ import { Viewport } from "../../components/Viewport";
 import type { SpotHandle, SpotChange } from "../../components/Viewport";
 import { fa } from "../../i18n/fa";
 import type {
-  DesignerProject, PatternParams, TextureParams, DesignerOutput,
+  DesignerProject, PatternParams, TextureParams,
   SegmentsPayload, ProfilePoint, PrinterProfile, PreviewData,
-  FloorPatternKind, MeshData,
+  FloorPatternKind, FastViewport,
 } from "../../lib/tauri";
 import {
-  designerCompute, designerExportGcode, designerExportStl,
+  designerViewport, designerExportGcode, designerExportStl,
   saveProject, loadProject, saveFileDialog, openFileDialog,
   coreAvailable, printerPresets, designerPreviewData,
 } from "../../lib/tauri";
@@ -181,7 +188,7 @@ function defaultProject(): DesignerProject {
     phase_start_deg: 0,
     patterns: [],
     textures: [],
-    floor: { enabled: false, pattern: "Rings", center_hole_diameter_mm: 0, z_start_mm: 0, ring_gap_mm: 0.45, spokes: 12 },
+    floor: { enabled: false, pattern: "Rings", center_hole_diameter_mm: 0, z_start_mm: 0, ring_gap_mm: 0.45, spokes: 12, layers: 2 },
     printer: {
       name: "Custom / Unverified", status: "unverified",
       build_volume_mm: [220, 220, 250],
@@ -191,6 +198,9 @@ function defaultProject(): DesignerProject {
       flow_multiplier: 1.0, absolute_e: true,
       // ---- نسخهٔ ۱.۳: دما/فن (پیش‌فرض PLA عمومی) ----
       nozzle_temp_c: 200, bed_temp_c: 60, fan_percent: 100, wait_for_temps: true,
+      // ---- نسخهٔ ۱.۴: سرعت‌ها به mm/s + رتراکشن ----
+      wall_speed_mm_s: 40, first_layer_speed_mm_s: 20, floor_speed_mm_s: 30,
+      travel_speed_mm_s: 100, retract_mm: 0.8, retract_speed_mm_s: 40,
       start_gcode: "", end_gcode: "",
     },
     created_at_unix: 0,
@@ -198,54 +208,38 @@ function defaultProject(): DesignerProject {
   };
 }
 
-/** تبدیل خروجی طراح به payload viewport — همان IR واحد
- *  توجه: SegmentKind/Certainty در Rust به‌صورت رشتهٔ نام variant سریال می‌شوند
- *  (enum بدون داده)؛ اینجا به کد عددی viewport نگاشت می‌شوند. */
-const KIND_NUM: Record<string, number> = {
-  Extrusion: 0, Travel: 1, Retract: 2, Unretract: 3, Arc: 4, Unknown: 5,
-};
-const CERTAINTY_NUM: Record<string, number> = {
-  Known: 0, Approximate: 1, Unknown: 2,
-};
-
-function toSegmentsPayload(out: DesignerOutput): SegmentsPayload {
-  const n = out.segments.length;
-  const positions: number[] = new Array(n * 6);
-  const kinds: number[] = new Array(n);
-  const source_lines: number[] = new Array(n);
-  const ids: number[] = new Array(n);
-  const certainties: number[] = new Array(n);
-  const feedrates: number[] = new Array(n);
-  for (let i = 0; i < n; i++) {
-    const s = out.segments[i];
-    const start = s.start_mm ?? [0, 0, 0];
-    const end = s.end_mm ?? start;
-    positions[i * 6 + 0] = start[0];
-    positions[i * 6 + 1] = start[1];
-    positions[i * 6 + 2] = start[2];
-    positions[i * 6 + 3] = end[0];
-    positions[i * 6 + 4] = end[1];
-    positions[i * 6 + 5] = end[2];
-    kinds[i] = KIND_NUM[String(s.kind)] ?? 5;
-    source_lines[i] = s.source_line_index;
-    ids[i] = s.id;
-    certainties[i] = CERTAINTY_NUM[String(s.certainty)] ?? 2;
-    feedrates[i] = s.feedrate_mm_min ?? NaN;
-  }
-  return { revision: 1, positions, kinds, source_lines, ids, certainties, feedrates };
+/** تبدیل پیلود سریع به payload viewport — ۱.۴: عبور مستقیم!
+ *  هسته Rust همین آرایه‌های تخت را می‌فرستد؛ هیچ تبدیل O(n) در JS
+ *  انجام نمی‌شود (قبلاً هر segment شیء JSON بود و دوباره کپی می‌شد). */
+function toSegmentsPayload(out: FastViewport): SegmentsPayload {
+  return {
+    revision: 1,
+    positions: out.positions,
+    kinds: out.kinds,
+    source_lines: [],
+    ids: [],
+    certainties: [],
+    feedrates: out.feedrates,
+  };
 }
 
-/** شعاع واقعی فرم در ارتفاع z — از mesh هسته (هندسهٔ صادقانه) */
-function meshRadiusAt(mesh: MeshData | undefined, z: number, tol = 3.0): number {
-  if (!mesh || mesh.vertices.length === 0) return 20;
-  let max = 0;
-  for (const v of mesh.vertices) {
-    if (Math.abs(v[2] - z) <= tol) {
-      const r = Math.hypot(v[0], v[1]);
-      if (r > max) max = r;
-    }
+/** شعاع واقعی فرم در ارتفاع z — از radius_samples هسته (۱.۴).
+ *  جست‌وجوی دودویی روی ۱۲۹ نمونهٔ (z, r) — بدون اسکن کل mesh.
+ *  صادقانه: خالص و قابل‌آزمون (Speeds.test.ts) */
+export function radiusAt(samples: number[][] | undefined, z: number): number {
+  if (!samples || samples.length === 0) return 20;
+  let lo = 0, hi = samples.length - 1;
+  if (z <= samples[0][0]) return Math.max(samples[0][1], 2);
+  if (z >= samples[hi][0]) return Math.max(samples[hi][1], 2);
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid][0] <= z) lo = mid; else hi = mid;
   }
-  return max || 20;
+  // درون‌یابی خطی بین دو نمونه
+  const z0 = samples[lo][0], r0 = samples[lo][1];
+  const z1 = samples[hi][0], r1 = samples[hi][1];
+  const t = z1 > z0 ? (z - z0) / (z1 - z0) : 0;
+  return Math.max(r0 + (r1 - r0) * t, 2);
 }
 
 /** انتخاب اسپات (برای درگ روی 3D) */
@@ -271,7 +265,8 @@ export function SpiralDesignerPage(props: {
   extrusionColor?: string;
 }) {
   const [project, setProject] = useState<DesignerProject>(defaultProject);
-  const [output, setOutput] = useState<DesignerOutput | null>(null);
+  // ۱.۴: خروجی = پیلود تخت سریع (بدون mesh) — رفع لگ/وقفهٔ نمایشگر
+  const [output, setOutput] = useState<FastViewport | null>(null);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -358,7 +353,8 @@ export function SpiralDesignerPage(props: {
       return;
     }
     try {
-      const out = await designerCompute(p);
+      // ۱.۴: پیلود تخت سریع — به‌جای JSON شیءمحور کامل با mesh
+      const out = await designerViewport(p);
       setOutput(out);
       setNote(out.summary_fa);
     } catch (e) {
@@ -518,7 +514,10 @@ export function SpiralDesignerPage(props: {
     }
   };
 
-  const segPayload = output ? toSegmentsPayload(output) : null;
+  const segPayload = useMemo(
+    () => (output ? toSegmentsPayload(output) : null),
+    [output]
+  );
   const warningsFa = output?.diagnostics.map((d) => `${d.severity === "Error" ? "خطا" : "هشدار"} [${d.code}]: ${d.message_fa}`) ?? [];
 
   // ---------------- اسپات: اتصال انتخاب به هندل‌های 3D ----------------
@@ -533,11 +532,13 @@ export function SpiralDesignerPage(props: {
   const spot: SpotHandle | null = useMemo(() => {
     if (!spotSel) return null;
     const height = Math.max(project.form_height_mm, 1);
+    // ۱.۴: شعاع از radius_samples هسته (جست‌وجوی دودویی — بدون mesh)
+    const samples = output?.radius_samples;
     if (spotSel.type === "phase") {
       // ---- دیال چرخش فاز θ (نسخهٔ ۱.۳) ----
       // دیال در ارتفاع کم (~۸٪ ارتفاع، بین ۳ تا ۱۲mm) روی شعاع واقعی فرم
       const zDial = Math.min(Math.max(height * 0.08, 3), 12);
-      const r = meshRadiusAt(output?.mesh, zDial);
+      const r = radiusAt(samples, zDial);
       return {
         kind: "phaseRotation",
         zStart: zDial,
@@ -551,7 +552,7 @@ export function SpiralDesignerPage(props: {
     if (spotSel.type === "pattern") {
       const p = project.patterns[spotSel.index];
       if (!p) return null;
-      const r = meshRadiusAt(output?.mesh, p.z_start_mm);
+      const r = radiusAt(samples, p.z_start_mm);
       return {
         kind: "patternRange",
         zStart: p.z_start_mm,
@@ -559,6 +560,8 @@ export function SpiralDesignerPage(props: {
         radius: Math.max(r, 6),
         height,
         bedOffset,
+        // ۱.۴: فاز «خود الگو» — دسته روی سطح در همین زاویه؛ درگ افقی = چرخش
+        phaseDeg: p.phase_deg ?? 0,
       };
     }
     if (spotSel.type === "texture") {
@@ -566,7 +569,7 @@ export function SpiralDesignerPage(props: {
       if (!t) return null;
       const zStart = (t.fade_in_percent / 100) * height;
       const zEnd = height - (t.fade_out_percent / 100) * height;
-      const r = meshRadiusAt(output?.mesh, zStart + 2);
+      const r = radiusAt(samples, zStart + 2);
       return {
         kind: "textureFade",
         zStart: Math.max(zStart, 0.5),
@@ -574,11 +577,12 @@ export function SpiralDesignerPage(props: {
         radius: Math.max(r, 6),
         height,
         bedOffset,
+        phaseDeg: t.phase_deg ?? 0,
       };
     }
     // کف — سوراخ مرکزی
     if (!project.floor.enabled || project.floor.center_hole_diameter_mm < 1) return null;
-    const rOuter = meshRadiusAt(output?.mesh, 0.5);
+    const rOuter = radiusAt(samples, 0.5);
     return {
       kind: "floorHole",
       zStart: 0.5,
@@ -609,8 +613,20 @@ export function SpiralDesignerPage(props: {
 
     const height = Math.max(cur.form_height_mm, 1);
     let next: DesignerProject | null = null;
-    if (change.phaseDeg !== undefined) {
-      // ---- چرخش فاز θ با اسپات (نسخهٔ ۱.۳) ----
+    if (change.phaseDeg !== undefined && spotSel?.type === "pattern") {
+      // ---- ۱.۴: چرخش فاز «خودِ الگو» با درگ افقی دستهٔ سطحی ----
+      const patterns = cur.patterns.map((x, j) =>
+        j === spotSel.index ? { ...x, phase_deg: change.phaseDeg! } : x
+      );
+      next = { ...cur, patterns };
+    } else if (change.phaseDeg !== undefined && spotSel?.type === "texture") {
+      // ---- ۱.۴: چرخش فاز بافت با درگ افقی دستهٔ سطحی ----
+      const textures = cur.textures.map((x, j) =>
+        j === spotSel.index ? { ...x, phase_deg: change.phaseDeg! } : x
+      );
+      next = { ...cur, textures };
+    } else if (change.phaseDeg !== undefined) {
+      // ---- چرخش فاز کل فرم با دیال θ (نسخهٔ ۱.۳) ----
       next = { ...cur, phase_start_deg: change.phaseDeg };
     } else if (spotSel?.type === "pattern" && change.zStart !== undefined) {
       const patterns = cur.patterns.map((x, j) =>
@@ -988,6 +1004,14 @@ export function SpiralDesignerPage(props: {
               <input type="number" step="0.05" min="0.2" disabled={!project.floor.enabled}
                 value={project.floor.ring_gap_mm}
                 onChange={(e) => setFloor({ ring_gap_mm: +e.target.value })} /></div>
+            {/* ---- تعداد لایه‌های کف — نسخهٔ ۱.۴ (درخواست کاربر) ---- */}
+            <div className="field">
+              <label>{fa.floorLayers}</label>
+              <input type="number" step="1" min="1" max="12" disabled={!project.floor.enabled}
+                value={project.floor.layers ?? 2}
+                onChange={(e) => setFloor({ layers: Math.max(1, Math.min(12, Math.round(+e.target.value) || 2)) })} />
+              <span className="hint-text">{fa.floorLayersHint}</span>
+            </div>
             {(project.floor.pattern ?? "Rings") === "Radial" && (
               <div className="field"><label>{fa.floorSpokes}</label>
                 <input type="number" step="1" min="3" max="96" disabled={!project.floor.enabled}
@@ -1102,9 +1126,51 @@ export function SpiralDesignerPage(props: {
             <div className="field"><label>{fa.layerHeight}</label>
               <input type="number" step="0.05" min="0.05" value={project.printer.layer_height_mm}
                 onChange={(e) => setPrinter({ layer_height_mm: +e.target.value })} /></div>
-            <div className="field"><label>{fa.printSpeed}</label>
-              <input type="number" step="100" value={project.printer.print_speed_mm_min}
-                onChange={(e) => setPrinter({ print_speed_mm_min: +e.target.value })} /></div>
+            {/* ---- سرعت‌ها (mm/s) — نسخهٔ ۱.۴ (درخواست کاربر) ---- */}
+            <div className="field" style={{ marginTop: 10 }}>
+              <label>{fa.speedsTitle}</label>
+              <span className="hint-text">{fa.speedsHint}</span>
+            </div>
+            <div className="field"><label>{fa.wallSpeed}</label>
+              <input type="number" step="5" min="1" max="300" style={{ width: 100 }}
+                value={project.printer.wall_speed_mm_s
+                  || Math.round(project.printer.print_speed_mm_min / 60)}
+                onChange={(e) => {
+                  const v = Math.max(1, +e.target.value || 1);
+                  // همگام‌سازی با فیلد mm/min قدیمی (سازگاری پروژه‌های قدیمی)
+                  setPrinter({ wall_speed_mm_s: v, print_speed_mm_min: v * 60 });
+                }} /></div>
+            <div className="field"><label>{fa.firstLayerSpeed}</label>
+              <input type="number" step="5" min="1" max="150" style={{ width: 100 }}
+                value={project.printer.first_layer_speed_mm_s
+                  || Math.round((project.printer.wall_speed_mm_s
+                    || project.printer.print_speed_mm_min / 60) * 0.5)}
+                onChange={(e) => setPrinter({ first_layer_speed_mm_s: Math.max(1, +e.target.value || 1) })} /></div>
+            <div className="field"><label>{fa.floorSpeed}</label>
+              <input type="number" step="5" min="1" max="200" style={{ width: 100 }}
+                value={project.printer.floor_speed_mm_s
+                  || Math.round((project.printer.wall_speed_mm_s
+                    || project.printer.print_speed_mm_min / 60) * 0.75)}
+                onChange={(e) => setPrinter({ floor_speed_mm_s: Math.max(1, +e.target.value || 1) })} /></div>
+            <div className="field"><label>{fa.travelSpeed}</label>
+              <input type="number" step="10" min="5" max="400" style={{ width: 100 }}
+                value={project.printer.travel_speed_mm_s
+                  || Math.round(project.printer.travel_speed_mm_min / 60)}
+                onChange={(e) => {
+                  const v = Math.max(5, +e.target.value || 5);
+                  setPrinter({ travel_speed_mm_s: v, travel_speed_mm_min: v * 60 });
+                }} /></div>
+            {/* ---- رتراکشن — نسخهٔ ۱.۴ (استاندارد G-code) ---- */}
+            <div className="field"><label>{fa.retractLength}</label>
+              <input type="number" step="0.1" min="0" max="10" style={{ width: 100 }}
+                value={project.printer.retract_mm ?? 0.8}
+                onChange={(e) => setPrinter({ retract_mm: Math.max(0, +e.target.value || 0) })} /></div>
+            <div className="field"><label>{fa.retractSpeed}</label>
+              <input type="number" step="5" min="5" max="120" style={{ width: 100 }}
+                value={project.printer.retract_speed_mm_s ?? 40}
+                onChange={(e) => setPrinter({ retract_speed_mm_s: Math.max(5, +e.target.value || 5) })} />
+              <span className="hint-text">{fa.retractHint}</span>
+            </div>
             <div className="field"><label>{fa.filamentDiameter}</label>
               <input type="number" step="0.05" value={project.printer.filament_diameter_mm}
                 onChange={(e) => setPrinter({ filament_diameter_mm: +e.target.value })} /></div>
