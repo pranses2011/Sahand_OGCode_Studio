@@ -59,7 +59,8 @@ export function ProfileEditor(props: ProfileEditorProps) {
     })
     .join(" ");
 
-  const pt = (e: React.PointerEvent) => {
+  /** تبدیل رویداد ماوس/پوینتر به مختصات mm — با هر دو نوع رویداد کار می‌کند */
+  const pt = (e: { clientX: number; clientY: number }) => {
     const svg = svgRef.current!;
     const rect = svg.getBoundingClientRect();
     return fromSvg(

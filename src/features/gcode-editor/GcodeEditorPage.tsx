@@ -12,12 +12,13 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GcodeEditor, LineMarker } from "../../components/GcodeEditor";
+import { GcodeEditor } from "../../components/GcodeEditor";
+import type { LineMarker } from "../../components/GcodeEditor";
 import { Viewport } from "../../components/Viewport";
 import { LineInspector } from "./LineInspector";
 import { fa } from "../../i18n/fa";
+import type { ParseResult, LineDetail, SaveValidation } from "../../lib/tauri";
 import {
-  ParseResult, LineDetail, SaveValidation,
   openFileDialog, saveFileDialog, readTextFile,
   parseGcode, explainLine, saveAs, validateGcode, runningInDesktop,
 } from "../../lib/tauri";
@@ -25,11 +26,20 @@ import {
 /** debounce ویرایش تایپ (الزام §6: کوتاه، با وضعیت روشن) */
 const EDIT_DEBOUNCE_MS = 400;
 
-export function GcodeEditorPage() {
+export interface GcodeEditorPageProps {
+  /** محتوای اولیه از طراح مارپیچی (ارسال به ویرایشگر) */
+  initialContent?: string | null;
+  /** نام نمایشی فایل اولیه */
+  initialName?: string | null;
+  /** اطلاع از مصرف محتوای اولیه (تا دوباره اعمال نشود) */
+  onConsumed?: () => void;
+}
+
+export function GcodeEditorPage(props: GcodeEditorPageProps) {
   // ---------------------------------------------------------------- state
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [originalText, setOriginalText] = useState<string>("");
-  const [currentText, setCurrentText] = useState<string>("");
+  const [fileName, setFileName] = useState<string | null>(props.initialName ?? null);
+  const [originalText, setOriginalText] = useState<string>(props.initialContent ?? "");
+  const [currentText, setCurrentText] = useState<string>(props.initialContent ?? "");
   const [parse, setParse] = useState<ParseResult | null>(null);
   const [detail, setDetail] = useState<LineDetail | null>(null);
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
@@ -52,7 +62,6 @@ export function GcodeEditorPage() {
   // جلوگیری از push بی‌متن به undo وقتی بازکردن فایل است
   const loadingRef = useRef(false);
 
-  // ------------------------------------------------------------ helpers
   const pushUndo = useCallback((text: string) => {
     undoStack.current.push(text);
     if (undoStack.current.length > 200) undoStack.current.shift();
@@ -80,6 +89,20 @@ export function GcodeEditorPage() {
       setErrorMsg(String(e));
     }
   }, [originalText]);
+
+  // محاسبهٔ اولیه — شامل محتوای ارسالی از طراح مارپیچی
+  // (الزام PROMPT_03 §6: خروجی طراح با یک کلیک در ویرایشگر باز شود)
+  useEffect(() => {
+    if (props.initialContent) {
+      const text = props.initialContent;
+      const name = props.initialName ?? "spiral-designer-output.gcode";
+      loadingRef.current = true;
+      reparse(text, name);
+      loadingRef.current = false;
+      props.onConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ------------------------------------------------------------ بازکردن فایل
   const handleOpen = useCallback(async () => {

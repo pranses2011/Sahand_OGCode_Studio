@@ -14,12 +14,17 @@
  */
 
 import { useEffect, useRef } from "react";
-import { EditorState, Extension } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, Decoration, DecorationSet, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import type { Extension, Range } from "@codemirror/state";
+import {
+  EditorView, keymap, lineNumbers, highlightActiveLine,
+  highlightActiveLineGutter, Decoration,
+  ViewPlugin, ViewUpdate,
+} from "@codemirror/view";
+import type { DecorationSet } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { StreamLanguage, LanguageSupport } from "@codemirror/language";
-import { tags as t } from "@lezer/highlight";
 
 /** مارکر خطوط دارای خطا/هشدار — از diagnostics payload */
 export interface LineMarker {
@@ -49,7 +54,7 @@ export interface GcodeEditorProps {
 /** واژه‌های کلیدی: G/M/T + N + پارامترها + کامنت */
 const gcodeStream = StreamLanguage.define<{ inComment: boolean }>({
   name: "gcode",
-  start() { return { inComment: false }; },
+  startState() { return { inComment: false }; },
   token(stream, state) {
     // کامنت ; تا پایان خط
     if (stream.eat(";")) {
@@ -129,21 +134,8 @@ const theme = EditorView.theme(
 // افکت‌های خط: مارکر خطا/هشدار + خط انتخابی
 // ============================================================================
 
-/** گجت آیکون شدت در حاشیه — متن نه رنگ (دسترس‌پذیری) */
-class SeverityWidget extends WidgetType {
-  constructor(private mark: string) { super(); }
-  toDOM() {
-    const span = document.createElement("span");
-    span.textContent = this.mark;
-    span.style.marginRight = "4px";
-    span.style.fontSize = "10px";
-    return span;
-  }
-  ignoreEvent() { return true; }
-}
-
 function lineDeco(view: EditorView, markers: LineMarker[], selected: number | null): DecorationSet {
-  const decos: Decoration[] = [];
+  const decos: Range<Decoration>[] = [];
   for (const m of markers) {
     if (m.lineIndex < view.state.doc.lines) {
       const cls = m.severity === "error" ? "cm-line-error"
@@ -160,7 +152,7 @@ function lineDeco(view: EditorView, markers: LineMarker[], selected: number | nu
       )
     );
   }
-  return Decoration.set(decos.map((d) => ({ ...d } as never)), true);
+  return Decoration.set(decos, true);
 }
 
 // ============================================================================
