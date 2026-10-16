@@ -17,11 +17,12 @@ import { Viewport } from "../../components/Viewport";
 import { fa } from "../../i18n/fa";
 import type {
   DesignerProject, PatternParams, TextureParams, DesignerOutput,
-  SegmentsPayload, ProfilePoint,
+  SegmentsPayload, ProfilePoint, PrinterProfile,
 } from "../../lib/tauri";
 import {
   designerCompute, designerExportGcode, designerExportStl,
-  saveProject, loadProject, saveFileDialog, openFileDialog, runningInDesktop,
+  saveProject, loadProject, saveFileDialog, openFileDialog,
+  coreAvailable, printerPresets,
 } from "../../lib/tauri";
 
 /** پروژهٔ پیش‌فرض — گلدان آماده (قابل‌ویرایش) */
@@ -76,19 +77,33 @@ function toSegmentsPayload(out: DesignerOutput): SegmentsPayload {
   return { revision: 1, positions, kinds, source_lines, ids, certainties, feedrates };
 }
 
-export function SpiralDesignerPage(props: { onSendToEditor: (gcode: string) => void }) {
+export function SpiralDesignerPage(props: {
+  onSendToEditor: (gcode: string) => void;
+  /** رنگ رشتهٔ چاپ در پیش‌نمایش (نمایشی — از ColorBar) */
+  extrusionColor?: string;
+}) {
   const [project, setProject] = useState<DesignerProject>(defaultProject);
   const [output, setOutput] = useState<DesignerOutput | null>(null);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  // پریست‌های ۲۰ پرینتر واقعی — از هستهٔ Rust بارگذاری می‌شود
+  const [presets, setPresets] = useState<PrinterProfile[]>([]);
   // پرسش تأیید خروجی‌های دارای هشدار بحرانی (الزام §8)
   const [confirmExport, setConfirmExport] = useState<null | (() => void)>(null);
   const debounceRef = useRef<number | null>(null);
 
+  // بارگذاری پریست‌های پرینتر از هسته (دسکتاپ یا پل dev)
+  useEffect(() => {
+    if (!coreAvailable()) return;
+    printerPresets()
+      .then((list) => setPresets(list))
+      .catch(() => setPresets([])); // خطا → فهرست خالی و پیام گام ۵ همچنان صادقانه
+  }, []);
+
   // ------------------------------------------------------------ محاسبهٔ زنده
   const recompute = useCallback(async (p: DesignerProject) => {
-    if (!runningInDesktop()) {
+    if (!coreAvailable()) {
       setNote("محاسبه فقط در برنامهٔ دسکتاپ انجام می‌شود.");
       return;
     }
@@ -152,9 +167,12 @@ export function SpiralDesignerPage(props: { onSendToEditor: (gcode: string) => v
 
   const patternName: Record<PatternParams["kind"], string> = {
     Wave: "موج محوری", Petal: "گلبرگ", Twist: "پیچش", Flute: "شیار عمودی",
+    Diamond: "لوزی", Chevron: "مهری (زیگزاگ)", Rings: "حلقهٔ افقی",
+    Scale: "فلس", Facet: "تراش‌خورده",
   };
   const textureName: Record<TextureParams["kind"], string> = {
     Ripple: "موجک", Weave: "تور بافته", Stitch: "بخیه‌ای",
+    SpiralGroove: "شیار مارپیچی", Hammered: "چکشی", Basket: "سبدی",
   };
 
   /** نازل‌های رایج (پیشنهادی نه دادهٔ ثابت — از پژوهش مرجع) */
@@ -414,6 +432,37 @@ export function SpiralDesignerPage(props: { onSendToEditor: (gcode: string) => v
               {fa.printerProfileStatus}: <strong className="ltr">{project.printer.status}</strong> —
               presetها دادهٔ ثابت نیستند؛ قبل از چاپ صحت‌سنجی کنید.
             </p>
+            {/* انتخاب از ۲۰ پریست پرینتر واقعی (وضعیت community) */}
+            <div className="field">
+              <label>{fa.printerPresets}</label>
+              <select
+                className="ltr"
+                value={presets.some((x) => x.name === project.printer.name) ? project.printer.name : ""}
+                onChange={(e) => {
+                  const p = presets.find((x) => x.name === e.target.value);
+                  if (p) setProject((prev) => ({ ...prev, printer: { ...p } }));
+                }}
+              >
+                <option value="">— انتخاب از فهرست —</option>
+                {presets.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name} — {p.build_volume_mm[0]}×{p.build_volume_mm[1]}×{p.build_volume_mm[2]} mm
+                  </option>
+                ))}
+              </select>
+              {presets.length > 0 && (
+                <span style={{ color: "var(--fg-2)", fontSize: 11 }}>
+                  {presets.length} مدل — مشخصات از صفحات رسمی سازنده‌ها؛
+                  وضعیت همه community است (تست دستی نداده‌ایم).
+                </span>
+              )}
+            </div>
+            {/* نمایش نام/برند پرینتر جاری وقتی از فهرست انتخاب شده */}
+            {presets.some((x) => x.name === project.printer.name) && (
+              <div className="printer-badge">
+                <span className="dot" aria-hidden="true" /> {project.printer.name}
+              </div>
+            )}
             <div className="field"><label>{fa.nozzleDiameter}</label>
               <div style={{ display: "flex", gap: 4 }}>
                 {nozzlePresets.map((n) => (
@@ -482,6 +531,7 @@ export function SpiralDesignerPage(props: { onSendToEditor: (gcode: string) => v
             : null}
           emptyMessage={busy ? "در حال محاسبه…" : fa.openHint}
           webglMessage={fa.webglMissing}
+          extrusionColor={props.extrusionColor}
         />
 
         {/* خلاصه + هشدارها + خروجی */}

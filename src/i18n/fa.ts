@@ -118,6 +118,7 @@ export interface FaStrings {
   endGcode: string;
   buildVolume: string;
   printerProfileStatus: string;
+  printerPresets: string;
   // ---------- خروجی ----------
   exportGcode: string;
   exportStl: string;
@@ -264,6 +265,7 @@ export const fa: FaStrings = {
   endGcode: "کد پایان (end)",
   buildVolume: "حجم ساخت X×Y×Z (mm)",
   printerProfileStatus: "وضعیت اعتبار پروفایل",
+  printerPresets: "پرینتر آماده (۲۰ مدل واقعی)",
 
   // ---------- خروجی ----------
   exportGcode: "خروجی G-code",

@@ -56,6 +56,21 @@ fn dispatch(cmd: &str, args: &serde_json::Value) -> serde_json::Value {
                 .map(|s| s.to_string());
             to_json(ipc::parse_gcode(content, file_name))
         }
+        "validate_gcode" => {
+            let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let volume = args.get("buildVolume").and_then(|v| v.as_array()).and_then(|a| {
+                let dims: Vec<f64> = a
+                    .iter()
+                    .filter_map(|d| d.as_f64())
+                    .collect();
+                if dims.len() == 3 {
+                    Some([dims[0], dims[1], dims[2]])
+                } else {
+                    None
+                }
+            });
+            to_json(ipc::validate_gcode(content, volume))
+        }
         "explain_line" => {
             let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
             let line_index = args.get("lineIndex").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
@@ -66,14 +81,17 @@ fn dispatch(cmd: &str, args: &serde_json::Value) -> serde_json::Value {
         }
         // ---- طراح ----
         "designer_compute" => {
-            let project: DesignerProject = match serde_json::from_value(args.clone()) {
+            // هم شکل invoke پوسته ({project}) و هم شکل مستقیم (خود پروژه) پذیرفته می‌شود
+            let v = args.get("project").cloned().unwrap_or_else(|| args.clone());
+            let project: DesignerProject = match serde_json::from_value(v) {
                 Ok(p) => p,
                 Err(e) => return err_json(format!("پروژهٔ نامعتبر: {e}")),
             };
             to_json(ipc::designer_compute(project))
         }
         "designer_export_gcode" => {
-            let project: DesignerProject = match serde_json::from_value(args.clone()) {
+            let v = args.get("project").cloned().unwrap_or_else(|| args.clone());
+            let project: DesignerProject = match serde_json::from_value(v) {
                 Ok(p) => p,
                 Err(e) => return err_json(format!("پروژهٔ نامعتبر: {e}")),
             };

@@ -21,8 +21,8 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { SegmentsPayload } from "../lib/tauri";
 
-/** رنگ‌های نوع segment — معادل CSS vars */
-const COLORS = {
+/** رنگ‌های نوع segment — معادل CSS vars؛ رنگ اکستروژن از props (رشتهٔ چاپ) */
+const BASE_COLORS = {
   extrusion: new THREE.Color("#46c878"),
   travel: new THREE.Color("#5a87d6"),
   retract: new THREE.Color("#d65a5a"),
@@ -51,17 +51,19 @@ export interface ViewportProps extends ViewportCallbacks {
   emptyMessage: string;
   /** overlay خطای WebGL */
   webglMessage: string;
+  /** رنگ رشتهٔ چاپ (اکستروژن) — انتخاب کاربر؛ پیش‌فرض سبز */
+  extrusionColor?: string;
 }
 
-/** تبدیل شمارهٔ نوع به رنگ پایه */
-function kindColor(kind: number): THREE.Color {
+/** تبدیل شمارهٔ نوع به رنگ پایه (از مجموعهٔ رنگ نمونه) */
+function kindColor(kind: number, colors: typeof BASE_COLORS): THREE.Color {
   switch (kind) {
-    case 0: return COLORS.extrusion;
-    case 1: return COLORS.travel;
-    case 2: return COLORS.retract;
-    case 3: return COLORS.unretract;
-    case 4: return COLORS.arc;
-    default: return COLORS.unknown;
+    case 0: return colors.extrusion;
+    case 1: return colors.travel;
+    case 2: return colors.retract;
+    case 3: return colors.unretract;
+    case 4: return colors.arc;
+    default: return colors.unknown;
   }
 }
 
@@ -75,6 +77,17 @@ export function Viewport(props: ViewportProps) {
   const webglFailed = useRef(false);
   const stateRef = useRef(props);
   stateRef.current = props;
+
+  // رنگ اکستروژن قابل‌انتخاب (رشتهٔ چاپ) — بازسازی فقط با تغییر مقدار
+  const extrusionColor = useMemo(
+    () => new THREE.Color(props.extrusionColor ?? "#46c878"),
+    [props.extrusionColor]
+  );
+  // مجموعهٔ رنگ‌های مؤثر این نمونه
+  const COLORS = useMemo(
+    () => ({ ...BASE_COLORS, extrusion: extrusionColor }),
+    [extrusionColor]
+  );
 
   // نگاشت id→ایندکس برای برجسته‌سازی سریع
   const idToIndex = useMemo(() => {
@@ -281,7 +294,7 @@ export function Viewport(props: ViewportProps) {
       positions[i * 6 + 3] = p[i * 6 + 3];
       positions[i * 6 + 4] = p[i * 6 + 5];
       positions[i * 6 + 5] = -p[i * 6 + 4];
-      const c = kindColor(segs.kinds[i]);
+      const c = kindColor(segs.kinds[i], COLORS);
       colors.set([c.r, c.g, c.b, c.r, c.g, c.b], i * 6);
     }
 
@@ -331,17 +344,17 @@ export function Viewport(props: ViewportProps) {
       if (!visible) {
         c = COLORS.dimmed;
       } else if (isHl) {
-        c = props.filter.mode === "onlyHighlight" ? COLORS.highlight : COLORS.highlight;
+        c = COLORS.highlight;
       } else if (props.filter.mode === "onlyHighlight") {
         c = COLORS.dimmed;
       } else {
-        c = kindColor(segs.kinds[i]);
+        c = kindColor(segs.kinds[i], COLORS);
       }
       arr[i * 6 + 0] = c.r; arr[i * 6 + 1] = c.g; arr[i * 6 + 2] = c.b;
       arr[i * 6 + 3] = c.r; arr[i * 6 + 4] = c.g; arr[i * 6 + 5] = c.b;
     }
     attr.needsUpdate = true;
-  }, [props.highlightIds, props.filter, props.segments, idToIndex]);
+  }, [props.highlightIds, props.filter, props.segments, idToIndex, COLORS]);
 
   // ------------------------------------------------------------------------
   // build volume (فقط با پروفایل — الزام: بدون پروفایل جعل نکن)
@@ -374,7 +387,7 @@ export function Viewport(props: ViewportProps) {
         <div className="overlay-msg">{props.emptyMessage}</div>
       )}
       <div className="legend">
-        <span><span className="sw" style={{ background: "#46c878" }} />چاپ (اکستروژن)</span>
+        <span><span className="sw" style={{ background: "#" + extrusionColor.getHexString() }} />چاپ (اکستروژن)</span>
         <span><span className="sw" style={{ background: "#5a87d6" }} />حرکت خالی</span>
         <span><span className="sw" style={{ background: "#d65a5a" }} />عقب‌کشیدن</span>
         <span><span className="sw" style={{ background: "#46a8c8" }} />قوس</span>

@@ -34,6 +34,16 @@
   --radius: 8px;
 }
 
+/* ---------- تم‌های رنگی accent (انتخاب کاربر — ذخیره در localStorage) ---------- */
+:root[data-accent="orange"] { --accent: #ff7a28; --accent-dim: #b35a1e; }
+:root[data-accent="cyan"]   { --accent: #22d3ee; --accent-dim: #0e7490; }
+:root[data-accent="green"]  { --accent: #34d399; --accent-dim: #0f766e; }
+:root[data-accent="purple"] { --accent: #a78bfa; --accent-dim: #6d28d9; }
+:root[data-accent="amber"]  { --accent: #fbbf24; --accent-dim: #b45309; }
+:root[data-accent="pink"]   { --accent: #f472b6; --accent-dim: #be185d; }
+:root[data-accent="blue"]   { --accent: #60a5fa; --accent-dim: #1d4ed8; }
+:root[data-accent="red"]    { --accent: #f87171; --accent-dim: #b91c1c; }
+
 /* ---------- ریست پایه ---------- */
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; padding: 0; }
@@ -84,7 +94,7 @@ body {
 .btn:hover { border-color: var(--accent-dim); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn.primary { background: var(--accent); color: #16181d; border-color: var(--accent); font-weight: 600; }
-.btn.primary:hover { background: #ff8f45; }
+.btn.primary:hover { background: color-mix(in srgb, var(--accent) 82%, white); }
 .btn.danger { color: var(--error); border-color: var(--error); }
 .btn.small { padding: 3px 9px; font-size: 12px; }
 
@@ -205,7 +215,7 @@ table.state th { color: var(--fg-1); background: var(--bg-2); font-weight: 400; 
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 6px;
   cursor: pointer; font-family: inherit; font-size: 12px; text-align: center;
 }
-.step-btn.active { border-color: var(--accent); color: var(--accent); background: #ff7a2812; }
+.step-btn.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .step-btn:hover:not(.active) { background: var(--bg-3); }
 
 /* لیست الگو/بافت */
@@ -217,6 +227,40 @@ table.state th { color: var(--fg-1); background: var(--bg-2); font-weight: 400; 
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
 }
 .pattern-item .head .name, .texture-item .head .name { color: var(--accent); font-size: 13px; }
+
+/* نشانگر پرینتر انتخاب‌شده از فهرست (گام ۵) */
+.printer-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--bg-2); border: 1px solid var(--accent-dim);
+  border-radius: 999px; padding: 3px 12px; margin: 2px 0 8px;
+  color: var(--fg-0); font-size: 12.5px;
+  direction: ltr; font-family: var(--mono);
+}
+.printer-badge .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 6px var(--accent);
+}
+
+/* ---------- نمایشگرهای رنگ (تم accent + رشتهٔ چاپ) ---------- */
+.swatches {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+}
+.swatches .lbl { color: var(--fg-2); font-size: 11px; white-space: nowrap; }
+.sw-btn {
+  width: 18px; height: 18px; border-radius: 50%; cursor: pointer;
+  border: 2px solid var(--line); padding: 0; transition: transform 0.08s ease;
+}
+.sw-btn:hover { transform: scale(1.15); }
+.sw-btn[aria-pressed="true"] {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--accent);
+}
+.color-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: var(--bg-2); border-bottom: 1px solid var(--line);
+  padding: 4px 14px; font-size: 12px;
+}
+.color-bar .divider { width: 1px; height: 16px; background: var(--line); }
 
 /* نمودار پروفایل ۲بعدی */
 .profile-svg { background: var(--bg-0); border: 1px solid var(--line);

@@ -20,7 +20,7 @@ import { fa } from "../../i18n/fa";
 import type { ParseResult, LineDetail, SaveValidation } from "../../lib/tauri";
 import {
   openFileDialog, saveFileDialog, readTextFile,
-  parseGcode, explainLine, saveAs, validateGcode, runningInDesktop,
+  parseGcode, explainLine, saveAs, validateGcode, runningInDesktop, coreAvailable,
 } from "../../lib/tauri";
 
 /** debounce ویرایش تایپ (الزام §6: کوتاه، با وضعیت روشن) */
@@ -33,6 +33,8 @@ export interface GcodeEditorPageProps {
   initialName?: string | null;
   /** اطلاع از مصرف محتوای اولیه (تا دوباره اعمال نشود) */
   onConsumed?: () => void;
+  /** رنگ رشتهٔ چاپ در پیش‌نمایش (نمایشی — از ColorBar) */
+  extrusionColor?: string;
 }
 
 export function GcodeEditorPage(props: GcodeEditorPageProps) {
@@ -72,7 +74,7 @@ export function GcodeEditorPage(props: GcodeEditorPageProps) {
 
   /** تفسیر مجدد متن — پس از بازکردن یا ویرایش */
   const reparse = useCallback(async (text: string, name: string | null) => {
-    if (!runningInDesktop()) {
+    if (!coreAvailable()) {
       setStatus("error");
       setErrorMsg("تفسیر فقط در برنامهٔ دسکتاپ (Tauri) انجام می‌شود.");
       return;
@@ -152,7 +154,7 @@ export function GcodeEditorPage(props: GcodeEditorPageProps) {
   const handleLineSelect = useCallback(async (lineIndex: number) => {
     setSelectedLine(lineIndex);
     setSimLine(lineIndex);
-    if (!runningInDesktop() || !currentText) return;
+    if (!coreAvailable() || !currentText) return;
     try {
       const d = await explainLine(currentText, lineIndex);
       setDetail(d);
@@ -194,7 +196,7 @@ export function GcodeEditorPage(props: GcodeEditorPageProps) {
     if (!currentText) return;
     // اعتبارسنجی پیش از ذخیره (الزام §8)
     let v: SaveValidation | null = null;
-    if (runningInDesktop()) {
+    if (coreAvailable()) {
       try {
         v = await validateGcode(currentText, null);
         setValidation(v);
@@ -332,6 +334,7 @@ export function GcodeEditorPage(props: GcodeEditorPageProps) {
                 : "مسیری برای نمایش نیست — فایل شامل حرکت قابل‌تفسیر نیست."
             }
             webglMessage={fa.webglMissing}
+            extrusionColor={props.extrusionColor}
             onSegmentClick={handleSegmentClick}
           />
         </div>

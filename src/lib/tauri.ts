@@ -141,7 +141,9 @@ export interface PrinterProfile {
 }
 
 export interface PatternParams {
-  kind: "Wave" | "Petal" | "Twist" | "Flute";
+  kind:
+    | "Wave" | "Petal" | "Twist" | "Flute"
+    | "Diamond" | "Chevron" | "Rings" | "Scale" | "Facet";
   amplitude_mm: number;
   count: number;
   frequency: number;
@@ -151,7 +153,7 @@ export interface PatternParams {
 }
 
 export interface TextureParams {
-  kind: "Ripple" | "Weave" | "Stitch";
+  kind: "Ripple" | "Weave" | "Stitch" | "SpiralGroove" | "Hammered" | "Basket";
   amplitude_mm: number;
   period_mm: number;
   radial: boolean;
@@ -230,16 +232,50 @@ export interface StlExportResult {
 }
 
 // ============================================================================
-// تشخیص محیط: Tauri واقعی یا مرورگر dev
+// تشخیص محیط: Tauri واقعی / dev مرورگر با پل هستهٔ Rust / مرورگر تولیدی
 // ============================================================================
 const isTauri =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** حالت dev ویته (سرور توسعه) — پل هستهٔ Rust از vite.config.ts سرو می‌شود.
+ *  MODE === "development" فقط در `vite` (سرور توسعه) صادق است؛ در vitest حالت
+ *  "test" و در build حالت "production" است → پل در آزمون/تولید فعال نمی‌شود. */
+const isDevServer =
+  typeof import.meta !== "undefined" &&
+  (import.meta.env?.DEV as boolean | undefined) === true &&
+  import.meta.env?.MODE === "development";
 
 /** خطای استاندارد «قابلیت بدون پوستهٔ دسکتاپ» — صداقت به‌جای دادهٔ جعلی */
 function notInDesktop(): never {
   throw new Error(
     "این قابلیت فقط در برنامهٔ دسکتاپ (Tauri) کار می‌کند؛ در حال حاضر در مرورگر توسعه اجرا می‌شود."
   );
+}
+
+// ============================================================================
+// فراخوانی هسته — سه مسیر:
+//   ۱) پوستهٔ دسکتاپ: invoke واقعی Tauri؛
+//   ۲) سرور توسعهٔ مرورگر: POST /api/ipc/<cmd> → باینری gcode-cli (همان
+//      هستهٔ gcode-core؛ محاسبات واقعی، نه دادهٔ ساختگی)؛
+//   ۳) هرجا دیگر: خطای صادقانهٔ notInDesktop.
+// ============================================================================
+async function callCore<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
+  if (isTauri) {
+    return invoke<T>(cmd, args);
+  }
+  if (isDevServer) {
+    const r = await fetch(`/api/ipc/${cmd}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    const data = await r.json();
+    if (data && typeof data === "object" && "__error" in data) {
+      throw new Error(String((data as { __error: unknown }).__error));
+    }
+    return data as T;
+  }
+  notInDesktop();
 }
 
 // ============================================================================
@@ -251,8 +287,7 @@ export async function parseGcode(
   content: string,
   fileName: string | null
 ): Promise<ParseResult> {
-  if (!isTauri) notInDesktop();
-  return invoke("parse_gcode", { content, fileName });
+  return callCore<ParseResult>("parse_gcode", { content, fileName });
 }
 
 /** توضیح کامل یک خط برای inspector */
@@ -260,8 +295,7 @@ export async function explainLine(
   content: string,
   lineIndex: number
 ): Promise<LineDetail | null> {
-  if (!isTauri) notInDesktop();
-  return invoke("explain_line", { content, lineIndex });
+  return callCore<LineDetail | null>("explain_line", { content, lineIndex });
 }
 
 /** ذخیره با نام جدید */
@@ -283,16 +317,19 @@ export async function validateGcode(
 export async function designerCompute(
   project: DesignerProject
 ): Promise<DesignerOutput> {
-  if (!isTauri) notInDesktop();
-  return invoke("designer_compute", { project });
+  return callCore<DesignerOutput>("designer_compute", { project });
 }
 
 /** خروجی G-code از طراح */
 export async function designerExportGcode(
   project: DesignerProject
 ): Promise<string> {
-  if (!isTauri) notInDesktop();
-  return invoke("designer_export_gcode", { project });
+  return callCore<string>("designer_export_gcode", { project });
+}
+
+/** فهرست ۲۰ پریست پرینتر واقعی (گام ۵) — وضعیت community */
+export async function printerPresets(): Promise<PrinterProfile[]> {
+  return callCore<PrinterProfile[]>("printer_presets", {});
 }
 
 /** خروجی STL در مسیر انتخابی */
@@ -364,4 +401,9 @@ export async function saveFileDialog(
 /** آیا در پوستهٔ دسکتاپ اجرا می‌شویم؟ (برای نمایش وضعیت صادقانه) */
 export function runningInDesktop(): boolean {
   return isTauri;
+}
+
+/** آیا هستهٔ Rust (پوسته یا پل dev) در دسترس است؟ برای گیت‌های محاسبه */
+export function coreAvailable(): boolean {
+  return isTauri || isDevServer;
 }
