@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "حداقل دسترسی‌های لازم G-code Studio — فقط دیالوگ native؛ بدون fs گسترده، shell، http یا updater (الزام Docs/PROMPT_04 §2)",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default"
+  ]
+}
