@@ -11,8 +11,8 @@
 [![نسخهٔ رلیس](https://img.shields.io/github/v/release/pranses2011/Sahand_OGCode_Studio?style=flat-square&label=%D8%B1%D9%84%DB%8C%D8%B3&color=ff7a28)](https://github.com/pranses2011/Sahand_OGCode_Studio/releases)
 [![windows-build](https://github.com/pranses2011/Sahand_OGCode_Studio/actions/workflows/windows-build.yml/badge.svg?branch=main)](https://github.com/pranses2011/Sahand_OGCode_Studio/actions/workflows/windows-build.yml)
 [![پلتفرم](https://img.shields.io/badge/%D9%BE%D9%84%D8%AA%D9%81%D8%B1%D9%85-Windows%2010%2F11%20x64-blue?style=flat-square)](https://github.com/pranses2011/Sahand_OGCode_Studio/releases)
-[![آزمون هسته](https://img.shields.io/badge/cargo%20test-127%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src-tauri/core)
-[![آزمون UI](https://img.shields.io/badge/Vitest-14%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src/lib/tauri.test.ts)
+[![آزمون هسته](https://img.shields.io/badge/cargo%20test-163%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src-tauri/core)
+[![آزمون UI](https://img.shields.io/badge/Vitest-30%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src/lib/tauri.test.ts)
 [![آفلاین](https://img.shields.io/badge/%D8%B4%D8%A8%DA%A9%D9%87-%D8%AF%D8%B1%20%D8%B2%D9%85%D8%A7%D9%86%20%D8%A7%D8%AC%D8%B1%D8%A7%20%D9%86%D8%AF%D8%A7%D8%B1%D8%AF-e05252?style=flat-square)](Docs/SAFETY.md)
 [![مجوز](https://img.shields.io/badge/%D9%85%D8%AC%D9%88%D8%B2-%D9%85%D8%B7%D8%A7%D8%A8%D9%82%20LICENSE-7d8392?style=flat-square)](LICENSE)
 
@@ -39,6 +39,10 @@
 |:---:|:---:|
 | <img src="Docs/screenshots/designer-step2-cards.png" width="480" alt="کارت‌های تصویری بزرگ الگوها با بندانگشتی واقعی + حلقهٔ اسپات نارنجی روی فرم"/> | <img src="Docs/screenshots/designer-step4-floors.png" width="480" alt="الگوهای کف: حلقه، مارپیچ، شبکه، شعاعی، رفت‌وبرگشتی"/> |
 
+| 🆕 اسپات چرخش فاز θ (۱.۳) | 🆕 تنظیمات دما و فن (۱.۳) |
+|:---:|:---:|
+| <img src="Docs/screenshots/designer-step2-phase.png" width="480" alt="دیال بنفش چرخش فاز θ با نشانگر — فاز ۱۳۵ درجه"/> | <img src="Docs/screenshots/designer-step5-temps.png" width="480" alt="تنظیمات دما و خنک‌کاری با پریست مواد PLA/PETG/ABS/TPU"/> |
+
 | گام ۲ (نسخهٔ ۱.۱): ۹ الگوی هندسی | گام ۵: ۲۰ پریست پرینتر واقعی |
 |:---:|:---:|
 | <img src="Docs/screenshots/designer-step2-patterns.png" width="480" alt="الگوهای هندسی فلس و تراش‌خورده روی گلدان"/> | <img src="Docs/screenshots/designer-step5-printer.png" width="480" alt="انتخاب پرینتر Bambu Lab P1S از فهرست ۲۰ مدل"/> |
@@ -47,6 +51,17 @@
   <img src="Docs/screenshots/theme-colors.png" width="640" alt="تم رنگی سایان با رشتهٔ چاپ فیروزه‌ای"/>
   <br/><em>۸ تم رنگی + ۱۰ رنگ رشتهٔ چاپ (نمایشی) — این تصویر: تم «سایان» و رشتهٔ فیروزه‌ای</em>
 </p>
+
+## 🆕 نسخهٔ ۱.۳.۰ — چرخش فاز θ + دما + نصب آپدیت سبک
+
+| قابلیت | توضیح |
+|---|---|
+| **🔄 اسپات چرخش فاز θ** | دیال بنفش روی نمای سه‌بعدی: نشانگر را حول محور بکشید تا زاویهٔ شروع مارپیچ (جای درز seam) و جهت‌گیری گلبرگ/شیارها بچرخد — mesh و مسیر و کف هم‌زاویه می‌مانند. Shift = چفت ۱۵°؛ فیلد عددی هم هست |
+| **🌡️ تنظیم دمای نازل و میز کار** | به‌همراه فن خنک‌کننده و گزینهٔ انتظار — خروجی استاندارد M140/M104 (تنظیم) و M190/M109 (انتظار) + M106/M107 (فن). دمای ۰ یعنی «فرمان دما ننویس» (کنترل دستی) |
+| **🧪 پریست مواد** | ۵ دکمه: PLA (200/60)، PETG (240/80)، ABS (250/100)، TPU (225/45)، PLA ابریشمی (215/65) — فن هم مطابق ماده تنظیم می‌شود؛ «شروع مناسب رایج» نه عدد قطعی |
+| **📦 نصب آپدیت سبک** | هر رلیس دو فایل دارد: نصب کامل آفلاین (~۲۰۰MB با WebView2 داخل بسته) + **نصب آپدیت/سبک (~۱۵MB)** که WebView2 را فقط در صورت نبود دانلود می‌کند — برای به‌روزرسانی سریع به‌جای دانلود ۲۰۰MB |
+| **خلاصهٔ هوشمند** | خلاصهٔ خروجی حالا فاز θ و دمای نازل/بستر را هم نشان می‌دهد؛ هدر G-code هم phase_start/temp/fan را برای بازرسی می‌نویسد |
+| **سازگاری کامل** | پروژه‌های ۱.۱/۱.۲ بدون فاز و دما ذخیره شده‌اند و با پیش‌فرض‌های ۱.۳ (فاز ۰، PLA 200/60) باز می‌شوند — هیچ داده‌ای از دست نمی‌رود |
 
 ## 🆕 نسخهٔ ۱.۲.۰ — گسترش بزرگ طراح
 
@@ -118,28 +133,36 @@
 
 | لایه | فناوری |
 |---|---|
-| پوستهٔ دسکتاپ | **Tauri 2** (WebView2 با `offlineInstaller`) |
+| پوستهٔ دسکتاپ | **Tauri 2** (WebView2 — دو باندل: `offlineInstaller` کامل + `downloadBootstrapper` سبک) |
 | هستهٔ محاسباتی | **Rust** — parser/مفسر/طراح/خروجی‌ساز خالص |
 | رابط کاربری | **React 18 + TypeScript + Vite** |
 | ویرایشگر کد | **CodeMirror 6** |
 | نمایش سه‌بعدی | **Three.js (WebGL2)** |
-| آزمون | **cargo test** (۱۵۲ آزمون) + **Vitest** (۱۹ آزمون) |
+| آزمون | **cargo test** (۱۶۳ آزمون) + **Vitest** (۳۰ آزمون) |
 
 ## 📦 نصب
 
-### دانلود نصب‌کنندهٔ رلیس (ساده‌ترین راه)
+### دانلود از رلیس (ساده‌ترین راه)
 
 1. به بخش **[Releases](https://github.com/pranses2011/Sahand_OGCode_Studio/releases)** ریپازیتوری بروید.
-2. در آخرین رلیس (مثلاً `v1.1.0`) فایل **`G-code Studio_1.1.0_x64-setup.exe`** را دانلود کنید — این فایل توسط CI ویندوزِ گیت‌هاب از همین سورس ساخته شده است.
+2. در آخرین رلیس (مثلاً `v1.3.0`) **یکی از دو فایل** را دانلود کنید:
+
+   | فایل | حجم تقریبی | مناسب چه کسی؟ |
+   |---|---|---|
+   | `G-code.Studio_full-setup.exe` (نصب کامل) | ~۲۰۰ MB | ویندوز **بدون اینترنت** — WebView2 داخل بسته است |
+   | `G-code.Studio_light-setup.exe` (نصب آپدیت/سبک) | ~۱۵ MB | **به‌روزرسانی سریع** — WebView2 فقط اگر نصب نباشد آنلاین دانلود می‌شود (ویندوز ۱۰/۱۱ به‌روز تقریباً همیشه دارد) |
+
+   💡 برای آپدیت نسخهٔ قبلی، همان فایل سبک را نصب کنید — روی نسخهٔ موجود نصب می‌شود.
 3. فایل را اجرا کنید؛ نصب per-user است و به admin نیاز ندارد.
 
-اگر رلیسی موجود نیست (مثلاً پیش از اولین تگ): تب **Actions** → workflow **windows-build** → آخرین اجرای موفق → artefact **`gcode-studio-windows-x64`**.
+اگر رلیسی موجود نیست (مثلاً پیش از اولین تگ): تب **Actions** → workflow **windows-build** → آخرین اجرای موفق → artefact **`gcode-studio-windows-x64`** (شامل هر دو نصب‌کننده).
 
 ### مشخصات نصب
 
 - **هدف:** Windows 10 22H2 / Windows 11 x64
 - **نصب per-user** (بدون نیاز به admin)
-- **WebView2 با حالت `offlineInstaller`** داخل نصب‌کننده بسته‌بندی شده است → **نصب روی سیستم بدون اینترنت و بدون runtime از پیش نصب‌شده ممکن است** (بدون bootstrapper آنلاین).
+- **نصب کامل:** WebView2 با حالت `offlineInstaller` داخل بسته — نصب روی سیستم بدون اینترنت ممکن است.
+- **نصب سبک:** حالت `downloadBootstrapper` — تنها در صورت نبود WebView2 (که در اکثر ویندوزهای به‌روز هست) نیاز به اینترنت لحظه‌ای هنگام نصب دارد؛ خود برنامه همچنان کاملاً آفلاین است.
 - گزینهٔ `fixedRuntime` عمداً به‌کار نرفته: حجم نصب‌کننده را چند ده مگابایت بزرگ می‌کند و به‌روزرسانی امنیتی WebView2 را از کنترل کاربر خارج می‌کند. اگر این trade-off برایتان مهم است، در `src-tauri/tauri.conf.json` قابل تغییر است.
 - حذف برنامه (uninstall) فایل‌های G-code و پروژه‌های شما را پاک **نمی‌کند**.
 
@@ -150,9 +173,10 @@
 npm install
 npm test              # آزمون‌های فرانت‌اند (Vitest)
 cd src-tauri
-cargo test -p gcode-core   # ۱۲۷ آزمون هستهٔ Rust
+cargo test -p gcode-core   # ۱۶۳ آزمون هستهٔ Rust
 cd ..
-npm run tauri build   # روی ویندوز: NSIS .exe در src-tauri/target/release/bundle/nsis/
+npm run tauri build   # نصب کامل (آفلاین) — src-tauri/target/release/bundle/nsis/
+npm run tauri build -- --config src-tauri/tauri.light.conf.json   # نصب سبک (آپدیت)
 ```
 
 > **محدودیت صادقانهٔ محیط:** این ریپو روی سرور Linux توسعه یافته است؛ build پوستهٔ Tauri (که به WebView2/GTK وابسته است) روی Windows انجام می‌شود — CI گیت‌هاب همین کار را می‌کند و روی تگ‌های `v*` رلیس با فایل نصب می‌سازد. **تست نصب آفلاین روی ویندوز واقعی با اینترنت قطع، در محیط توسعه انجام نشده و «اجرا‌نشده» گزارش می‌شود.**
@@ -191,13 +215,13 @@ src/                     # رابط React فارسی RTL
 
 | مجموعه | تعداد | وضعیت | محیط |
 |---|---|---|---|
-| `cargo test -p gcode-core` | ۱۲۷ | ✅ همه پاس | Linux (هسته خالص پلتفرم‌مستقل) |
-| `npm test` (Vitest) | ۱۴ | ✅ همه پاس | Node 24 |
+| `cargo test -p gcode-core` | ۱۶۳ | ✅ همه پاس | Linux (هسته خالص پلتفرم‌مستقل) |
+| `npm test` (Vitest) | 30 | ✅ همه پاس | Node 24 |
 | `tsc --noEmit` + `vite build` | — | ✅ بدون خطا | Linux |
-| build ویندوز NSIS | — | ✅ از طریق CI | GitHub Actions Windows runner |
-| **نصب/اجرا روی ویندوز با اینترنت قطع** | — | ❌ **اجرا‌نشده** | نیاز به سیستم ویندوز واقعی |
+| build ویندوز NSIS (کامل + سبک) | — | ✅ از طریق CI | GitHub Actions Windows runner |
+| **نصب/اجرا روی ویندوز با اینترنت قطع (full) / روشن (light)** | — | ❌ **اجرا‌نشده** | نیاز به سیستم ویندوز واقعی |
 
-پوشش آزمون‌های هسته: lexer (فشرده/N/checksum/کامنت/M117/NaN)، مفسر modal (هر ۵ fixture سند + قوس R و IJ + bounds + spiral + macro)، قوس‌ها (سه صفحه/مارپیچ/خطاها)، doc (BOM/CRLF/roundtrip)، طراح (mesh/STL/۱۷ الگو/۱۲ بافت/۵ الگوی کف/اسپلاین مونوتون/مرکز‌گذاری/۲۰ پریست پرینتر/اعتبارسنجی)، خروجی (E مطلق-نسبی/STL binary/سیاست checksum)، IPC (payload/Save As/preview_data).
+پوشش آزمون‌های هسته: lexer (فشرده/N/checksum/کامنت/M117/NaN)، مفسر modal (هر ۵ fixture سند + قوس R و IJ + bounds + spiral + macro)، قوس‌ها (سه صفحه/مارپیچ/خطاها)، doc (BOM/CRLF/roundtrip)، طراح (mesh/STL/۱۷ الگو/۱۲ بافت/۵ الگوی کف/اسپلاین مونوتون/مرکز‌گذاری/**چرخش فاز θ ۴ آزمون**/۲۰ پریست پرینتر/اعتبارسنجی)، خروجی (E مطلق-نسبی/STL binary/سیاست checksum/**دما و فن ۵ آزمون**)، IPC (payload/Save As/preview_data).
 
 ## 🔒 امنیت و حریم خصوصی
 
