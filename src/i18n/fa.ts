@@ -122,6 +122,25 @@ export interface FaStrings {
   spotFloorHole: string;
   designerUndo: string;
   designerRedo: string;
+  // ---------- نسخهٔ ۱.۳: چرخش فاز θ + تنظیمات حرارتی ----------
+  phaseRotate: string;
+  phaseRotateHint: string;
+  phaseRotateSeam: string;
+  spotPhaseRotate: string;
+  tempsTitle: string;
+  materialPresets: string;
+  materialHint: string;
+  nozzleTemp: string;
+  bedTemp: string;
+  fanSpeed: string;
+  waitTemps: string;
+  waitTempsHint: string;
+  matPla: string;
+  matPetg: string;
+  matAbs: string;
+  matTpu: string;
+  matSilk: string;
+  tempsZeroNote: string;
   stylePresets: string;
   stylePresetHint: string;
   cardAdd: string;
@@ -292,6 +311,28 @@ export const fa: FaStrings = {
   spotFloorHole: "تغییر قطر سوراخ کف",
   designerUndo: "واگرد",
   designerRedo: "ازنو",
+  // ---------- نسخهٔ ۱.۳: چرخش فاز θ + دما ----------
+  phaseRotate: "چرخش فرم θ (درجه)",
+  phaseRotateHint:
+    "زاویهٔ شروع مارپیچ حول محور — جای درز (seam) و جهت گلبرگ/شیارها را می‌چرخاند.",
+  phaseRotateSeam: "درز چاپ به سمت انتخابی شما می‌افتد — برای پنهان‌کردن درز، سمت پشت مدل را انتخاب کنید",
+  spotPhaseRotate: "چرخش فاز θ با کشیدن",
+  tempsTitle: "تنظیمات دما و خنک‌کاری",
+  materialPresets: "ماده (پریست دما)",
+  materialHint:
+    "مقادیر «شروع مناسب رایج» هستند نه عدد قطعی — به برند/رنگ فیلامنت و تنظیمات سازنده شما وابسته‌اند؛ قبل از چاپ نهایی تست بگیرید.",
+  nozzleTemp: "دمای نازل (°C)",
+  bedTemp: "دمای میز کار/بستر (°C)",
+  fanSpeed: "فن خنک‌کنندهٔ قطعه (٪)",
+  waitTemps: "منتظر رسیدن دما بمان (M190/M109)",
+  waitTempsHint:
+    "روشن: چاپ فقط بعد از رسیدن نازل/بستر به دمای هدف شروع می‌شود (توصیه‌شده).",
+  matPla: "PLA — 200/60",
+  matPetg: "PETG — 240/80",
+  matAbs: "ABS — 250/100",
+  matTpu: "TPU — 225/45",
+  matSilk: "PLA ابریشمی — 215/65",
+  tempsZeroNote: "دمای ۰ یعنی فرمان دما در G-code نوشته نمی‌شود (کنترل دستی پرینتر).",
   stylePresets: "استایل‌های آماده",
   stylePresetHint: "ترکیب آمادهٔ پروفایل + الگو + بافت — بعد از اعمال کاملاً قابل‌ویرایش است",
   cardAdd: "افزودن",

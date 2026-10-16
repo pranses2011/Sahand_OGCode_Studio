@@ -136,6 +136,15 @@ export interface PrinterProfile {
   travel_speed_mm_min: number;
   flow_multiplier: number;
   absolute_e: boolean;
+  /** ---- نسخهٔ ۱.۳: تنظیمات حرارتی (اختیاری — پیش‌فرض PLA 200/60/100%) ---- */
+  /** دمای هدف نازل (°C) — ۰ = عدم صدور فرمان دما */
+  nozzle_temp_c?: number;
+  /** دمای هدف بستر/میز کار (°C) — ۰ = عدم صدور فرمان دما */
+  bed_temp_c?: number;
+  /** فن خنک‌کنندهٔ قطعه (٪ ۰..۱۰۰) — M106 S معادل */
+  fan_percent?: number;
+  /** با M190/M109 منتظر رسیدن به دما بمان؟ (پیش‌فرض true) */
+  wait_for_temps?: boolean;
   start_gcode: string;
   end_gcode: string;
 }
@@ -200,6 +209,8 @@ export interface DesignerProject {
   profile_interpolation?: ProfileInterpolation;
   /** نسخهٔ ۱.۲ — مرکز‌گذاری روی صفحهٔ چاپ (پیش‌فرض روشن) */
   center_on_bed?: boolean;
+  /** نسخهٔ ۱.۳ — چرخش کل فرم حول محور Z (درجه)؛ زاویهٔ درز/جهت‌گیری */
+  phase_start_deg?: number;
   patterns: PatternParams[];
   textures: TextureParams[];
   floor: FloorSettings;
