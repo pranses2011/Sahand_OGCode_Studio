@@ -607,7 +607,13 @@ export function Viewport(props: ViewportProps) {
     };
 
     // ---- بازاستفادهٔ LineSegments و بافرها (بدون dispose/recreate) ----
+    // ۱.۴: بازپیوند به صحنهٔ جاری — در StrictMode (dev) صحنه پس از remount
+    // دوباره ساخته می‌شود؛ شیء بازاستفاده‌شده باید به صحنهٔ «فعلی» برگردد
+    // (three.js add() خودش از والد قبلی خارج می‌کند)
     let lines = linesRef.current;
+    if (lines && lines.parent !== scene) {
+      scene.add(lines);
+    }
     if (!lines) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(0), 3));
@@ -673,7 +679,6 @@ export function Viewport(props: ViewportProps) {
     (geo.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
     colorsAttrRef.current!.needsUpdate = true;
     geo.setDrawRange(0, n * 2);
-    geo.computeBoundingSphere(); // برای raycast کلیک (editor)
 
     // fit هوشمند (۱.۴ — رفع پرش دوربین در هر تغییر اسلایدر)
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2;
@@ -681,6 +686,9 @@ export function Viewport(props: ViewportProps) {
       Math.max(maxX - minX, maxY - minY, maxZ - minZ) / 2,
       30
     );
+    // bounding sphere دستی از محدودهٔ دادهٔ «پرشده» — computeBoundingSphere
+    // روی کل ظرفیت (شامل دنبالهٔ صفر) حساب می‌شود و کرهٔ غلط می‌داد
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), r);
     maybeFit(cx, cy, cz, r);
     markDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
