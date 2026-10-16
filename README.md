@@ -43,14 +43,17 @@
 |:---:|:---:|
 | <img src="Docs/screenshots/designer-step2-phase.png" width="480" alt="دیال بنفش چرخش فاز θ با نشانگر — فاز ۱۳۵ درجه"/> | <img src="Docs/screenshots/designer-step5-temps.png" width="480" alt="تنظیمات دما و خنک‌کاری با پریست مواد PLA/PETG/ABS/TPU"/> |
 
-| گام ۲ (نسخهٔ ۱.۱): ۹ الگوی هندسی | گام ۵: ۲۰ پریست پرینتر واقعی |
+| 🆕 کف چندلایه — ۳ لایه + ادامهٔ vase (۱.۴) | 🆕 سرعت‌های mm/s + رتراکشن (۱.۴) |
 |:---:|:---:|
-| <img src="Docs/screenshots/designer-step2-patterns.png" width="480" alt="الگوهای هندسی فلس و تراش‌خورده روی گلدان"/> | <img src="Docs/screenshots/designer-step5-printer.png" width="480" alt="انتخاب پرینتر Bambu Lab P1S از فهرست ۲۰ مدل"/> |
+| <img src="Docs/screenshots/designer-step4-floor-layers.png" width="480" alt="کف ۳ لایه با حلقه‌های هم‌مرکز زیر فرم مارپیچی + فیلد تعداد لایهٔ کف"/> | <img src="Docs/screenshots/designer-step5-speeds.png" width="480" alt="گروه سرعت‌ها به mm/s: دیواره/لایهٔ اول/کف/جابجایی + رتراکشن"/> |
 
-<p align="center">
-  <img src="Docs/screenshots/theme-colors.png" width="640" alt="تم رنگی سایان با رشتهٔ چاپ فیروزه‌ای"/>
-  <br/><em>۸ تم رنگی + ۱۰ رنگ رشتهٔ چاپ (نمایشی) — این تصویر: تم «سایان» و رشتهٔ فیروزه‌ای</em>
-</p>
+| 🆕 اسپات روی سطح فرم (۱.۴) | گام ۲ (نسخهٔ ۱.۱): ۹ الگوی هندسی |
+|:---:|:---:|
+| <img src="Docs/screenshots/designer-step2-surface-spot.png" width="480" alt="دسته‌های نارنجی/آبی روی بدنهٔ فرم — درگ عمودی = ارتفاع، افقی = چرخش فاز الگو"/> | <img src="Docs/screenshots/designer-step2-patterns.png" width="480" alt="الگوهای هندسی فلس و تراش‌خورده روی گلدان"/> |
+
+| گام ۵: ۲۰ پریست پرینتر واقعی | ۸ تم رنگی + ۱۰ رنگ رشتهٔ چاپ |
+|:---:|:---:|
+| <img src="Docs/screenshots/designer-step5-printer.png" width="480" alt="انتخاب پرینتر Bambu Lab P1S از فهرست ۲۰ مدل"/> | <img src="Docs/screenshots/theme-colors.png" width="480" alt="تم رنگی سایان با رشتهٔ چاپ فیروزه‌ای"/> |
 
 ## 🆕 نسخهٔ ۱.۴.۰ — کف چندلایه + سرعت‌ها + G-code استاندارد + نمایشگر سریع
 
