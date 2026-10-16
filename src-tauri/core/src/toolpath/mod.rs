@@ -16,6 +16,12 @@
 
 use serde::{Deserialize, Serialize};
 
+/// زیرماژول tessellation قوس‌های G2/G3
+pub mod arcs;
+
+// re-export برای راحتی import
+pub use arcs::{tessellate_arc, ArcError, ArcParams, Plane};
+
 /// نوع segment از نظر فیزیکی چاپ (رنگ‌بندی viewport و inspector)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SegmentKind {

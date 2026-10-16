@@ -110,8 +110,6 @@ pub fn lex_line(raw_with_maybe_cr: &str, line_index: usize) -> LexedLine {
     let bytes = raw.as_bytes();
     let mut pos: usize = 0;
     let len = bytes.len();
-    // متن پیش از * برای محاسبهٔ checksum
-    let mut star_pos: Option<usize> = None;
 
     while pos < len {
         let b = bytes[pos];
@@ -140,7 +138,6 @@ pub fn lex_line(raw_with_maybe_cr: &str, line_index: usize) -> LexedLine {
         }
         // ---- checksum: هر چیزی بعد از * تا پایان خط ----
         if b == b'*' {
-            star_pos = Some(pos);
             checksum_raw = Some(raw[pos + 1..].trim().to_string());
             // اعتبارسنجی XOR بایت‌های پیش از * (روش استاندارد RepRap)
             checksum_valid = Some(validate_checksum(raw, pos));
@@ -149,7 +146,6 @@ pub fn lex_line(raw_with_maybe_cr: &str, line_index: usize) -> LexedLine {
         // ---- واژه: حرف بزرگ/کوچک + مقدار ----
         if b.is_ascii_alphabetic() {
             let letter = (b as char).to_ascii_uppercase();
-            let start = pos;
             pos += 1;
             // جمع‌کردن کاراکترهای مقدار: رقم، نقطه، علامت
             let val_start = pos;
@@ -199,16 +195,42 @@ pub fn lex_line(raw_with_maybe_cr: &str, line_index: usize) -> LexedLine {
                         }
                     }
                 }
-                let message = raw[rest_start..rest_end].trim().to_string();
+                let message = raw[rest_start..rest_end].trim();
                 words.push(LexedWord {
                     letter: 'M',
                     number: Some(117.0),
-                    text: if message.is_empty() { None } else { Some(message) },
+                    text: if message.is_empty() { None } else { Some(message.to_string()) },
                     raw: format!("M117 {message}").trim().to_string(),
                 });
                 // ادامهٔ پیمایش از انتهای پیام (کامنت/checksum در حلقهٔ اصلی پردازش می‌شود)
                 pos = rest_end;
                 continue;
+            }
+
+            // ---------- مقدار بدشکل الفبایی-عددی (مثل XNaN) ----------
+            // اگر بعد از واژه‌ای بدون مقدارِ عددی، رشتهٔ الفبایی-عددیِ چندکاراکتری
+            // بیاید (مثل NaN یا inf)، کل آن بخشی از «مقدار بدشکل» است.
+            // حرف تکی بعدی واژهٔ جدید است (مثل G28XY) و عدد معتبر + حرف بعدی هم
+            // فرمت فشردهٔ واژهٔ بعدی است (مثل G1X10Y20).
+            let next_is_alpha = pos < len && bytes[pos].is_ascii_alphabetic();
+            if next_is_alpha && val_str.is_empty() {
+                let mut run_end = pos;
+                while run_end < len && bytes[run_end].is_ascii_alphanumeric() {
+                    run_end += 1;
+                }
+                if run_end - pos > 1 {
+                    pos = run_end;
+                    let bad_raw = raw[val_start..pos].to_string();
+                    malformed_words.push(format!("{letter}{bad_raw}"));
+                    words.push(LexedWord {
+                        letter,
+                        number: None,
+                        text: Some(bad_raw.clone()),
+                        raw: format!("{letter}{bad_raw}"),
+                    });
+                    continue;
+                }
+                // حرف تکی: واژهٔ جدید در چرخهٔ اصلی پردازش می‌شود
             }
 
             // ---------- واژهٔ عددی معمولی ----------
@@ -389,9 +411,9 @@ mod tests {
     #[test]
     fn test_paren_comment() {
         let l = lex_line("G1 X10 (slow move) Y20", 0);
-        assert_eq!(l.words.len(), 4);
+        assert_eq!(l.words.len(), 3);
         assert_eq!(l.comment.as_deref(), Some("slow move"));
-        assert_eq!(l.words[3].number, Some(20.0));
+        assert_eq!(l.words[2].number, Some(20.0));
     }
 
     #[test]

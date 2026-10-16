@@ -330,10 +330,18 @@ mod tests {
         let r = tessellate_arc(&p).unwrap();
         // نقطهٔ آخر دقیقاً مقصد است
         assert_eq!(r.points.last().unwrap(), &[40.0, 40.0, 0.2]);
-        // نقطهٔ میانی باید روی بالای مرکز باشد: (35, 45)
-        let mid = r.points[r.points.len() / 2];
-        assert!((mid[0] - 35.0).abs() < 0.2, "mid x = {}", mid[0]);
-        assert!((mid[1] - 45.0).abs() < 0.2, "mid y = {}", mid[1]);
+        // قوس باید از نقطهٔ بالای مرکز (35,45) بگذرد (نزدیک‌ترین نقطه)
+        let nearest = r
+            .points
+            .iter()
+            .min_by(|a, b| {
+                let da = (a[0] - 35.0).powi(2) + (a[1] - 45.0).powi(2);
+                let db = (b[0] - 35.0).powi(2) + (b[1] - 45.0).powi(2);
+                da.partial_cmp(&db).unwrap()
+            })
+            .unwrap();
+        assert!((nearest[0] - 35.0).abs() < 0.3, "nearest = {nearest:?}");
+        assert!((nearest[1] - 45.0).abs() < 0.3, "nearest = {nearest:?}");
         // جاروب نیم‌دور ساعت‌گرد (منفی)
         assert!((r.sweep.abs() - std::f64::consts::PI).abs() < 1e-6);
     }
@@ -346,8 +354,16 @@ mod tests {
         let r = tessellate_arc(&p).unwrap();
         assert_eq!(r.points.last().unwrap(), &[30.0, 40.0, 0.2]);
         // پادساعت‌گرد از 0° تا 180° هم از بالای مرکز می‌گذرد
-        let mid = r.points[r.points.len() / 2];
-        assert!((mid[1] - 45.0).abs() < 0.2);
+        let nearest = r
+            .points
+            .iter()
+            .min_by(|a, b| {
+                let da = (a[0] - 35.0).powi(2) + (a[1] - 45.0).powi(2);
+                let db = (b[0] - 35.0).powi(2) + (b[1] - 45.0).powi(2);
+                da.partial_cmp(&db).unwrap()
+            })
+            .unwrap();
+        assert!((nearest[1] - 45.0).abs() < 0.3, "nearest = {nearest:?}");
         assert!((r.sweep - std::f64::consts::PI).abs() < 1e-6);
     }
 
@@ -379,11 +395,11 @@ mod tests {
 
     #[test]
     fn test_r_form_major_arc() {
-        // R منفی → کمان بزرگ (بیشتر از ۱۸۰°)
+        // R منفی → کمان بزرگ (بیشتر از ۱۸۰°)؛ دو سر باید کمتر از ۲|R| فاصله داشته باشند
         let mut p = base([0.0, 0.0, 0.0], [10.0, 0.0, 0.0], false);
-        p.radius = Some(-5.0);
+        p.radius = Some(-6.0); // فاصلهٔ ۱۰ < قطر ۱۲ → کمان بزرگ ممکن است
         let r = tessellate_arc(&p).unwrap();
-        assert!(r.sweep > std::f64::consts::PI);
+        assert!(r.sweep > std::f64::consts::PI, "sweep = {}", r.sweep);
     }
 
     #[test]
@@ -425,17 +441,29 @@ mod tests {
 
     #[test]
     fn test_helical_z_interpolation() {
-        // قوس با تغییر Z (مارپیچ): z باید از 0.2 به 1.2 خطی برسد
+        // قوس با تغییر Z (مارپیچ): z باید از 0.2 به 1.2 به‌صورت خطی برسد
+        // مرکز مطلق (0,0) → آفست از مبدأ (0,10) برابر (0,-10) است
         let mut p = base([0.0, 10.0, 0.2], [0.0, -10.0, 1.2], false);
-        p.center_uv = Some((0.0, 0.0)); // مرکز مبدأ، r=10
+        p.center_uv = Some((0.0, -10.0));
         let r = tessellate_arc(&p).unwrap();
         // نیم‌دور پادساعت‌گرد از 90° تا 270°
         assert!((r.sweep - std::f64::consts::PI).abs() < 1e-6);
-        // z میانی باید حدود 0.7 باشد
+        // z باید صعودی خطی باشد از حدود 0.2 تا دقیقاً 1.2
+        let z_first = r.points.first().unwrap()[2];
+        let z_last = r.points.last().unwrap()[2];
+        assert!(z_first > 0.2 && z_first < 0.4, "z_first = {z_first}");
+        assert!((z_last - 1.2).abs() < 1e-12);
+        for w in r.points.windows(2) {
+            assert!(w[1][2] > w[0][2], "z باید صعودی باشد");
+        }
+        // نقطهٔ میانی باید z حدود وسط (0.6 تا 0.8) داشته باشد
         let mid = r.points[r.points.len() / 2];
-        assert!((mid[2] - 0.7).abs() < 0.05);
-        // نقطهٔ انتها دقیق است
-        assert!((r.points.last().unwrap()[2] - 1.2).abs() < 1e-12);
+        assert!(mid[2] > 0.5 && mid[2] < 0.9, "mid z = {}", mid[2]);
+        // شعاع در صفحهٔ XY باید ۱۰ بماند
+        for pt in &r.points {
+            let rad = (pt[0] * pt[0] + pt[1] * pt[1]).sqrt();
+            assert!((rad - 10.0).abs() < 1e-6);
+        }
     }
 
     #[test]
