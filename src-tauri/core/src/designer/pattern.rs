@@ -35,6 +35,22 @@ pub enum PatternKind {
     Scale,
     /// تراش‌خورده (facet): مقطع چندضلعی منتظم با عمق کنترل‌شونده
     Facet,
+    /// رشته‌ای/طناب (braid): تارهای درهم‌بافته — sin(kθ+t)·cos(kθ−t)
+    Braid,
+    /// آناناسی (pineapple): شبکهٔ لوزی تیز با سلول‌های برجستهٔ کج
+    Pineapple,
+    /// نیلوفر (lotus): ردیف‌های گلبرگ هم‌پوشان با جابه‌جایی نصف‌گلبرگ در هر ردیف
+    Lotus,
+    /// شیار پیچان (twisted flute): شیارهای عمودی که با ارتفاع می‌چرخند
+    TwistedFlute,
+    /// مروارید (pearl): ردیف‌های دانه‌های گرد درهم‌جابه‌جا
+    Pearl,
+    /// یونانی (meander): بلوک‌های مربعی متناوب شبیه نقش یونانی
+    Meander,
+    /// آجری (brick): ردیف‌های ذوزنقه‌ای نیم‌جابه‌جا مثل دیوار آجری
+    Brick,
+    /// خاردار (spikes): خارهای مثلثی تیز دور فرم
+    Spikes,
 }
 
 impl PatternKind {
@@ -50,6 +66,14 @@ impl PatternKind {
             PatternKind::Rings => "حلقهٔ افقی",
             PatternKind::Scale => "فلس",
             PatternKind::Facet => "تراش‌خورده",
+            PatternKind::Braid => "رشته‌ای (طناب)",
+            PatternKind::Pineapple => "آناناسی",
+            PatternKind::Lotus => "نیلوفر (آبشاری)",
+            PatternKind::TwistedFlute => "شیار پیچان",
+            PatternKind::Pearl => "مروارید",
+            PatternKind::Meander => "یونانی",
+            PatternKind::Brick => "آجری",
+            PatternKind::Spikes => "خاردار",
         }
     }
 }
@@ -205,6 +229,63 @@ fn pattern_value(p: &PatternParams, z: f64, theta: f64, total_height: f64) -> f6
             // انحراف ≤ 0 (وجه‌ها به داخل می‌نشینند) — نرمال‌سازی به عمق کامل
             -((1.0 - ratio) / (1.0 - (std::f64::consts::PI / kk).cos()).max(1e-9))
         }
+        // رشته‌ای/طناب: دو موج سینوسی متقابل که در هم می‌بافند —
+        // sin(kθ+t)·cos(kθ−t) شبکهٔ تار/پود می‌سازد (توهم طناب بافته)
+        PatternKind::Braid => {
+            let t = 2.0 * std::f64::consts::PI * p.frequency * zn;
+            (k * theta + phase + t).sin() * (k * theta + phase - t).cos()
+        }
+        // آناناسی: شبکهٔ لوزی با سلول‌های تیز — جذر |sin| سلول‌ها را
+        // برجسته و نوک‌تیز می‌کند (شبیه پوستهٔ آناناس)؛ با چرخش ارتفاعی
+        PatternKind::Pineapple => {
+            let t = 2.0 * std::f64::consts::PI * p.frequency * zn;
+            let a = (k * theta + phase + t).sin().abs().sqrt();
+            let b = (k * theta + phase - t).sin().abs().sqrt();
+            (a + b - 1.4).clamp(-1.0, 1.0)
+        }
+        // نیلوفر: ردیف‌های گلبرگ هم‌پوشان — هر ردیف ارتفاعی نصف‌گلبرگ
+        // جابه‌جا است (شبیه گلبرگ‌های آبشاری نیلوفر)
+        PatternKind::Lotus => {
+            let rows = (p.frequency.max(1.0) * 4.0).round().max(1.0);
+            let row = (zn * rows).floor();
+            let c = (k * theta * 0.5 + phase + row * std::f64::consts::PI / k).cos();
+            c * c // ∈ [0, 1] — فقط برجستگی
+        }
+        // شیار پیچان: مثل شیار عمودی ولی با چرخش تدریجی با ارتفاع —
+        // کانال‌ها مورب می‌پیچند (ستون‌های باروک)
+        PatternKind::TwistedFlute => {
+            let th_eff = theta + 2.0 * std::f64::consts::PI * p.frequency * zn;
+            let c = (k * th_eff + phase).cos();
+            c * c * 2.0 - 1.0
+        }
+        // مروارید: دانه‌های گرد cos⁴ با جابه‌جایی نصف‌دور در هر ردیف
+        PatternKind::Pearl => {
+            let rows = (p.frequency.max(1.0) * 4.0).round().max(1.0);
+            let row = (zn * rows).floor();
+            let c = (k * theta + phase + row * std::f64::consts::PI / k).cos();
+            c * c * c * c * 2.0 - 1.0
+        }
+        // یونانی: بلوک‌های مربعی متناوب — tanh موج را مربعی نرم می‌کند؛
+        // حاصل‌ضرب θ و z بلوک‌های شطرنجی مورب می‌سازد (نقش یونانی)
+        PatternKind::Meander => {
+            let t = 2.0 * std::f64::consts::PI * p.frequency * zn;
+            ((k * theta + phase).sin() * 3.0).tanh() * (t.sin() * 3.0).tanh()
+        }
+        // آجری: ردیف‌های ذوزنقه‌ای نیم‌جابه‌جا — |sin| در هر ردیف با
+        // آفست زوج/فرد π/k (مثل دیوار آجری)
+        PatternKind::Brick => {
+            let rows = (p.frequency.max(1.0) * 6.0).round().max(1.0);
+            let row = (zn * rows).floor();
+            let off = (row as i64 % 2).abs() as f64 * std::f64::consts::PI / k;
+            (k * theta + phase + off).sin().abs() * 2.0 - 1.0
+        }
+        // خاردار: خارهای مثلثی تیز — موج مثلثی با جابه‌جایی ارتفاعی
+        PatternKind::Spikes => {
+            let x = ((k * theta + phase) / std::f64::consts::PI
+                + p.frequency * zn)
+                .rem_euclid(1.0);
+            1.0 - 4.0 * (x - 0.5).abs()
+        }
     };
     v * p.amplitude_mm * w
 }
@@ -248,6 +329,9 @@ mod tests {
             PatternKind::Wave, PatternKind::Petal, PatternKind::Twist, PatternKind::Flute,
             PatternKind::Diamond, PatternKind::Chevron, PatternKind::Rings,
             PatternKind::Scale, PatternKind::Facet,
+            PatternKind::Braid, PatternKind::Pineapple, PatternKind::Lotus,
+            PatternKind::TwistedFlute, PatternKind::Pearl, PatternKind::Meander,
+            PatternKind::Brick, PatternKind::Spikes,
         ]
         {
             let p = base_pattern(kind);
@@ -458,5 +542,123 @@ mod tests {
             (r1 - r2).abs() > 0.1,
             "چندضلعی باید با ارتفاع بچرخد: r1={r1} r2={r2}"
         );
+    }
+
+    // ================= آزمون‌های الگوهای جدید (۸ عدد) =================
+
+    #[test]
+    fn test_braid_bounded() {
+        // رشته‌ای: حاصل‌ضرب sin·cos ∈ [-1,1]
+        let p = base_pattern(PatternKind::Braid);
+        for i in 0..300 {
+            let theta = i as f64 * 0.021;
+            let z = (i % 100) as f64;
+            let (r, _) = apply_patterns(20.0, z, theta, 100.0, &[p.clone()]);
+            assert!(r >= 18.5 - 1e-9 && r <= 21.5 + 1e-9, "r={r}");
+        }
+    }
+
+    #[test]
+    fn test_pineapple_pointed_cells() {
+        // آناناسی: سلول‌های برجسته — جذر |sin| نوک تیزتر از لوزی ساده
+        let mut p = base_pattern(PatternKind::Pineapple);
+        p.amplitude_mm = 2.0;
+        p.frequency = 0.0;
+        // k=8: θ=π/16 → هر دو sin=±1 → a=b=1 → v=2−1.4=0.6 (بیشینه)
+        let (r_peak, _) = apply_patterns(20.0, 50.0, std::f64::consts::PI / 16.0, 100.0, &[p.clone()]);
+        // θ=0 → هر دو sin=0 → v=−1.4 → clamp −1 (گودی کامل)
+        let (r_valley, _) = apply_patterns(20.0, 50.0, 0.0, 100.0, &[p]);
+        assert!((r_peak - 21.2).abs() < 1e-9, "r_peak={r_peak}");
+        assert!((r_valley - 18.0).abs() < 1e-9, "r_valley={r_valley}");
+    }
+
+    #[test]
+    fn test_lotus_rows_staggered() {
+        // نیلوفر: ردیف‌های ارتفاعی گلبرگ‌ها را نصف‌گلبرگ جابه‌جا می‌کنند
+        let mut p = base_pattern(PatternKind::Lotus);
+        p.count = 6;
+        p.frequency = 1.0; // rows=4 → مرز ردیف در zn=0.25
+        // zn=0.1 (ردیف ۰) و zn=0.3 (ردیف ۱) در θ ثابت
+        let (r1, _) = apply_patterns(20.0, 10.0, 0.4, 100.0, &[p.clone()]);
+        let (r2, _) = apply_patterns(20.0, 30.0, 0.4, 100.0, &[p.clone()]);
+        assert!((r1 - r2).abs() > 0.05, "ردیف‌ها باید جابه‌جا باشند: {r1} {r2}");
+        // همیشه برجستگی (≥ 0) — گلبرگ فقط بیرون می‌زند
+        for i in 0..40 {
+            let (r, _) = apply_patterns(20.0, 25.0, i as f64 * 0.157, 100.0, &[p.clone()]);
+            assert!(r >= 20.0 - 1e-9, "نیلوفر نباید گودی بسازد: r={r}");
+        }
+    }
+
+    #[test]
+    fn test_twisted_flute_varies_with_z() {
+        // شیار پیچان برخلاف شیار ساده با ارتفاع تغییر می‌کند
+        // (z=10 و z=60 با k=8 روی همان فاز می‌افتند؛ 50 انتخاب امن است)
+        let mut p = base_pattern(PatternKind::TwistedFlute);
+        p.frequency = 1.0;
+        let (r1, _) = apply_patterns(20.0, 10.0, 0.8, 100.0, &[p.clone()]);
+        let (r2, _) = apply_patterns(20.0, 50.0, 0.8, 100.0, &[p]);
+        assert!((r1 - r2).abs() > 0.1, "r1={r1} r2={r2}");
+    }
+
+    #[test]
+    fn test_pearl_bounded_bumpy() {
+        // مروارید: cos⁴·2−1 ∈ [-1,1]؛ دانه‌های گرد
+        let mut p = base_pattern(PatternKind::Pearl);
+        p.amplitude_mm = 1.0;
+        p.frequency = 1.0;
+        let mut max_r = f64::MIN;
+        let mut min_r = f64::MAX;
+        for i in 0..200 {
+            let theta = i as f64 * 0.0314;
+            let z = (i % 100) as f64;
+            let (r, _) = apply_patterns(20.0, z, theta, 100.0, &[p.clone()]);
+            max_r = max_r.max(r);
+            min_r = min_r.min(r);
+            assert!(r >= 19.0 - 1e-9 && r <= 21.0 + 1e-9, "r={r}");
+        }
+        assert!(max_r > 20.9, "بیشینهٔ مروارید باید نزدیک +amp باشد: {max_r}");
+        assert!(min_r < 19.1, "کمینه باید نزدیک −amp باشد: {min_r}");
+    }
+
+    #[test]
+    fn test_meander_blocky_alternates() {
+        // یونانی: بلوک‌های متناوب — علامت مقدار در θ‌های ربع‌دور جابه‌جا می‌شود
+        let mut p = base_pattern(PatternKind::Meander);
+        p.count = 4;
+        p.frequency = 2.0;
+        // zn=0.125 → sin(2π·2·0.125)=1؛ θ=π/8 → sin(4·π/8)=1 → +
+        let (r_pos, _) = apply_patterns(20.0, 12.5, std::f64::consts::PI / 8.0, 100.0, &[p.clone()]);
+        // θ=3π/8 → sin(4·3π/8)=−1 → −
+        let (r_neg, _) = apply_patterns(20.0, 12.5, 3.0 * std::f64::consts::PI / 8.0, 100.0, &[p]);
+        assert!(r_pos > 20.5 && r_neg < 19.5, "r_pos={r_pos} r_neg={r_neg}");
+    }
+
+    #[test]
+    fn test_brick_rows_offset() {
+        // آجری: ردیف زوج و فرد در همان θ مقدار متفاوت دارند (نیم‌جابه‌جایی)
+        let mut p = base_pattern(PatternKind::Brick);
+        p.count = 8;
+        p.frequency = 1.0; // rows=6 → مرز ردیف در zn=1/6
+        let (r_even, _) = apply_patterns(20.0, 8.0, 0.3, 100.0, &[p.clone()]);
+        let (r_odd, _) = apply_patterns(20.0, 30.0, 0.3, 100.0, &[p.clone()]);
+        assert!((r_even - r_odd).abs() > 0.05, "{r_even} {r_odd}");
+        // همیشه در [-amp, +amp]
+        for i in 0..80 {
+            let (r, _) = apply_patterns(20.0, (i % 100) as f64, i as f64 * 0.08, 100.0, &[p.clone()]);
+            assert!(r >= 18.5 - 1e-9 && r <= 21.5 + 1e-9, "r={r}");
+        }
+    }
+
+    #[test]
+    fn test_spikes_triangular_peaks() {
+        // خاردار: موج مثلثی — x=0.5 بیشینه +amp؛ x=0/1 گودی −amp
+        let mut p = base_pattern(PatternKind::Spikes);
+        p.amplitude_mm = 2.0;
+        p.frequency = 0.0;
+        // k=8: x = 8θ/π mod 1 → x=0.5 در θ=π/16
+        let (r_peak, _) = apply_patterns(20.0, 50.0, std::f64::consts::PI / 16.0, 100.0, &[p.clone()]);
+        let (r_valley, _) = apply_patterns(20.0, 50.0, 0.0, 100.0, &[p.clone()]);
+        assert!((r_peak - 22.0).abs() < 1e-9, "r_peak={r_peak}");
+        assert!((r_valley - 18.0).abs() < 1e-9, "r_valley={r_valley}");
     }
 }
