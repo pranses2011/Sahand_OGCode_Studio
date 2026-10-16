@@ -36,6 +36,13 @@ fn preset(
         travel_speed_mm_min: travel_speed,
         flow_multiplier: 1.0,
         absolute_e: true,
+        // دما/فن — به پرینتر وابسته نیست، به «ماده» وابسته است؛
+        // پیش‌فرض PLA عمومی می‌گذاریم و کاربر در گام ۵ با پریست ماده
+        // (PLA/PETG/ABS/TPU) تنظیم می‌کند (نسخهٔ ۱.۳).
+        nozzle_temp_c: 200.0,
+        bed_temp_c: 60.0,
+        fan_percent: 100.0,
+        wait_for_temps: true,
         start_gcode: String::new(),
         end_gcode: String::new(),
     }
