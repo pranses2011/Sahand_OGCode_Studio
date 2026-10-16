@@ -395,6 +395,7 @@ pub fn designer_compute(project: DesignerProject) -> DesignerOutput {
         textures: project.textures.clone(),
         floor: project.floor.clone(),
         center_on_bed: project.center_on_bed,
+        phase_start_deg: project.phase_start_deg,
         printer: project.printer.clone(),
     };
     compute(&input)
@@ -536,6 +537,7 @@ pub fn designer_export_gcode(project: DesignerProject) -> Result<String, String>
             textures: validated.textures,
             floor: validated.floor,
             center_on_bed: validated.center_on_bed,
+            phase_start_deg: validated.phase_start_deg,
             printer: validated.printer,
         },
         &output,
