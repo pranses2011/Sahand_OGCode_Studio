@@ -22,6 +22,23 @@
  *     کشیدن نشانگر حول محور، زاویهٔ درز/جهت‌گیری فرم را می‌چرخاند
  *     (درگ مطلق روی صفحهٔ افقی؛ Shift = چفت ۱۵ درجه).
  *
+ * نسخهٔ ۱.۴ — کارایی (درخواست کاربر: «نمایشگر خیلی کنده»):
+ *   - رندر «به‌اقتضا»: حلقهٔ rAF فقط وقتی چیزی تغییر کرده یا کاربر در
+ *     تعامل است رندر می‌کند — نه ۶۰fps دائم روی GPU؛
+ *   - رفع پرش دوربین: fit خودکار فقط در «بار اول» یا تغییر دامنهٔ
+ *     هندسه (>۱٫۶×)؛ در تغییرات اسلایدر/درگِ اسپات، دوربین کاربر می‌ماند؛
+ *   - بازاستفادهٔ بافر: position/color درجا به‌روز می‌شوند (setDrawRange)
+ *     و فقط با رشد ظرفیت بازسازی می‌شوند — بدون dispose/recreate پیوسته؛
+ *   - سقف devicePixelRatio = ۲ (نمایش HiDPI بدون هزینهٔ بی‌ پایان)؛
+ *   - دوربین/مدار در ref مشترک تا fit بیرونی با orbit ناسازگار نشود.
+ *
+ * نسخهٔ ۱.۴ — اسپات مثل مرجع (دست‌کاری مستقیم روی مدل):
+ *   - الگو/بافت: دستهٔ نارنجی/آبی «روی سطح فرم» در زاویهٔ فاز الگو؛
+ *     درگ عمودی = جابه‌جایی ارتفاع بازه، درگ افقی (حول محور) = چرخش
+ *     زاویهٔ فاز الگو روی فرم — همان تجربهٔ درگ مستقیم اپ مرجع
+ *     (بر پایهٔ مستندات تور ویدئویی ۵ گامی؛ جزئیات داخل اپ مرجع
+ *     پشت دیوار مجوز است و «کپی» ادعا نمی‌شود — Docs/REFERENCE_AUDIT.md).
+ *
  * معماری رندر: LineSegments با BufferGeometry واحد + رنگ per-vertex.
  * برجسته‌سازی: بازنویسی رنگ رأس‌های segmentهای انتخاب‌شده (بدون ساخت
  * شیء جدید → سریع حتی با صدها هزار segment).
@@ -62,7 +79,11 @@ export interface SpotHandle {
   height: number;
   /** مرکز محور فرم روی صفحه (mm) — از center_on_bed */
   bedOffset: [number, number];
-  /** زاویهٔ فعلی فاز (درجه) — فقط برای phaseRotation (نسخهٔ ۱.۳) */
+  /**
+   * زاویهٔ فاز (درجه) — برای phaseRotation = فاز کل فرم (۱.۳)؛
+   * برای patternRange/textureFade = فاز «خودِ الگو/بافت» (۱.۴):
+   * دسته روی سطح فرم در همین زاویه می‌نشیند و درگ افقی آن می‌چرخاند.
+   */
   phaseDeg?: number;
 }
 
@@ -71,12 +92,12 @@ export interface SpotChange {
   zStart?: number;
   zEnd?: number | null;
   holeDiameter?: number;
-  /** چرخش فاز θ (درجه ۰..۳۶۰) — نسخهٔ ۱.۳ */
+  /** چرخش فاز (درجه ۰..۳۶۰) — ۱.۳: کل فرم؛ ۱.۴: الگو/بافت فعال */
   phaseDeg?: number;
 }
 
 export interface ViewportProps extends ViewportCallbacks {
-  /** payload فشردهٔ مسیر از parse_gcode (null = خالی) */
+  /** payload فشردهٔ مسیر (null = خالی) — ids می‌تواند خالی باشد (طراح) */
   segments: SegmentsPayload | null;
   /** idهای segmentهای برجسته (خط انتخاب‌شده) */
   highlightIds: Set<number>;
@@ -84,7 +105,7 @@ export interface ViewportProps extends ViewportCallbacks {
   filter: { mode: "all" | "upTo" | "onlyHighlight"; upToId: number };
   /** حجم ساخت [x,y,z] اگر پروفایل انتخاب شده (mm) — مختصات واقعی 0..vol */
   buildVolume?: [number, number, number] | null;
-  /** اسپات جابه‌جایی (نسخهٔ ۱.۲) — null = بدون اسپات */
+  /** اسپات جابه‌جایی — null = بدون اسپات */
   spot?: SpotHandle | null;
   /** تغییر اسپات با درگ */
   onSpotChange?: (change: SpotChange) => void;
@@ -128,6 +149,19 @@ export function snapDeg(deg: number, step: number): number {
   return ((snapped % 360) + 360) % 360;
 }
 
+/** وضعیت درگ اسپات — ۱.۴: قفل جهت ژست (z یا θ) پس از ۸px حرکت */
+type SpotDrag = {
+  which: "start" | "end" | "hole" | "phase";
+  lastX: number;
+  lastY: number;
+  startX: number;
+  startY: number;
+  /** حالت قفل‌شدهٔ ژست — تا وقتی null است تصمیم نگرفته‌ایم */
+  mode: "z" | "theta" | null;
+  /** z صفحهٔ درگ زاویه‌ای (z دسته در آغاز ژست) */
+  planeZ: number;
+};
+
 export function Viewport(props: ViewportProps) {
   const holderRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -140,7 +174,28 @@ export function Viewport(props: ViewportProps) {
   stateRef.current = props;
   // حلقه‌های اسپات (برای درگ و پاک‌سازی)
   const spotGroupRef = useRef<THREE.Group | null>(null);
-  const spotDragRef = useRef<null | { which: "start" | "end" | "hole" | "phase"; lastX: number; lastY: number }>(null);
+  const spotDragRef = useRef<SpotDrag | null>(null);
+
+  // ---- کارایی ۱.۴: رندر به‌اقتضا + دوربین پایدار ----
+  /** تغییر صحنه → رندر در فریم بعد (rAF همیشه فعال، رندر فقط هنگام نیاز) */
+  const dirtyRef = useRef(true);
+  /** شمارندهٔ تعامل فعال (orbit/pan/درگ اسپات) — رندر پیوسته هنگام آن */
+  const interactingRef = useRef(0);
+  /** کنترل مدار مشترک — تا fit بیرونی با orbit ناسازگار نشود (رفع پرش) */
+  const camCtlRef = useRef({
+    rotX: 0.75,
+    rotY: 0.42,
+    dist: 300,
+    target: new THREE.Vector3(110, 60, -110),
+  });
+  /** اعمال دوربین از camCtlRef — در setup effect پر می‌شود */
+  const applyCamRef = useRef<(() => void) | null>(null);
+  /** آخرین fit — فقط تغییر دامنهٔ بزرگ دوباره fit می‌کند (رفع پرش) */
+  const lastFitRef = useRef<{ x: number; y: number; z: number; r: number } | null>(null);
+
+  const markDirty = () => {
+    dirtyRef.current = true;
+  };
 
   // رنگ اکستروژن قابل‌انتخاب (رشتهٔ چاپ) — بازسازی فقط با تغییر مقدار
   const extrusionColor = useMemo(
@@ -180,7 +235,8 @@ export function Viewport(props: ViewportProps) {
       return;
     }
     renderer.setClearColor(0x14161c, 1);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    // ۱.۴: سقف DPR=۲ — کیفیت HiDPI بدون رندر ۳× سنگین
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     holder.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -189,8 +245,6 @@ export function Viewport(props: ViewportProps) {
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 10000);
-    camera.position.set(160, 140, 160);
-    camera.lookAt(0, 60, 0);
     cameraRef.current = camera;
 
     // ---- نورپردازی ساده (برای mesh و حلقه‌های اسپات) ----
@@ -209,109 +263,154 @@ export function Viewport(props: ViewportProps) {
     axes.position.y = 0.01;
     scene.add(axes);
 
-    // ---- کنترل مداری دستی ----
+    // ---- کنترل مداری دستی (وضعیت در camCtlRef — مشترک با fit) ----
     let dragging = false;
     let panning = false;
     let lastX = 0, lastY = 0;
-    let rotX = Math.atan2(camera.position.z - 0, camera.position.x - 0);
-    let rotY = Math.asin(
-      (camera.position.y - 60) /
-        Math.hypot(camera.position.x, camera.position.y - 60, camera.position.z)
-    );
-    let dist = camera.position.length() - 60;
-    // هدف مدار (با build volume به مرکز صفحه می‌رود)
-    let orbitTarget = new THREE.Vector3(0, 60, 0);
 
     const updateCam = () => {
-      rotY = Math.max(-1.5, Math.min(1.5, rotY));
-      const cy = orbitTarget.y + dist * Math.sin(rotY);
-      const cr = dist * Math.cos(rotY);
+      const ctl = camCtlRef.current;
+      ctl.rotY = Math.max(-1.5, Math.min(1.5, ctl.rotY));
+      const cy = ctl.target.y + ctl.dist * Math.sin(ctl.rotY);
+      const cr = ctl.dist * Math.cos(ctl.rotY);
       camera.position.set(
-        orbitTarget.x + cr * Math.cos(rotX),
+        ctl.target.x + cr * Math.cos(ctl.rotX),
         cy,
-        orbitTarget.z + cr * Math.sin(rotX)
+        ctl.target.z + cr * Math.sin(ctl.rotX)
       );
-      camera.lookAt(orbitTarget);
+      camera.lookAt(ctl.target);
     };
+    applyCamRef.current = () => {
+      updateCam();
+      markDirty();
+    };
+    updateCam();
 
     const raycaster = new THREE.Raycaster();
     raycaster.params.Line = { threshold: 3 };
 
-    const onDown = (e: PointerEvent) => {
-      // اول: برخورد با حلقه‌های اسپات؟ (اولویت روی orbit)
+    /** برخورد ماوس با گروه اسپات (اولویت روی orbit) */
+    const spotHit = (e: PointerEvent | MouseEvent): THREE.Object3D | null => {
       const spotGroup = spotGroupRef.current;
-      if (spotGroup && spotGroup.children.length > 0) {
-        const rect = renderer.domElement.getBoundingClientRect();
-        const ndc = new THREE.Vector2(
-          ((e.clientX - rect.left) / rect.width) * 2 - 1,
-          -((e.clientY - rect.top) / rect.height) * 2 + 1
-        );
-        raycaster.setFromCamera(ndc, camera);
-        const hits = raycaster.intersectObjects(spotGroup.children, false);
-        if (hits.length > 0 && e.button === 0) {
-          const name = hits[0].object.name || "";
-          if (name === "spot-start" || name === "spot-end" || name === "spot-hole" || name === "spot-phase") {
-            spotDragRef.current = {
-              which: name === "spot-start" ? "start"
-                : name === "spot-end" ? "end"
+      if (!spotGroup || spotGroup.children.length === 0) return null;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycaster.setFromCamera(ndc, camera);
+      const hits = raycaster.intersectObjects(spotGroup.children, false);
+      return hits.length > 0 ? hits[0].object : null;
+    };
+
+    /** برخورد پرتو ماوس با صفحهٔ افقی z — برای درگ زاویه‌ای اسپات */
+    const planeHit = (
+      e: PointerEvent | MouseEvent,
+      planeZ: number
+    ): THREE.Vector3 | null => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycaster.setFromCamera(ndc, camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeZ);
+      const hit = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(plane, hit)) return hit;
+      return null;
+    };
+
+    const onDown = (e: PointerEvent) => {
+      // اول: برخورد با دسته‌های اسپات؟ (اولویت روی orbit)
+      const hitObj = spotHit(e);
+      if (hitObj && e.button === 0) {
+        const name = hitObj.name || "";
+        if (name === "spot-start" || name === "spot-end" || name === "spot-hole" || name === "spot-phase") {
+          const which: SpotDrag["which"] =
+            name === "spot-start" ? "start"
+              : name === "spot-end" ? "end"
                 : name === "spot-hole" ? "hole"
-                : "phase",
-              lastX: e.clientX,
-              lastY: e.clientY,
-            };
-            renderer.domElement.style.cursor = "grabbing";
-            e.preventDefault();
-            return;
-          }
+                  : "phase";
+          const spot = stateRef.current.spot;
+          // z صفحهٔ درگ زاویه‌ای: z دسته (یا دیال) در آغاز ژست
+          const planeZ = which === "phase"
+            ? Math.max(spot?.zStart ?? 1.2, 1.2)
+            : which === "start" ? Math.max(spot?.zStart ?? 1, 1)
+              : which === "end" ? Math.max(spot?.zEnd ?? spot?.zStart ?? 1, 1)
+                : 1.0;
+          spotDragRef.current = {
+            which,
+            lastX: e.clientX,
+            lastY: e.clientY,
+            startX: e.clientX,
+            startY: e.clientY,
+            mode: null, // تصمیم جهت پس از ۸px
+            planeZ,
+          };
+          interactingRef.current += 1;
+          renderer.domElement.style.cursor = "grabbing";
+          e.preventDefault();
+          return;
         }
       }
       dragging = e.button === 0;
       panning = e.button === 1 || e.button === 2 || e.shiftKey;
+      if (dragging || panning) interactingRef.current += 1;
       lastX = e.clientX; lastY = e.clientY;
     };
 
     const onMove = (e: PointerEvent) => {
-      // ---- درگ اسپات: جابه‌جایی بازه/شعاع با حرکت نسبی ماوس ----
+      // ---- درگ اسپات ----
       const drag = spotDragRef.current;
       if (drag) {
-        const dx = e.clientX - drag.lastX;
-        const dy = e.clientY - drag.lastY;
-        drag.lastX = e.clientX;
-        drag.lastY = e.clientY;
+        const dxTotal = e.clientX - drag.startX;
+        const dyTotal = e.clientY - drag.startY;
+        // ۱.۴: قفل جهت ژست پس از ۸px — عمودی = ارتفاع، افقی = زاویه
+        if (drag.mode === null && (Math.abs(dxTotal) > 8 || Math.abs(dyTotal) > 8)) {
+          drag.mode = Math.abs(dyTotal) >= Math.abs(dxTotal) ? "z" : "theta";
+        }
         const spot = stateRef.current.spot;
         const cb = stateRef.current.onSpotChange;
         if (spot && cb) {
           // مقیاس حرکت نسبت به فاصلهٔ دوربین (همان ضریب pan)
-          const k = Math.max(dist, 40) * 0.0016;
+          const k = Math.max(camCtlRef.current.dist, 40) * 0.0016;
           if (drag.which === "hole") {
-            // افقی → قطر سوراخ (mm)
+            const dx = e.clientX - drag.lastX;
             const d = Math.max(0, spot.radius * 2 + dx * k * 2);
             cb({ holeDiameter: d });
           } else if (drag.which === "phase") {
-            // ---- دیال چرخش فاز θ (نسخهٔ ۱.۳) ----
-            // درگ مطلق: برخورد پرتو ماوس با صفحهٔ افقی دیال → زاویه
+            // ---- دیال چرخش فاز θ (۱.۳): درگ مطلق روی صفحهٔ دیال ----
+            const hit = planeHit(e, drag.planeZ);
             const sg = spotGroupRef.current;
-            const ud = (sg?.userData ?? {}) as { phaseCenter?: [number, number]; phaseZ?: number };
-            if (ud.phaseCenter && typeof ud.phaseZ === "number") {
-              const rect = renderer.domElement.getBoundingClientRect();
-              const ndc = new THREE.Vector2(
-                ((e.clientX - rect.left) / rect.width) * 2 - 1,
-                -((e.clientY - rect.top) / rect.height) * 2 + 1
-              );
-              raycaster.setFromCamera(ndc, camera);
-              const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(ud.phaseZ as number));
-              const hit = new THREE.Vector3();
-              if (raycaster.ray.intersectPlane(plane, hit)) {
-                const relX = hit.x - ud.phaseCenter[0];
-                const relZ = hit.z - ud.phaseCenter[1];
-                if (Math.hypot(relX, relZ) > 2.5) {
-                  let deg = dialAngleDeg(relX, relZ);
-                  if (e.shiftKey) deg = snapDeg(deg, 15); // چفت ۱۵°
-                  cb({ phaseDeg: deg });
-                }
+            const ud = (sg?.userData ?? {}) as { phaseCenter?: [number, number] };
+            if (hit && ud.phaseCenter) {
+              const relX = hit.x - ud.phaseCenter[0];
+              const relZ = hit.z - ud.phaseCenter[1];
+              if (Math.hypot(relX, relZ) > 2.5) {
+                let deg = dialAngleDeg(relX, relZ);
+                if (e.shiftKey) deg = snapDeg(deg, 15); // چفت ۱۵°
+                cb({ phaseDeg: deg });
+              }
+            }
+          } else if (drag.mode === "theta") {
+            // ---- ۱.۴: درگ افقی دسته = چرخش زاویهٔ فاز الگو/بافت ----
+            // برخورد پرتو با صفحهٔ افقی در z دسته → زاویهٔ حول محور فرم
+            const hit = planeHit(e, drag.planeZ);
+            const [ax, ay] = spot.bedOffset;
+            const cx = ax;
+            const cz = -ay; // Three: y_gc → −z
+            if (hit) {
+              const relX = hit.x - cx;
+              const relZ = hit.z - cz;
+              if (Math.hypot(relX, relZ) > 2.0) {
+                let deg = dialAngleDeg(relX, relZ);
+                if (e.shiftKey) deg = snapDeg(deg, 15);
+                cb({ phaseDeg: deg });
               }
             }
           } else {
+            // ---- درگ عمودی = ارتفاع (رفتار ۱.۲) ----
+            const dy = e.clientY - drag.lastY;
             const dz = -dy * k;
             if (drag.which === "start") {
               const nz = Math.min(
@@ -325,46 +424,43 @@ export function Viewport(props: ViewportProps) {
             }
           }
         }
+        drag.lastX = e.clientX;
+        drag.lastY = e.clientY;
         return;
       }
       if (!dragging && !panning) {
-        // نشانگر grab روی حلقه‌ها
-        const spotGroup = spotGroupRef.current;
-        if (spotGroup && spotGroup.children.length > 0) {
-          const rect = renderer.domElement.getBoundingClientRect();
-          const ndc = new THREE.Vector2(
-            ((e.clientX - rect.left) / rect.width) * 2 - 1,
-            -((e.clientY - rect.top) / rect.height) * 2 + 1
-          );
-          raycaster.setFromCamera(ndc, camera);
-          const hits = raycaster.intersectObjects(spotGroup.children, false);
-          renderer.domElement.style.cursor =
-            hits.length > 0 ? "grab" : "default";
-        }
+        // نشانگر grab روی دسته‌ها
+        const hitObj = spotHit(e);
+        renderer.domElement.style.cursor = hitObj ? "grab" : "default";
         return;
       }
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
       lastX = e.clientX; lastY = e.clientY;
+      const ctl = camCtlRef.current;
       if (dragging && !panning) {
-        rotX -= dx * 0.006;
-        rotY += dy * 0.006;
+        ctl.rotX -= dx * 0.006;
+        ctl.rotY += dy * 0.006;
         updateCam();
+        markDirty();
       } else if (panning) {
-        const panScale = dist * 0.0016;
+        const panScale = ctl.dist * 0.0016;
         const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
         const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
         camera.position.addScaledVector(right, -dx * panScale);
         camera.position.addScaledVector(up, dy * panScale);
-        orbitTarget.addScaledVector(right, -dx * panScale);
-        orbitTarget.addScaledVector(up, dy * panScale);
+        ctl.target.addScaledVector(right, -dx * panScale);
+        ctl.target.addScaledVector(up, dy * panScale);
+        markDirty();
       }
     };
     const onUp = () => {
+      if (dragging || panning) interactingRef.current = Math.max(0, interactingRef.current - 1);
       dragging = false;
       panning = false;
       if (spotDragRef.current) {
         spotDragRef.current = null;
+        interactingRef.current = Math.max(0, interactingRef.current - 1);
         if (rendererRef.current) {
           rendererRef.current.domElement.style.cursor = "default";
         }
@@ -372,9 +468,10 @@ export function Viewport(props: ViewportProps) {
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      dist *= 1 + Math.sign(e.deltaY) * 0.12;
-      dist = Math.max(10, Math.min(5000, dist));
+      camCtlRef.current.dist *= 1 + Math.sign(e.deltaY) * 0.12;
+      camCtlRef.current.dist = Math.max(10, Math.min(5000, camCtlRef.current.dist));
       updateCam();
+      markDirty();
     };
 
     // ---- کلیک: انتخاب segment با Raycaster روی LineSegments ----
@@ -399,6 +496,26 @@ export function Viewport(props: ViewportProps) {
       }
     };
 
+    // ---- دابل‌کلیک: fit دوباره به هندسهٔ جاری (کنترل دستی کاربر) ----
+    const onDblClick = () => {
+      const lines = linesRef.current;
+      if (!lines) return;
+      const geo = lines.geometry;
+      geo.computeBoundingSphere();
+      if (geo.boundingSphere) {
+        const c = geo.boundingSphere.center;
+        const r = Math.max(geo.boundingSphere.radius, 30);
+        const ctl = camCtlRef.current;
+        ctl.target.copy(c);
+        ctl.dist = r * 2.6;
+        ctl.rotX = 0.75;
+        ctl.rotY = 0.42;
+        lastFitRef.current = { x: c.x, y: c.y, z: c.z, r };
+        updateCam();
+        markDirty();
+      }
+    };
+
     const el = renderer.domElement;
     el.style.touchAction = "none";
     el.addEventListener("pointerdown", onDown);
@@ -406,6 +523,7 @@ export function Viewport(props: ViewportProps) {
     window.addEventListener("pointerup", onUp);
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("click", onClick);
+    el.addEventListener("dblclick", onDblClick);
     el.addEventListener("contextmenu", (e) => e.preventDefault());
 
     // ---- resize ----
@@ -415,6 +533,7 @@ export function Viewport(props: ViewportProps) {
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      markDirty();
     });
     ro.observe(holder);
     const w0 = holder.clientWidth || 640;
@@ -423,10 +542,15 @@ export function Viewport(props: ViewportProps) {
     camera.aspect = w0 / h0;
     camera.updateProjectionMatrix();
 
-    // ---- حلقهٔ رندر ----
+    // ---- ۱.۴: حلقهٔ رندر به‌اقتضا ----
+    // rAF همیشه فعال است ولی «رندر» فقط وقتی صحنه کثیف است یا کاربر در
+    // تعامل (orbit/pan/درگ) است انجام می‌شود — بیکاری = صفر بار GPU.
     let raf = 0;
     const loop = () => {
-      renderer.render(scene, camera);
+      if (dirtyRef.current || interactingRef.current > 0) {
+        renderer.render(scene, camera);
+        dirtyRef.current = false;
+      }
       raf = requestAnimationFrame(loop);
     };
     loop();
@@ -439,74 +563,137 @@ export function Viewport(props: ViewportProps) {
       window.removeEventListener("pointerup", onUp);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("click", onClick);
+      el.removeEventListener("dblclick", onDblClick);
       renderer.dispose();
       if (el.parentElement === holder) holder.removeChild(el);
     };
   }, []);
 
   // ------------------------------------------------------------------------
-  // به‌روزرسانی هندسه با segments جدید
+  // به‌روزرسانی هندسه با segments جدید — ۱.۴: بازاستفادهٔ بافر + دوربین پایدار
   // ------------------------------------------------------------------------
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    if (linesRef.current) {
-      scene.remove(linesRef.current);
-      linesRef.current.geometry.dispose();
-      (linesRef.current.material as THREE.Material).dispose();
-      linesRef.current = null;
-      colorsAttrRef.current = null;
-    }
     const segs = props.segments;
-    if (!segs || segs.ids.length === 0) return;
+    const n = segs ? Math.floor(segs.positions.length / 6) : 0;
 
-    const n = segs.ids.length;
-    const positions = new Float32Array(n * 6);
-    const colors = new Float32Array(n * 6);
-    for (let i = 0; i < n; i++) {
-      const p = segs.positions;
-      positions[i * 6 + 0] = p[i * 6 + 0];
-      positions[i * 6 + 1] = p[i * 6 + 2]; // z بالا (Three: Y up)
-      positions[i * 6 + 2] = -p[i * 6 + 1]; // y → -z (چپ‌دست G-code → راست‌دست Three)
-      positions[i * 6 + 3] = p[i * 6 + 3];
-      positions[i * 6 + 4] = p[i * 6 + 5];
-      positions[i * 6 + 5] = -p[i * 6 + 4];
-      const c = kindColor(segs.kinds[i], COLORS);
-      colors.set([c.r, c.g, c.b, c.r, c.g, c.b], i * 6);
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const colorsAttr = new THREE.BufferAttribute(colors, 3);
-    geo.setAttribute("color", colorsAttr);
-    colorsAttrRef.current = colorsAttr;
-
-    const mat = new THREE.LineBasicMaterial({ vertexColors: true });
-    const lines = new THREE.LineSegments(geo, mat);
-    scene.add(lines);
-    linesRef.current = lines;
-
-    // fit-to-view خودکار در بار اول
-    geo.computeBoundingSphere();
-    if (geo.boundingSphere) {
-      const c = geo.boundingSphere.center;
-      const r = Math.max(geo.boundingSphere.radius, 30);
-      const cam = cameraRef.current;
-      if (cam) {
-        cam.position.set(c.x + r * 1.6, c.y + r * 1.2, c.z + r * 1.6);
-        cam.lookAt(c.x, c.y, c.z);
+    // ---- fit هوشمند: فقط بار اول یا تغییر دامنهٔ بزرگ (رفع پرش دوربین) ----
+    // دوربین کاربر در به‌روزرسانی‌های پیوسته (اسلایدر/درگ اسپات) ثابت می‌ماند
+    const maybeFit = (cx: number, cy: number, cz: number, r: number) => {
+      const last = lastFitRef.current;
+      const bigChange =
+        !last ||
+        r > last.r * 1.6 ||
+        r < last.r * 0.4 ||
+        Math.hypot(cx - last.x, cy - last.y, cz - last.z) > Math.max(last.r, r);
+      if (bigChange && interactingRef.current === 0) {
+        const cam = cameraRef.current;
+        if (cam) {
+          cam.position.set(cx + r * 1.6, cy + r * 1.2, cz + r * 1.6);
+          cam.lookAt(cx, cy, cz);
+          // همگام‌سازی کنترل مدار (رفع پرش پس از fit هنگام orbit بعدی):
+          // جهت دوربین از هدف = (1.6, 1.2, 1.6)·r
+          const ctl = camCtlRef.current;
+          ctl.target.set(cx, cy, cz);
+          ctl.dist = r * Math.hypot(1.6, 1.2, 1.6); // فاصلهٔ واقعی دوربین
+          ctl.rotX = Math.atan2(1.6, 1.6); // ≈ π/4
+          ctl.rotY = Math.asin(
+            Math.max(-0.99, Math.min(0.99, 1.2 / Math.hypot(1.6, 1.2, 1.6)))
+          );
+        }
+        lastFitRef.current = { x: cx, y: cy, z: cz, r };
       }
+    };
+
+    // ---- بازاستفادهٔ LineSegments و بافرها (بدون dispose/recreate) ----
+    let lines = linesRef.current;
+    if (!lines) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(0), 3));
+      geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(0), 3));
+      const mat = new THREE.LineBasicMaterial({ vertexColors: true });
+      lines = new THREE.LineSegments(geo, mat);
+      lines.frustumCulled = false; // setDrawRange داینامیک — culling دستی
+      scene.add(lines);
+      linesRef.current = lines;
     }
-  }, [props.segments]);
+    const geo = lines.geometry;
+    const posAttr = geo.getAttribute("position") as THREE.BufferAttribute;
+    const colAttr = geo.getAttribute("color") as THREE.BufferAttribute;
+    const capacity = posAttr.count; // تعداد «رأس» (۲ برابر segment)
+
+    if (n === 0) {
+      geo.setDrawRange(0, 0);
+      markDirty();
+      return;
+    }
+
+    // رشد ظرفیت فقط وقتی لازم است (×۱٫۵ حاشیه)
+    if (capacity < n * 2) {
+      const newCap = Math.ceil(n * 2 * 1.5);
+      const positions = new Float32Array(newCap * 3);
+      const colors = new Float32Array(newCap * 3);
+      positions.set(posAttr.array as Float32Array, 0);
+      colors.set(colAttr.array as Float32Array, 0);
+      geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const newColAttr = new THREE.BufferAttribute(colors, 3);
+      geo.setAttribute("color", newColAttr);
+      colorsAttrRef.current = newColAttr;
+    } else {
+      colorsAttrRef.current = colAttr;
+    }
+
+    const posArr = (geo.getAttribute("position") as THREE.BufferAttribute).array as Float32Array;
+    const colArr = (colorsAttrRef.current!.array as Float32Array);
+    const p = segs!.positions;
+    // محدوده برای fit دستی (بدون computeBoundingSphere سنگین)
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+    for (let i = 0; i < n; i++) {
+      // G-code → Three: (x, y, z) → (x, z, −y)
+      const x0 = p[i * 6 + 0], y0 = p[i * 6 + 1], z0 = p[i * 6 + 2];
+      const x1 = p[i * 6 + 3], y1 = p[i * 6 + 4], z1 = p[i * 6 + 5];
+      const ax = x0, ay = z0, az = -y0;
+      const bx = x1, by = z1, bz = -y1;
+      posArr[i * 6 + 0] = ax; posArr[i * 6 + 1] = ay; posArr[i * 6 + 2] = az;
+      posArr[i * 6 + 3] = bx; posArr[i * 6 + 4] = by; posArr[i * 6 + 5] = bz;
+      if (ax < minX) minX = ax; if (ax > maxX) maxX = ax;
+      if (ay < minY) minY = ay; if (ay > maxY) maxY = ay;
+      if (az < minZ) minZ = az; if (az > maxZ) maxZ = az;
+      if (bx < minX) minX = bx; if (bx > maxX) maxX = bx;
+      if (by < minY) minY = by; if (by > maxY) maxY = by;
+      if (bz < minZ) minZ = bz; if (bz > maxZ) maxZ = bz;
+      // رنگ نوع — نوشتن مستقیم بدون تخصیص آرایه (کارایی)
+      const c = kindColor(segs!.kinds[i], COLORS);
+      colArr[i * 6 + 0] = c.r; colArr[i * 6 + 1] = c.g; colArr[i * 6 + 2] = c.b;
+      colArr[i * 6 + 3] = c.r; colArr[i * 6 + 4] = c.g; colArr[i * 6 + 5] = c.b;
+    }
+    (geo.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+    colorsAttrRef.current!.needsUpdate = true;
+    geo.setDrawRange(0, n * 2);
+    geo.computeBoundingSphere(); // برای raycast کلیک (editor)
+
+    // fit هوشمند (۱.۴ — رفع پرش دوربین در هر تغییر اسلایدر)
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2;
+    const r = Math.max(
+      Math.max(maxX - minX, maxY - minY, maxZ - minZ) / 2,
+      30
+    );
+    maybeFit(cx, cy, cz, r);
+    markDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.segments, COLORS]);
 
   // ------------------------------------------------------------------------
-  // برجسته‌سازی + فیلتر — فقط بازنویسی رنگ‌ها (سریع)
+  // برجسته‌سازی + فیلتر — فقط بازنویسی رنگ‌ها (سریع) + رندر به‌اقتضا
   // ------------------------------------------------------------------------
   useEffect(() => {
     const attr = colorsAttrRef.current;
     const segs = props.segments;
     if (!attr || !segs) return;
-    const n = segs.ids.length;
+    const n = Math.floor(segs.positions.length / 6);
     const arr = attr.array as Float32Array;
 
     const upToIdx = props.filter.mode === "upTo"
@@ -516,7 +703,7 @@ export function Viewport(props: ViewportProps) {
     for (let i = 0; i < n; i++) {
       const visible =
         props.filter.mode === "upTo" ? i <= upToIdx : true;
-      const isHl = props.highlightIds.has(segs.ids[i]);
+      const isHl = segs.ids.length > 0 && props.highlightIds.has(segs.ids[i]);
       let c: THREE.Color;
       if (!visible) {
         c = COLORS.dimmed;
@@ -531,12 +718,11 @@ export function Viewport(props: ViewportProps) {
       arr[i * 6 + 3] = c.r; arr[i * 6 + 4] = c.g; arr[i * 6 + 5] = c.b;
     }
     attr.needsUpdate = true;
+    markDirty();
   }, [props.highlightIds, props.filter, props.segments, idToIndex, COLORS]);
 
   // ------------------------------------------------------------------------
   // build volume — مختصات واقعی G-code: صفحه از (0,0) تا (vol_x, vol_y)
-  // (نسخهٔ ۱.۲: قبلاً حول مبدأ جهانی رسم می‌شد که با G-code واقعی
-  //  و طراحِ مرکز‌گذاری‌شده ناسازگار بود)
   // ------------------------------------------------------------------------
   useEffect(() => {
     const scene = sceneRef.current;
@@ -579,10 +765,11 @@ export function Viewport(props: ViewportProps) {
       }
       if (axes) axes.position.set(0, 0.01, 0);
     }
+    markDirty();
   }, [props.buildVolume]);
 
   // ------------------------------------------------------------------------
-  // اسپات جابه‌جایی الگو/بافت/کف — حلقه‌های قابل‌درگ (نسخهٔ ۱.۲)
+  // اسپات — ۱.۴: دستهٔ مستقیم روی سطح فرم (مثل مرجع) + حلقه‌های ظریف
   // ------------------------------------------------------------------------
   useEffect(() => {
     const scene = sceneRef.current;
@@ -602,7 +789,7 @@ export function Viewport(props: ViewportProps) {
     const group = new THREE.Group();
     group.name = "spot-group";
     const [ax, ay] = spot.bedOffset;
-    const center = toThree([ax, ay, 0]); // مرکز محور در Three
+    const center = toThree([ax, ay, 0]); // مرکز محور فرم در Three
     // ضخامت لوله: به‌اندازهٔ کافی کلفت تا با ماوس راحت گرفته شود (۹٪ شعاع)
     const tube = Math.min(Math.max(spot.radius * 0.09, 1.8), 4.0);
 
@@ -610,19 +797,59 @@ export function Viewport(props: ViewportProps) {
       z: number,
       radius: number,
       color: number,
-      name: string
+      name: string,
+      opacity = 0.85
     ) => {
       const geo = new THREE.TorusGeometry(Math.max(radius, 2), tube, 10, 64);
       const mat = new THREE.MeshBasicMaterial({
         color,
         transparent: true,
-        opacity: 0.85,
+        opacity,
       });
       const ring = new THREE.Mesh(geo, mat);
       ring.rotation.x = Math.PI / 2; // افقی
       ring.position.set(center[0], z, center[2]);
       ring.name = name;
       return ring;
+    };
+
+    /**
+     * دستهٔ اسپات «روی سطح فرم» — ۱.۴ (مثل مرجع).
+     * کرهٔ همیشه‌رو در زاویهٔ فاز روی شعاع فرم + هاله؛ درگ عمودی = z،
+     * درگ افقی = چرخش فاز. depthTest:false تا پشت فرم هم قابل‌گرفتن باشد.
+     */
+    const makeSurfaceHandle = (
+      z: number,
+      radius: number,
+      phaseDeg: number,
+      color: number,
+      name: string
+    ) => {
+      const th = (phaseDeg * Math.PI) / 180;
+      // G-code: x = cx + r·cosθ, y = cy + r·sinθ → Three: (x, z, −y)
+      const hx = center[0] + radius * Math.cos(th);
+      const hz = center[2] - radius * Math.sin(th);
+      const dotGeo = new THREE.SphereGeometry(Math.max(3.2, tube * 2.2), 14, 14);
+      const dotMat = new THREE.MeshBasicMaterial({ color, depthTest: false });
+      const dot = new THREE.Mesh(dotGeo, dotMat);
+      dot.renderOrder = 1000;
+      dot.position.set(hx, z, hz);
+      dot.name = name;
+      // هالهٔ روشن — دیده‌شدن روی هر پس‌زمینه
+      const haloGeo = new THREE.TorusGeometry(Math.max(4.8, tube * 3.4), tube * 0.4, 8, 24);
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.55,
+        depthTest: false,
+      });
+      const halo = new THREE.Mesh(haloGeo, haloMat);
+      halo.renderOrder = 1001;
+      halo.rotation.x = Math.PI / 2;
+      halo.position.set(hx, z, hz);
+      halo.name = name;
+      group.add(halo);
+      return dot;
     };
 
     if (spot.kind === "floorHole") {
@@ -691,27 +918,24 @@ export function Viewport(props: ViewportProps) {
       group.userData.phaseCenter = [center[0], center[2]];
       group.userData.phaseZ = zDial;
     } else {
-      // حلقهٔ شروع (نارنجی) — با نشانگر کروی «اسپات»
-      group.add(makeRing(spot.zStart, spot.radius, 0xf0883e, "spot-start"));
-      const dotGeo = new THREE.SphereGeometry(Math.max(2.4, tube * 1.7), 12, 12);
-      const dotMat = new THREE.MeshBasicMaterial({ color: 0xf0883e });
-      const dot = new THREE.Mesh(dotGeo, dotMat);
-      // نقطهٔ اسپات روی حلقهٔ شروع (سمت جلو)
-      const a = 0.9;
-      dot.position.set(
-        center[0] + spot.radius * Math.cos(a),
-        spot.zStart,
-        center[2] - spot.radius * Math.sin(a) * 0.4
+      // ---- الگو/بافت — ۱.۴: حلقه‌های ظریف + دسته‌های روی سطح فرم ----
+      const phase = spot.phaseDeg ?? 0;
+      // حلقهٔ شروع (نارنجی ظریف) + دستهٔ سطحی در زاویهٔ فاز
+      group.add(makeRing(spot.zStart, spot.radius, 0xf0883e, "spot-start", 0.55));
+      group.add(
+        makeSurfaceHandle(spot.zStart, spot.radius, phase, 0xf0883e, "spot-start")
       );
-      dot.name = "spot-start";
-      group.add(dot);
-      // حلقهٔ پایان (آبی) — اگر بازهٔ محدود است
+      // حلقهٔ پایان (آبی) + دسته — اگر بازهٔ محدود است
       if (spot.zEnd !== null) {
-        group.add(makeRing(spot.zEnd, spot.radius, 0x5a87d6, "spot-end"));
+        group.add(makeRing(spot.zEnd, spot.radius, 0x5a87d6, "spot-end", 0.55));
+        group.add(
+          makeSurfaceHandle(spot.zEnd, spot.radius, phase, 0x5a87d6, "spot-end")
+        );
       }
     }
     scene.add(group);
     spotGroupRef.current = group;
+    markDirty();
 
     return () => {
       const sc = sceneRef.current;
@@ -726,9 +950,11 @@ export function Viewport(props: ViewportProps) {
     };
   }, [props.spot]);
 
+  const segCount = props.segments ? Math.floor(props.segments.positions.length / 6) : 0;
+
   return (
     <div className="viewport" ref={holderRef}>
-      {(!props.segments || props.segments.ids.length === 0) && (
+      {segCount === 0 && (
         <div className="overlay-msg">{props.emptyMessage}</div>
       )}
       <div className="legend">
@@ -742,7 +968,9 @@ export function Viewport(props: ViewportProps) {
             <span className="sw" style={{ background: props.spot.kind === "phaseRotation" ? "#b06ce0" : "#f0883e" }} />
             {props.spot.kind === "phaseRotation"
               ? "اسپات θ: نشانگر بنفش را حول محور بچرخانید (Shift = ۱۵°)"
-              : "اسپات: بکشید و جابه‌جا کنید"}
+              : props.spot.kind === "floorHole"
+                ? "اسپات: حلقه را بکشید تا قطر سوراخ کف تغییر کند"
+                : "اسپات: دسته را عمودی بکشید (ارتفاع) یا افقی (چرخش زاویه — Shift = ۱۵°)"}
           </span>
         )}
       </div>
