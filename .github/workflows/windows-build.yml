@@ -1,5 +1,5 @@
 # ============================================================================
-# CI — build ویندوز G-code Studio (installer NSIS)
+# CI — build ویندوز G-code Studio (installer NSIS) + انتشار رلیز روی تگ v*
 # ============================================================================
 # چرا این workflow لازم است؟
 # محیط اصلی ساخت این پروژه Linux است و تولید installer ویندوز فقط روی
@@ -7,7 +7,11 @@
 # است، تنظیمات/CI لازم برای build واقعی Windows را بساز و محدودیت build
 # محلی را صریح بگو»).
 #
-# خروجی artefact: gcode-studio_x64_setup.exe (NSIS)
+# دو حالت:
+#   push به main → build + آزمون + artifact (بدون رلیز)
+#   push تگ v*   → build + آزمون + ساخت GitHub Release با فایل نصب NSIS
+#
+# خروجی: gcode-studio_x64_setup.exe (NSIS با WebView2 آفلاین)
 # توجه صداقت: اجرای «تست نصب روی Windows واقعی با اینترنت قطع» فقط
 # دستی ممکن است و در این CI انجام نمی‌شود — در گزارش تحویل «اجرا‌نشده»
 # ثبت شده است.
@@ -20,6 +24,9 @@ on:
     branches: [main]
     tags: ["v*"]
   workflow_dispatch:
+
+permissions:
+  contents: write # برای ساخت Release روی تگ‌ها
 
 jobs:
   build-windows:
@@ -67,8 +74,55 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
 
+      # ------------------------------------------------------------------
+      # انتشار رلیز — فقط وقتی رویداد، تگ v* باشد
+      # ------------------------------------------------------------------
+      - name: Create GitHub Release with installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "فایل نصب NSIS پیدا نشد" }
+          Write-Host "installer: $($exe.FullName)"
+
+          # یادداشت رلیس فارسی صادقانه — دستی-اجرا‌نشده‌ها صریح ذکر می‌شوند
+          $notes = @"
+          # G-code Studio $tag
+
+          نصب‌کنندهٔ ویندوز (x64) با WebView2 آفلاین — بدون نیاز به اینترنت هنگام نصب.
+
+          ## آنچه در این نسخه است
+          - ویرایشگر G-code با تفسیر واقعی دولایه (lexer/interpreter) و توضیح فارسی هر خط
+          - پیش‌نمایش سه‌بعدی مسیر نازل (Three.js/WebGL2) با همگام‌سازی دوطرفه خط↔segment
+          - طراح مارپیچی ۵ گامی (پروفایل/الگو/بافت/کف/پرینتر) با ۹ الگوی هندسی و ۶ بافت مسیر
+          - ۲۰ پریست پرینتر واقعی (Bambu Lab / Prusa / Creality / ...) — وضعیت community
+          - ۸ تم رنگی و ۱۰ رنگ رشتهٔ چاپ در پیش‌نمایش
+          - خروجی G-code و STL باینری + Save As بدون بازنویسی فایل مبدأ
+
+          ## نکات ایمنی (صداقت)
+          - این برنامه صحت چاپ فیزیکی را تضمین نمی‌کند؛ فایل را با ابزار معتبر بازبینی کنید.
+          - پریست‌های پرینتر «community» هستند: داده از صفحات رسمی سازنده، اما روی دستگاه
+            توسط ما آزموده نشده‌اند.
+          - تست نصب روی ویندوز واقعی با اینترنت قطع، دستی انجام نشده است (CI فقط build می‌سازد).
+
+          ## آزمون‌ها
+          - cargo test -p gcode-core: 127 آزمون واحد — سبز در این CI
+          - npm test (Vitest): 14 آزمون — سبز در این CI
+          "@
+
+          gh release create $tag $exe.FullName --title "G-code Studio $tag" --notes $notes
+          Write-Host "رلیس $tag منتشر شد."
+
       - name: Summary
         shell: pwsh
         run: |
           Write-Host "installer آماده شد: src-tauri/target/release/bundle/nsis/"
+          if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+            Write-Host "رلیس ${{ github.ref_name }} با فایل نصب منتشر شد."
+          } else {
+            Write-Host "اجرای روی main: فقط artifact ساخته شد (رلیس فقط روی تگ v*)."
+          }
           Write-Host "تست نصب آفلاین روی ویندوز واقعی باید دستی انجام شود."
