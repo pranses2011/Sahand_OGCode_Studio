@@ -402,6 +402,80 @@ pub fn designer_compute(project: DesignerProject) -> DesignerOutput {
 }
 
 // ============================================================================
+// دستور ۵-الف: پیلود سریع پیش‌نمایش طراح — نسخهٔ ۱.۴ (کارایی نمایشگر 3D)
+// ============================================================================
+// مشکل: designer_compute خروجی کامل (segments شیءمحور + mesh) سریال می‌کند؛
+// برای یک گلدان ۱۰۰mm با بافت = ده‌ها هزار segment ⇒ چند MB JSON در هر
+// تغییر اسلایدر ⇒ لگ/وقفهٔ محسوس نمایشگر.
+// راه‌حل: پیلود تختِ حداقلی برای viewport — آرایه‌های عددی، مختصات گردشده
+// به ۳ رقم اعصاری (دقت نمایش)، بدون mesh و بدون id/سطر مبدأ (ویرایشگر
+// نیست). خلاصه/آمار/هشدار/نمونه‌های شعاع برای اسپات هم می‌آید.
+/// پیلود فشردهٔ viewport طراح
+#[derive(Debug, Clone, Serialize)]
+pub struct FastViewport {
+    /// شناسهٔ نسخه
+    pub revision: u32,
+    /// تعداد segmentها
+    pub count: usize,
+    /// مختصات تخت: [x0,y0,z0, x1,y1,z1] × n (گردشده به ۰٫۰۰۱mm)
+    pub positions: Vec<f64>,
+    /// نوع هر segment: 0=Extrusion 1=Travel 2=Retract 3=Unretract 4=Arc 5=Unknown
+    pub kinds: Vec<u8>,
+    /// سرعت هر segment (mm/min — برای رنگ‌بندی سرعت آینده)
+    pub feedrates: Vec<f64>,
+    /// نمونه‌های شعاع (z, r) برای اسپات UI بدون mesh
+    pub radius_samples: Vec<[f64; 2]>,
+    /// خلاصهٔ فارسی
+    pub summary_fa: String,
+    /// آمار مسیر
+    pub stats: crate::toolpath::ToolpathStats,
+    /// هشدارها
+    pub diagnostics: Vec<crate::diagnostics::Diagnostic>,
+}
+
+/// گردکردن به ۳ رقم اعصاری (دقت نمایش/G-code) — JSON کوچک‌تر و سریع‌تر
+#[inline]
+fn r3(v: f64) -> f64 {
+    (v * 1000.0).round() / 1000.0
+}
+
+/// محاسبهٔ طراح + فشرده‌سازی فوری برای viewport
+pub fn designer_viewport(project: DesignerProject) -> FastViewport {
+    use crate::toolpath::SegmentKind;
+    let out = designer_compute(project);
+    let n = out.segments.len();
+    let mut positions = Vec::with_capacity(n * 6);
+    let mut kinds = Vec::with_capacity(n);
+    let mut feedrates = Vec::with_capacity(n);
+    for s in &out.segments {
+        let st = s.start_mm.unwrap_or([0.0; 3]);
+        let en = s.end_mm.unwrap_or(st);
+        positions.extend_from_slice(&[r3(st[0]), r3(st[1]), r3(st[2])]);
+        positions.extend_from_slice(&[r3(en[0]), r3(en[1]), r3(en[2])]);
+        kinds.push(match s.kind {
+            SegmentKind::Extrusion => 0,
+            SegmentKind::Travel => 1,
+            SegmentKind::Retract => 2,
+            SegmentKind::Unretract => 3,
+            SegmentKind::Arc => 4,
+            SegmentKind::Unknown => 5,
+        });
+        feedrates.push(s.feedrate_mm_min.unwrap_or(0.0));
+    }
+    FastViewport {
+        revision: 1,
+        count: n,
+        positions,
+        kinds,
+        feedrates,
+        radius_samples: out.radius_samples,
+        summary_fa: out.summary_fa,
+        stats: out.stats,
+        diagnostics: out.diagnostics,
+    }
+}
+
+// ============================================================================
 // دستور ۵-ب: دادهٔ پیش‌نمایش الگو/بافت برای کارت‌های تصویری UI
 // ============================================================================
 // هر الگو/بافت روی یک استوانهٔ نرمال‌شده (ارتفاع ۱، شعاع ۱) با پارامترهای
@@ -680,6 +754,48 @@ mod tests {
         let out = designer_compute(proj);
         assert!(out.segments.len() > 50);
         assert!(!out.mesh.triangles.is_empty());
+    }
+
+    #[test]
+    fn test_designer_viewport_fast_payload() {
+        // پیلود سریع — نسخهٔ ۱.۴: سازگاری شمارش، انواع، دقت گردکردن،
+        // نمونه‌های شعاع و خلاصه — و «بدون mesh» (کارایی)
+        let mut proj = DesignerProject::default();
+        proj.floor.enabled = true;
+        proj.floor.layers = 2;
+        let full = designer_compute(proj.clone());
+        let fast = designer_viewport(proj);
+        assert_eq!(fast.count, full.segments.len());
+        assert_eq!(fast.positions.len(), fast.count * 6);
+        assert_eq!(fast.kinds.len(), fast.count);
+        assert_eq!(fast.feedrates.len(), fast.count);
+        // kinds صرفاً 0..5
+        assert!(fast.kinds.iter().all(|k| *k <= 5));
+        // دقت ۳ رقم: فاصلهٔ تا نزدیک‌ترین عدد صحیح پس از ×۱۰۰۰ ناچیز است
+        assert!(fast.positions.iter().all(|p| {
+            let s = p * 1000.0;
+            (s - s.round()).abs() < 1e-6
+        }));
+        // travel و extrusion هر دو حضور دارند (کف فعال است)
+        assert!(fast.kinds.contains(&1), "باید travel باشد");
+        assert!(fast.kinds.contains(&0), "باید extrusion باشد");
+        // نمونه‌های شعاع و خلاصه (برای اسپات UI)
+        assert_eq!(fast.radius_samples.len(), 129);
+        assert!(fast.summary_fa.contains("مارپیچی"));
+        assert_eq!(fast.stats.extrusion_segments, full.stats.extrusion_segments);
+        // سرعت‌ها (mm/min): travel=6000، لایهٔ اول کف=1200،
+        // لایهٔ ۲ کف=1800، دیواره=2400 — همه در feedrates حضور دارند
+        let travel_f = fast
+            .kinds
+            .iter()
+            .zip(fast.feedrates.iter())
+            .find(|(k, _)| **k == 1)
+            .map(|(_, f)| *f)
+            .unwrap();
+        assert!((travel_f - 6000.0).abs() < 1e-6, "travel = {travel_f}");
+        assert!(fast.feedrates.iter().any(|f| (f - 1200.0).abs() < 1e-6), "لایهٔ اول");
+        assert!(fast.feedrates.iter().any(|f| (f - 1800.0).abs() < 1e-6), "لایهٔ ۲ کف");
+        assert!(fast.feedrates.iter().any(|f| (f - 2400.0).abs() < 1e-6), "دیواره");
     }
 
     #[test]
