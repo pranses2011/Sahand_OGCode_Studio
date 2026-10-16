@@ -655,7 +655,7 @@ impl Interpreter {
             }
             // ================= G92: ادعای شمارنده‌ها =================
             92 => {
-                let mut action = String::new();
+                let action;
                 for p in &params {
                     if let Some(v) = p.number {
                         let mm = self.state.to_mm(v);

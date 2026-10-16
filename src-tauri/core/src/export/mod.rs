@@ -13,7 +13,6 @@
 //! ============================================================================
 
 use crate::designer::spiral::{DesignerInput, DesignerOutput};
-use crate::designer::PrinterProfile;
 use crate::gcode::lexer::lex_line;
 use crate::knowledge;
 use serde::{Deserialize, Serialize};

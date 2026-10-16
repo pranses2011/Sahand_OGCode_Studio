@@ -205,7 +205,7 @@ pub fn tessellate_arc(params: &ArcParams) -> Result<ArcResult, ArcError> {
     let w_end = params.plane.w(params.end);
 
     // ---------- تعیین مرکز، شعاع و زاویهٔ جاروب ----------
-    let (cu, cv, r_start, r_end, mut sweep, mut is_full) = if let Some((iu, iv)) =
+    let (cu, cv, r_start, r_end, mut sweep, is_full) = if let Some((iu, iv)) =
         params.center_uv
     {
         // فرم مرکزی: مرکز = مبدأ + آفست

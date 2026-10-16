@@ -178,7 +178,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
 
     // travel اولیه از مبدأ (0,0,layer_h) — بدون اکستروژن
     let mut prev_point = [0.0, 0.0, layer_h];
-    let mut seg = ToolpathSegment {
+    let seg = ToolpathSegment {
         id: next_id,
         source_line_index: 0,
         kind: SegmentKind::Travel,
@@ -249,7 +249,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         // segment چاپی — ΔE مثبت؛ feedrate چاپ
         let e_val = if printer.absolute_e { e_counter } else { e_delta };
         let _ = e_val; // E نهایی در خروجی‌ساز G-code ساخته می‌شود؛ IR فقط delta
-        let mut seg = ToolpathSegment {
+        let seg = ToolpathSegment {
             id: next_id,
             source_line_index: segments.len(),
             kind: SegmentKind::Extrusion,
@@ -261,7 +261,6 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
             certainty: Certainty::Known,
         };
         // اگر جابه‌جایی ناچیز است (بافت صفر و r ثابت) همچنان چاپ حساب می‌شود
-        seg.id = next_id;
         next_id += 1;
         stats.accumulate(&seg);
         segments.push(seg);
@@ -384,7 +383,7 @@ fn build_mesh(
             // گارد degenerate (رأس‌های منطبق)
             let distinct = |t: &[u32; 3]| {
                 let p = |i: u32| vertices[i as usize];
-                (p(t[0]) != p(t[1]) || p(t[0]) != p(t[2]) || p(t[1]) != p(t[2]))
+                p(t[0]) != p(t[1]) || p(t[0]) != p(t[2]) || p(t[1]) != p(t[2])
             };
             // فاصله‌دار بودن رأس‌ها را می‌سنجیم نه فقط برابری دقیق
             let far = |t: &[u32; 3]| {
@@ -442,7 +441,7 @@ fn build_floor(
     let mut r = r_outer;
     let mut point = [r, 0.0, z];
     // travel به شروع کف
-    let mut seg = ToolpathSegment {
+    let seg = ToolpathSegment {
         id: *next_id,
         source_line_index: 0,
         kind: SegmentKind::Travel,

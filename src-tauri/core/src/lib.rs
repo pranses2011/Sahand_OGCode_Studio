@@ -22,3 +22,4 @@ pub mod toolpath;
 
 pub mod designer;
 pub mod export;
+pub mod ipc;

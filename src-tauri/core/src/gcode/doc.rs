@@ -84,15 +84,14 @@ impl GcodeDocument {
             }
         }
 
-        let mut doc = Self {
+        Self {
             has_bom,
             line_ending,
             lines,
             source_path,
             source_name,
             trailing_newline,
-        };
-        doc
+        }
     }
 
     /// سریال‌سازی مجدد به متن کامل با بازتولید BOM و پایان‌خط
