@@ -1,5 +1,5 @@
 # ============================================================================
-# CI — build ویندوز G-code Studio (installer NSIS) + انتشار رلیز روی تگ v*
+# CI — build ویندوز G-code Studio: دو نصب‌کنندهٔ NSIS + انتشار رلیز روی تگ v*
 # ============================================================================
 # چرا این workflow لازم است؟
 # محیط اصلی ساخت این پروژه Linux است و تولید installer ویندوز فقط روی
@@ -9,9 +9,14 @@
 #
 # دو حالت:
 #   push به main → build + آزمون + artifact (بدون رلیز)
-#   push تگ v*   → build + آزمون + ساخت GitHub Release با فایل نصب NSIS
+#   push تگ v*   → build + آزمون + ساخت GitHub Release با «دو» فایل نصب
 #
-# خروجی: gcode-studio_x64_setup.exe (NSIS با WebView2 آفلاین)
+# خروجی‌ها (نسخهٔ ۱.۳ — درخواست کاربر: فایل نصب آپدیت سبک):
+#   ۱) نصب کامل آفلاین  (~200MB): WebView2 داخل بسته — برای ویندوز بدون اینترنت
+#   ۲) نصب آپدیت/سبک (~10-20MB): downloadBootstrapper — WebView2 فقط اگر
+#      نصب نباشد دانلود می‌شود (روی ویندوز ۱۰/۱۱ به‌روز تقریباً همیشه
+#      موجود است). برای به‌روزرسانی سریع به‌جای دانلود ۲۰۰MB.
+#
 # توجه صداقت: اجرای «تست نصب روی Windows واقعی با اینترنت قطع» فقط
 # دستی ممکن است و در این CI انجام نمی‌شود — در گزارش تحویل «اجرا‌نشده»
 # ثبت شده است.
@@ -59,46 +64,86 @@ jobs:
         working-directory: src-tauri
         run: cargo test -p gcode-core
 
-      - name: Build Windows installer (NSIS)
+      # ------------------------------------------------------------------
+      # ۱) نصب کامل — WebView2 آفلاین داخل بسته (webviewInstallMode=offlineInstaller)
+      # ------------------------------------------------------------------
+      - name: Build full installer (offline WebView2)
         run: npm run tauri build
         env:
-          # نصب‌کنندهٔ آفلاین WebView2 داخل NSIS بسته‌بندی می‌شود
-          # (webviewInstallMode=offlineInstaller در tauri.conf.json)
           TAURI_SIGNING_PRIVATE_KEY: ""
 
-      - name: Upload installer artifact
+      - name: Stage full installer
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $exe) { throw "نصب کامل NSIS پیدا نشد" }
+          New-Item -ItemType Directory -Force -Path "staging" | Out-Null
+          Copy-Item $exe.FullName "staging/G-code.Studio_full-setup.exe"
+          Write-Host "full: $($exe.Name) → staging/G-code.Studio_full-setup.exe ($([math]::Round($exe.Length/1MB,1)) MB)"
+
+      # ------------------------------------------------------------------
+      # ۲) نصب آپدیت/سبک — downloadBootstrapper (نسخهٔ ۱.۳؛ کد Rust همان
+      #    است و cache کش شده → فقط مرحلهٔ bundle دوباره اجرا می‌شود)
+      # ------------------------------------------------------------------
+      - name: Build light/update installer (online WebView2 bootstrapper)
+        run: npm run tauri build -- --config src-tauri/tauri.light.conf.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+
+      - name: Stage light installer
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $exe) { throw "نصب سبک NSIS پیدا نشد" }
+          Copy-Item $exe.FullName "staging/G-code.Studio_light-setup.exe"
+          Write-Host "light: $($exe.Name) → staging/G-code.Studio_light-setup.exe ($([math]::Round($exe.Length/1MB,1)) MB)"
+
+      - name: Upload installers artifact
         uses: actions/upload-artifact@v4
         with:
           name: gcode-studio-windows-x64
           path: |
-            src-tauri/target/release/bundle/nsis/*.exe
+            staging/G-code.Studio_full-setup.exe
+            staging/G-code.Studio_light-setup.exe
           if-no-files-found: error
 
       # ------------------------------------------------------------------
       # انتشار رلیز — فقط وقتی رویداد، تگ v* باشد
       # ------------------------------------------------------------------
-      - name: Create GitHub Release with installer
+      - name: Create GitHub Release with both installers
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
-          if (-not $exe) { throw "فایل نصب NSIS پیدا نشد" }
-          Write-Host "installer: $($exe.FullName)"
+          $full = "staging/G-code.Studio_full-setup.exe"
+          $light = "staging/G-code.Studio_light-setup.exe"
+          if (-not (Test-Path $full)) { throw "نصب کامل پیدا نشد" }
+          if (-not (Test-Path $light)) { throw "نصب سبک پیدا نشد" }
+          Write-Host "full: $([math]::Round((Get-Item $full).Length/1MB,1)) MB | light: $([math]::Round((Get-Item $light).Length/1MB,1)) MB"
 
           # یادداشت رلیس فارسی صادقانه — دستی-اجرا‌نشده‌ها صریح ذکر می‌شوند
           $notes = @"
           # G-code Studio $tag
 
-          نصب‌کنندهٔ ویندوز (x64) با WebView2 آفلاین — بدون نیاز به اینترنت هنگام نصب.
+          دو نسبـت نصب ارائه می‌شود:
 
-          ## آنچه در این نسخه است
+          | فایل | حجم تقریبی | مناسب چه کسی؟ |
+          |---|---|---|
+          | **full-setup.exe** (نصب کامل) | ~۲۰۰ MB | ویندوز بدون اینترنت — WebView2 داخل بسته است |
+          | **light-setup.exe** (نصب آپدیت/سبک) | ~۱۵ MB | به‌روزرسانی سریع — WebView2 فقط در صورت نبود، آنلاین دانلود می‌شود (ویندوز ۱۰/۱۱ به‌روز معمولاً دارد) |
+
+          💡 برای «آپدیت» نسخه‌های قبلی، همان light-setup.exe را نصب کنید — روی نسخهٔ موجود نصب می‌شود.
+
+          ## آنچه در این نسخه است (۱.۳)
+          - 🔄 **اسپات چرخش فاز θ**: دیال بنفش روی نمای سه‌بعدی — جای درز (seam) و جهت‌گیری الگوها را با کشیدن بچرخانید (Shift = چفت ۱۵°)
+          - 🌡️ **تنظیم دمای نازل و میز کار + فن**: با پریست مواد PLA/PETG/ABS/TPU/ابریشمی — خروجی M104/M109/M140/M190/M106 استاندارد
+          - 📦 **نصب آپدیت سبک** — به‌جای دانلود ۲۰۰MB برای هر به‌روزرسانی
           - ویرایشگر G-code با تفسیر واقعی دولایه (lexer/interpreter) و توضیح فارسی هر خط
           - پیش‌نمایش سه‌بعدی مسیر نازل (Three.js/WebGL2) با همگام‌سازی دوطرفه خط↔segment
           - طراح مارپیچی ۵ گامی با ۱۷ الگوی هندسی، ۱۲ بافت مسیر و ۵ الگوی کف
-          - کارت‌های تصویری بزرگ (رندر از ریاضی واقعی هسته) + اسپات قابل‌درگ روی نمای 3D
+          - کارت‌های تصویری بزرگ (رندر از ریاضی واقعی هسته) + اسپات‌های قابل‌درگ روی نمای 3D
           - مرکز‌گذاری طرح روی صفحهٔ چاپ + اسپلاین مونوتون پروفایل + واگرد/ازنو + ۶ استایل آماده
           - ۲۰ پریست پرینتر واقعی (Bambu Lab / Prusa / Creality / ...) — وضعیت community
           - ۸ تم رنگی و ۱۰ رنگ رشتهٔ چاپ در پیش‌نمایش
@@ -106,25 +151,27 @@ jobs:
 
           ## نکات ایمنی (صداقت)
           - این برنامه صحت چاپ فیزیکی را تضمین نمی‌کند؛ فایل را با ابزار معتبر بازبینی کنید.
+          - دماهای پریست مواد «شروع مناسب رایج» هستند نه عدد قطعی — به فیلامنت/دستگاه شما وابسته‌اند.
           - پریست‌های پرینتر «community» هستند: داده از صفحات رسمی سازنده، اما روی دستگاه
             توسط ما آزموده نشده‌اند.
-          - تست نصب روی ویندوز واقعی با اینترنت قطع، دستی انجام نشده است (CI فقط build می‌سازد).
+          - تست نصب روی ویندوز واقعی با اینترنت قطع (full) و اینترنت روشن (light)، دستی انجام
+            نشده است (CI فقط build می‌سازد).
 
           ## آزمون‌ها
-          - cargo test -p gcode-core: 152 آزمون واحد — سبز در این CI
-          - npm test (Vitest): 19 آزمون — سبز در این CI
+          - cargo test -p gcode-core: 163 آزمون واحد — سبز در این CI
+          - npm test (Vitest): 30 آزمون — سبز در این CI
           "@
 
-          gh release create $tag $exe.FullName --title "G-code Studio $tag" --notes $notes
-          Write-Host "رلیس $tag منتشر شد."
+          gh release create $tag $full $light --title "G-code Studio $tag" --notes $notes
+          Write-Host "رلیس $tag با دو نصب‌کننده منتشر شد."
 
       - name: Summary
         shell: pwsh
         run: |
-          Write-Host "installer آماده شد: src-tauri/target/release/bundle/nsis/"
+          Write-Host "دو نصب‌کننده آماده شد: staging/G-code.Studio_full-setup.exe + staging/G-code.Studio_light-setup.exe"
           if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
-            Write-Host "رلیس ${{ github.ref_name }} با فایل نصب منتشر شد."
+            Write-Host "رلیس ${{ github.ref_name }} با هر دو فایل نصب منتشر شد."
           } else {
             Write-Host "اجرای روی main: فقط artifact ساخته شد (رلیس فقط روی تگ v*)."
           }
-          Write-Host "تست نصب آفلاین روی ویندوز واقعی باید دستی انجام شود."
+          Write-Host "تست نصب آفلاین/آنلاین روی ویندوز واقعی باید دستی انجام شود."
