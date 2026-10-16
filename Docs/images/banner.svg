@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="320" viewBox="0 0 1240 320" direction="rtl">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14161c"/>
+      <stop offset="1" stop-color="#1a1d24"/>
+    </linearGradient>
+    <linearGradient id="accent-line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff7a28"/>
+      <stop offset="1" stop-color="#b35a1e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1240" height="320" fill="url(#bg)"/>
+  <line x1="0" y1="0" x2="0" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="40" y1="0" x2="40" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="80" y1="0" x2="80" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="120" y1="0" x2="120" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="160" y1="0" x2="160" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="200" y1="0" x2="200" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="240" y1="0" x2="240" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="280" y1="0" x2="280" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="320" y1="0" x2="320" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="360" y1="0" x2="360" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="400" y1="0" x2="400" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="440" y1="0" x2="440" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="480" y1="0" x2="480" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="520" y1="0" x2="520" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="560" y1="0" x2="560" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="600" y1="0" x2="600" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="640" y1="0" x2="640" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="680" y1="0" x2="680" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="720" y1="0" x2="720" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="760" y1="0" x2="760" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="800" y1="0" x2="800" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="840" y1="0" x2="840" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="880" y1="0" x2="880" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="920" y1="0" x2="920" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="960" y1="0" x2="960" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="1000" y1="0" x2="1000" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="1040" y1="0" x2="1040" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="1080" y1="0" x2="1080" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="1120" y1="0" x2="1120" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="1160" y1="0" x2="1160" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="1200" y1="0" x2="1200" y2="320" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="0" y1="0" x2="1240" y2="0" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="0" y1="40" x2="1240" y2="40" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="0" y1="80" x2="1240" y2="80" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="0" y1="120" x2="1240" y2="120" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="0" y1="160" x2="1240" y2="160" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="0" y1="200" x2="1240" y2="200" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="0" y1="240" x2="1240" y2="240" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <line x1="0" y1="280" x2="1240" y2="280" stroke="#343945" stroke-opacity="0.5" stroke-width="1"/>
+  <rect x="0" y="314" width="1240" height="6" fill="url(#accent-line)"/>
+  <!-- واز مارپیچی: محاسبه‌شده از پروفایل پیش‌فرض واقعی برنامه -->
+  <ellipse cx="180.0" cy="280.0" rx="51.7" ry="17.6" fill="none" stroke="#46c878" stroke-opacity="0.55" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="271.3" rx="56.9" ry="19.4" fill="none" stroke="#2e7d51" stroke-opacity="0.57" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="262.6" rx="62.1" ry="21.1" fill="none" stroke="#2e7d51" stroke-opacity="0.58" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="253.9" rx="66.0" ry="22.4" fill="none" stroke="#46c878" stroke-opacity="0.60" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="245.2" rx="66.7" ry="22.7" fill="none" stroke="#2e7d51" stroke-opacity="0.62" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="236.5" rx="67.4" ry="22.9" fill="none" stroke="#2e7d51" stroke-opacity="0.63" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="227.8" rx="68.1" ry="23.2" fill="none" stroke="#46c878" stroke-opacity="0.65" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="219.1" rx="68.8" ry="23.4" fill="none" stroke="#2e7d51" stroke-opacity="0.67" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="210.4" rx="69.5" ry="23.6" fill="none" stroke="#2e7d51" stroke-opacity="0.68" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="201.7" rx="70.2" ry="23.9" fill="none" stroke="#46c878" stroke-opacity="0.70" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="193.0" rx="69.7" ry="23.7" fill="none" stroke="#2e7d51" stroke-opacity="0.72" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="184.3" rx="68.3" ry="23.2" fill="none" stroke="#2e7d51" stroke-opacity="0.73" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="175.6" rx="66.9" ry="22.8" fill="none" stroke="#46c878" stroke-opacity="0.75" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="166.9" rx="65.6" ry="22.3" fill="none" stroke="#2e7d51" stroke-opacity="0.77" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="158.1" rx="64.2" ry="21.8" fill="none" stroke="#2e7d51" stroke-opacity="0.78" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="149.4" rx="62.8" ry="21.3" fill="none" stroke="#46c878" stroke-opacity="0.80" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="140.7" rx="61.4" ry="20.9" fill="none" stroke="#2e7d51" stroke-opacity="0.82" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="132.0" rx="58.3" ry="19.8" fill="none" stroke="#2e7d51" stroke-opacity="0.83" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="123.3" rx="54.8" ry="18.6" fill="none" stroke="#46c878" stroke-opacity="0.85" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="114.6" rx="51.4" ry="17.5" fill="none" stroke="#2e7d51" stroke-opacity="0.87" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="105.9" rx="47.9" ry="16.3" fill="none" stroke="#2e7d51" stroke-opacity="0.88" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="97.2" rx="44.4" ry="15.1" fill="none" stroke="#46c878" stroke-opacity="0.90" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="88.5" rx="41.9" ry="14.2" fill="none" stroke="#2e7d51" stroke-opacity="0.92" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="79.8" rx="40.8" ry="13.9" fill="none" stroke="#2e7d51" stroke-opacity="0.93" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="71.1" rx="40.6" ry="13.8" fill="none" stroke="#46c878" stroke-opacity="0.95" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="62.4" rx="43.5" ry="14.8" fill="none" stroke="#2e7d51" stroke-opacity="0.97" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="53.7" rx="46.4" ry="15.8" fill="none" stroke="#2e7d51" stroke-opacity="0.98" stroke-width="1.4"/>
+  <ellipse cx="180.0" cy="45.0" rx="49.4" ry="16.8" fill="none" stroke="#46c878" stroke-opacity="1.00" stroke-width="1.4"/>
+  <polyline points="128.3,280.0 125.9,276.1 123.6,272.2 121.2,268.2 118.9,264.3 116.5,260.4 114.2,256.5 113.9,252.6 113.6,248.7 113.3,244.8 112.9,240.8 112.6,236.9 112.3,233.0 112.0,229.1 111.7,225.2 111.4,221.2 111.1,217.3 110.8,213.4 110.4,209.5 110.1,205.6 109.8,201.7 109.5,197.8 110.1,193.8 110.8,189.9 111.4,186.0 112.0,182.1 112.6,178.2 113.3,174.2 113.9,170.3 114.5,166.4 115.1,162.5 115.8,158.6 116.4,154.7 117.0,150.7 117.6,146.8 118.3,142.9 118.9,139.0 120.5,135.1 122.0,131.2 123.6,127.2 125.2,123.3 126.7,119.4 128.3,115.5 129.9,111.6 131.4,107.7 133.0,103.8 134.6,99.8 136.1,95.9 137.7,92.0 138.2,88.1 138.7,84.2 139.2,80.2 139.7,76.3 139.8,72.4 138.5,68.5 137.2,64.6 135.9,60.7 134.6,56.8 133.3,52.8 132.0,48.9 130.7,45.0" fill="none" stroke="#46c878" stroke-width="2.2" stroke-linecap="round"/><polyline points="231.7,280.0 234.1,276.1 236.4,272.2 238.8,268.2 241.1,264.3 243.4,260.4 245.8,256.5 246.1,252.6 246.4,248.7 246.7,244.8 247.1,240.8 247.4,236.9 247.7,233.0 248.0,229.1 248.3,225.2 248.6,221.2 248.9,217.3 249.2,213.4 249.6,209.5 249.9,205.6 250.2,201.7 250.5,197.8 249.9,193.8 249.2,189.9 248.6,186.0 248.0,182.1 247.4,178.2 246.7,174.2 246.1,170.3 245.5,166.4 244.9,162.5 244.2,158.6 243.6,154.7 243.0,150.7 242.4,146.8 241.7,142.9 241.1,139.0 239.5,135.1 238.0,131.2 236.4,127.2 234.8,123.3 233.3,119.4 231.7,115.5 230.1,111.6 228.6,107.7 227.0,103.8 225.4,99.8 223.9,95.9 222.3,92.0 221.8,88.1 221.3,84.2 220.8,80.2 220.3,76.3 220.2,72.4 221.5,68.5 222.8,64.6 224.1,60.7 225.4,56.8 226.7,52.8 228.0,48.9 229.3,45.0" fill="none" stroke="#46c878" stroke-width="2.2" stroke-linecap="round"/>
+  <ellipse cx="180.0" cy="280.0" rx="51.7" ry="17.6" fill="none" stroke="#ff7a28" stroke-width="2"/>
+  <!-- خطوط G-code تزئینی -->
+  <text x="360" y="96" font-family="Consolas, monospace" font-size="15" fill="#7d8392" fill-opacity="0.85" direction="ltr" text-anchor="start">G21 ; mm</text>
+  <text x="360" y="118" font-family="Consolas, monospace" font-size="15" fill="#7d8392" fill-opacity="0.85" direction="ltr" text-anchor="start">G90 ; absolute</text>
+  <text x="360" y="140" font-family="Consolas, monospace" font-size="15" fill="#46c878" fill-opacity="0.85" direction="ltr" text-anchor="start">G1 X21.95 Y1.45 Z0.25 E0.069</text>
+  <text x="360" y="162" font-family="Consolas, monospace" font-size="15" fill="#46a8c8" fill-opacity="0.85" direction="ltr" text-anchor="start">G2 X.. Y.. I.. J.. ; arc</text>
+  <text x="360" y="184" font-family="Consolas, monospace" font-size="15" fill="#ff7a28" fill-opacity="0.85" direction="ltr" text-anchor="start">M117 چاپ گلدان</text>
+  <!-- عنوان -->
+  <text x="1180" y="120" font-family="Segoe UI, Vazirmatn, Tahoma, sans-serif" font-size="64" font-weight="700" fill="#e8eaf0" text-anchor="end" direction="ltr">G-code Studio</text>
+  <text x="1180" y="168" font-family="Vazirmatn, Tahoma, sans-serif" font-size="30" fill="#ff7a28" text-anchor="end">استودیوی ویرایش و طراحی G-code</text>
+  <text x="1180" y="214" font-family="Vazirmatn, Tahoma, sans-serif" font-size="19" fill="#7d8392" text-anchor="end">ویرایشگر تفسیری فارسی • طراح مارپیچی ۵ گامی • ۲۰ پریست پرینتر واقعی • کاملاً آفلاین</text>
+  <g direction="ltr">
+    <rect x="905" y="238" width="275" height="40" rx="8" fill="none" stroke="#b35a1e" stroke-width="1.5"/>
+    <text x="1042" y="264" font-family="Consolas, monospace" font-size="17" fill="#46c878" text-anchor="middle">Tauri 2 + Rust + Three.js</text>
+  </g>
+</svg>
