@@ -652,25 +652,37 @@ export function Viewport(props: ViewportProps) {
       ring.name = "spot-phase";
       group.add(ring);
       // نشانگر روی زاویهٔ فعلی θ (G-code: x=cosθ, y=sinθ → سه: z=−sinθ)
+      // همیشه‌رو (depthTest=false): حتی وقتی پشت فرم است دیده/گرفته می‌شود
       const th = ((spot.phaseDeg ?? 0) * Math.PI) / 180;
       const mx = center[0] + dialR * Math.cos(th);
       const mz = center[2] - dialR * Math.sin(th);
-      const dotGeo = new THREE.SphereGeometry(Math.max(2.8, tube * 2.0), 14, 14);
-      const dotMat = new THREE.MeshBasicMaterial({ color: 0xb06ce0 });
+      const dotGeo = new THREE.SphereGeometry(Math.max(3.4, tube * 2.4), 14, 14);
+      const dotMat = new THREE.MeshBasicMaterial({ color: 0xb06ce0, depthTest: false });
       const dot = new THREE.Mesh(dotGeo, dotMat);
+      dot.renderOrder = 1000;
       dot.position.set(mx, zDial, mz);
       dot.name = "spot-phase";
       group.add(dot);
+      // حلقهٔ هالهٔ نشانگر — دیده‌شدن بهتر روی هر پس‌زمینه
+      const haloGeo = new THREE.TorusGeometry(Math.max(5.2, tube * 3.6), tube * 0.42, 8, 24);
+      const haloMat = new THREE.MeshBasicMaterial({ color: 0xe8d5ff, transparent: true, opacity: 0.85, depthTest: false });
+      const halo = new THREE.Mesh(haloGeo, haloMat);
+      halo.renderOrder = 1001;
+      halo.rotation.x = Math.PI / 2;
+      halo.position.set(mx, zDial, mz);
+      halo.name = "spot-phase";
+      group.add(halo);
       // پیکان مماسی — جهت افزایش θ (پادساعت‌گرد G-code)
       const tangent = new THREE.Vector3(-Math.sin(th), 0, -Math.cos(th)).normalize();
       const cone = new THREE.Mesh(
-        new THREE.ConeGeometry(tube * 1.15, tube * 2.8, 10),
-        new THREE.MeshBasicMaterial({ color: 0xb06ce0 })
+        new THREE.ConeGeometry(tube * 1.3, tube * 3.2, 10),
+        new THREE.MeshBasicMaterial({ color: 0xb06ce0, depthTest: false })
       );
+      cone.renderOrder = 1000;
       cone.position.set(
-        mx + tangent.x * tube * 2.6,
+        mx + tangent.x * tube * 3.0,
         zDial,
-        mz + tangent.z * tube * 2.6
+        mz + tangent.z * tube * 3.0
       );
       cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
       cone.name = "spot-phase";
