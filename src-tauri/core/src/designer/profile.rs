@@ -26,6 +26,21 @@ pub struct ProfilePoint {
     pub h: f64,
 }
 
+/// روش درون‌یابی بین نقاط پروفایل — نسخهٔ ۱.۲
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Interpolation {
+    /// خط مستقیم بین نقاط (رفتار نسخهٔ ۱.۰/۱.۱ — لبهٔ تیز در گره‌ها)
+    Linear,
+    /// اسپلاین مونوتون Fritsch–Carlson — نرم و بدون فراجهش (پیش‌فرض)
+    Spline,
+}
+
+impl Default for Interpolation {
+    fn default() -> Self {
+        Interpolation::Spline
+    }
+}
+
 /// ورودی‌های اصلاح فرم — گام ۱ بخش «تنظیم فرم»
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct FormAdjust {
@@ -39,6 +54,9 @@ pub struct FormAdjust {
     pub taper_percent: f64,
     /// تعداد نمونه‌های smoothing (۰ = بدون smoothing)
     pub smoothing_passes: u32,
+    /// روش درون‌یابی بین نقاط (پیش‌فرض: اسپلاین مونوتون)
+    #[serde(default)]
+    pub interpolation: Interpolation,
 }
 
 impl Default for FormAdjust {
@@ -49,6 +67,7 @@ impl Default for FormAdjust {
             top_diameter_mm: 60.0,
             taper_percent: 0.0,
             smoothing_passes: 0,
+            interpolation: Interpolation::Spline,
         }
     }
 }
@@ -171,6 +190,18 @@ pub fn build_radius_fn<'a>(
         pts = new_pts;
     }
 
+    // ---------- درون‌یابی: اسپلاین مونوتون Fritsch–Carlson ----------
+    // مرتب‌سازی مطمئن بر اساس h (درون‌یابی تابعی h↦r نیاز دارد)
+    pts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    // شیب‌های هرمیتی گره‌ها (فقط در حالت Spline محاسبه و مصرف می‌شوند)
+    let use_spline = adjust.interpolation == Interpolation::Spline;
+    let tangents = if use_spline {
+        monotone_tangents(&pts)
+    } else {
+        Vec::new()
+    };
+
     // ---------- تابع درون‌یابی ----------
     // جست‌وجوی دوطرفه از آخرین ایندکس (پرسش‌های متوالی z صعودی سریع‌اند)
     move |z: f64| {
@@ -183,7 +214,7 @@ pub fn build_radius_fn<'a>(
         if z >= pts[pts.len() - 1].0 {
             return pts[pts.len() - 1].1;
         }
-        // درون‌یابی خطی بین دو نقطهٔ مجاور
+        // درون‌یابی بین دو نقطهٔ مجاور
         let mut lo = 0usize;
         let mut hi = pts.len() - 1;
         while hi - lo > 1 {
@@ -196,9 +227,86 @@ pub fn build_radius_fn<'a>(
         }
         let (h0, r0) = pts[lo];
         let (h1, r1) = pts[hi];
-        let t = if (h1 - h0).abs() < 1e-12 { 0.0 } else { (z - h0) / (h1 - h0) };
-        r0 + (r1 - r0) * t
+        if (h1 - h0).abs() < 1e-12 {
+            return r0; // گره‌های هم‌ارتفاع — خط عمودی ساده
+        }
+        let t = (z - h0) / (h1 - h0);
+        if !use_spline {
+            // حالت خطی (سازگاری با ۱.۰/۱.۱)
+            return r0 + (r1 - r0) * t;
+        }
+        // هرمیت مکعبی با شیب‌های مونوتون — از هر دو گره دقیقاً می‌گذرد
+        let m0 = tangents[lo];
+        let m1 = tangents[hi];
+        let dh = h1 - h0;
+        let t2 = t * t;
+        let t3 = t2 * t;
+        let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+        let h10 = t3 - 2.0 * t2 + t;
+        let h01 = -2.0 * t3 + 3.0 * t2;
+        let h11 = t3 - t2;
+        h00 * r0 + h10 * dh * m0 + h01 * r1 + h11 * dh * m1
     }
+}
+
+/// محاسبهٔ شیب‌های هرمیتی مونوتون (Fritsch–Carlson 1980):
+/// ۱) شیب نقطه‌ای هر بازه δᵢ؛
+/// ۲) شیب گره‌ای: اگر علامت دو δ مجاور فرق کند → ۰ (بیشینه/کمینهٔ محلی،
+///    بدون فراجهش)؛ وگرنه میانگین هارمونیک وزنی؛
+/// ۳) محدودسازی |m| ≤ 3·|δ| هر بازه برای تضمین یکنوایی.
+/// نتیجه: منحنی نرم بدون نوسان — دقیقاً از گره‌ها می‌گذرد.
+fn monotone_tangents(pts: &[(f64, f64)]) -> Vec<f64> {
+    let n = pts.len();
+    if n < 2 {
+        return vec![0.0; n];
+    }
+    // δ بازه‌ها
+    let mut delta = vec![0.0f64; n - 1];
+    for i in 0..n - 1 {
+        let dh = pts[i + 1].0 - pts[i].0;
+        delta[i] = if dh.abs() < 1e-12 {
+            0.0
+        } else {
+            (pts[i + 1].1 - pts[i].1) / dh
+        };
+    }
+    // شیب اولیهٔ گره‌ها
+    let mut m = vec![0.0f64; n];
+    m[0] = delta[0];
+    m[n - 1] = delta[n - 2];
+    for i in 1..n - 1 {
+        if delta[i - 1] * delta[i] <= 0.0 {
+            m[i] = 0.0; // بیشینه/کمینهٔ محلی → مماس افقی
+        } else {
+            // میانگین هارمونیک وزنی (Fritsch–Carlson)
+            let w1 = 2.0 * (pts[i + 1].0 - pts[i].0) + (pts[i].0 - pts[i - 1].0);
+            let w2 = (pts[i + 1].0 - pts[i].0) + 2.0 * (pts[i].0 - pts[i - 1].0);
+            m[i] = (w1 + w2) / (w1 / delta[i - 1] + w2 / delta[i]);
+        }
+    }
+    // محدودسازی یکنوایی هر بازه (m نباید از ۳δ عبور کند)
+    for i in 0..n - 1 {
+        if delta[i] == 0.0 {
+            m[i] = 0.0;
+            m[i + 1] = 0.0;
+        } else {
+            let limit = 3.0 * delta[i];
+            if (delta[i] > 0.0 && m[i] > limit) || (delta[i] < 0.0 && m[i] < limit) {
+                m[i] = limit;
+            }
+            if (delta[i] > 0.0 && m[i + 1] > limit) || (delta[i] < 0.0 && m[i + 1] < limit) {
+                m[i + 1] = limit;
+            }
+            // شیب با علامت مخالف δ هم فراجهش می‌سازد → صفر
+            if delta[i] * m[i] < 0.0 {
+                m[i] = 0.0;
+            }
+            if delta[i] * m[i + 1] < 0.0 {
+                m[i + 1] = 0.0;
+            }
+        }
+    }
+    m
 }
 
 // ============================================================================
@@ -243,6 +351,7 @@ mod tests {
             top_diameter_mm: 30.0,
             taper_percent: 0.0,
             smoothing_passes: 0,
+            interpolation: Interpolation::Linear,
         };
         let f = build_radius_fn(&pts, &adj);
         assert!((f(0.0) - 20.0).abs() < 1e-9, "پایین = {}", f(0.0));
@@ -262,6 +371,7 @@ mod tests {
             top_diameter_mm: 20.0,
             taper_percent: 0.0,
             smoothing_passes: 0,
+            interpolation: Interpolation::Linear,
         };
         let f = build_radius_fn(&pts, &adj);
         // در z=100 (وسط فرم جدید) شعاع همان 10 است
@@ -328,5 +438,109 @@ mod tests {
         let f = build_radius_fn(&pts, &adj);
         assert!((f(50.0) - 20.0).abs() < 1e-9); // وسط = میانگین
         assert!((f(25.0) - 15.0).abs() < 1e-9);
+    }
+
+    // ================= آزمون‌های اسپلاین مونوتون (نسخهٔ ۱.۲) =================
+
+    #[test]
+    fn test_spline_passes_through_knots() {
+        // اسپلاین باید از تمام گره‌ها دقیقاً بگذرد
+        // (قطرها = ۲×شعاع انتهایی‌ها تا مقیاس یک‌به‌یک باشد)
+        let pts = vec![
+            ProfilePoint { r: 10.0, h: 0.0 },
+            ProfilePoint { r: 30.0, h: 25.0 },
+            ProfilePoint { r: 18.0, h: 60.0 },
+            ProfilePoint { r: 22.0, h: 100.0 },
+        ];
+        let adj = FormAdjust {
+            bottom_diameter_mm: 20.0,
+            top_diameter_mm: 44.0,
+            ..Default::default()
+        };
+        let f = build_radius_fn(&pts, &adj);
+        for p in &pts {
+            assert!((f(p.h) - p.r).abs() < 1e-9, "گره h={} رد شد: {}", p.h, f(p.h));
+        }
+    }
+
+    #[test]
+    fn test_spline_smooths_sharp_corner() {
+        // گوشهٔ تیز: خطی وسط بازهٔ اول = 20؛ اسپلاین نرم‌تر (≠ خطی)
+        // ولی بدون فراجهش از بازهٔ [10, 30]
+        let pts = vec![
+            ProfilePoint { r: 10.0, h: 0.0 },
+            ProfilePoint { r: 30.0, h: 50.0 },
+            ProfilePoint { r: 10.0, h: 100.0 },
+        ];
+        let adj_spline = FormAdjust {
+            bottom_diameter_mm: 20.0,
+            top_diameter_mm: 20.0,
+            ..Default::default()
+        }; // پیش‌فرض: Spline
+        let adj_linear = FormAdjust {
+            bottom_diameter_mm: 20.0,
+            top_diameter_mm: 20.0,
+            interpolation: Interpolation::Linear,
+            ..Default::default()
+        };
+        let fs = build_radius_fn(&pts, &adj_spline);
+        let fl = build_radius_fn(&pts, &adj_linear);
+        let mid = fs(25.0);
+        // نرمی: با فاصلهٔ معنادار از خطی
+        assert!(
+            (mid - fl(25.0)).abs() > 0.3,
+            "اسپلاین باید گوشه را نرم کند: mid={mid} linear={}",
+            fl(25.0)
+        );
+        // بدون فراجهش: در [10, 30] می‌ماند و قله دقیقاً ۳۰ در گره است
+        for i in 0..=100 {
+            let z = i as f64;
+            assert!(fs(z) >= 10.0 - 1e-9 && fs(z) <= 30.0 + 1e-9, "فراجهش در z={z}: {}", fs(z));
+        }
+    }
+
+    #[test]
+    fn test_spline_monotone_data_no_overshoot() {
+        // دادهٔ یکنوا: نتیجه باید یکنوا و در بازهٔ انتهایی‌ها بماند
+        let pts = vec![
+            ProfilePoint { r: 5.0, h: 0.0 },
+            ProfilePoint { r: 12.0, h: 20.0 },
+            ProfilePoint { r: 19.0, h: 45.0 },
+            ProfilePoint { r: 25.0, h: 80.0 },
+            ProfilePoint { r: 28.0, h: 100.0 },
+        ];
+        let adj = FormAdjust {
+            bottom_diameter_mm: 10.0,
+            top_diameter_mm: 56.0,
+            ..Default::default()
+        };
+        let f = build_radius_fn(&pts, &adj);
+        let mut prev = f(0.0);
+        for i in 1..=200 {
+            let z = i as f64 * 0.5;
+            let v = f(z);
+            assert!(v >= prev - 1e-9, "یکنوایی شکست در z={z}: {v} < {prev}");
+            assert!(v >= 5.0 - 1e-9 && v <= 28.0 + 1e-9, "خارج بازه در z={z}: {v}");
+            prev = v;
+        }
+    }
+
+    #[test]
+    fn test_linear_mode_matches_legacy() {
+        // حالت Linear دقیقاً رفتار ۱.۰/۱.۱: میان‌پاره‌خطی
+        let pts = vec![
+            ProfilePoint { r: 10.0, h: 0.0 },
+            ProfilePoint { r: 30.0, h: 50.0 },
+            ProfilePoint { r: 10.0, h: 100.0 },
+        ];
+        let adj = FormAdjust {
+            bottom_diameter_mm: 20.0,
+            top_diameter_mm: 20.0,
+            interpolation: Interpolation::Linear,
+            ..Default::default()
+        };
+        let f = build_radius_fn(&pts, &adj);
+        assert!((f(25.0) - 20.0).abs() < 1e-9);
+        assert!((f(75.0) - 20.0).abs() < 1e-9);
     }
 }
