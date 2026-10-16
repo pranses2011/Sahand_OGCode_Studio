@@ -106,6 +106,26 @@ export interface FaStrings {
   fade: string;
   floorEnabled: string;
   floorHole: string;
+  // ---------- نسخهٔ ۱.۲: طراح گسترده‌شده ----------
+  interpolationMode: string;
+  interpolationSpline: string;
+  interpolationLinear: string;
+  interpolationHint: string;
+  centerOnBed: string;
+  centerOnBedHint: string;
+  floorPattern: string;
+  floorSpokes: string;
+  floorGap: string;
+  spotHint: string;
+  spotPatternRange: string;
+  spotTextureFade: string;
+  spotFloorHole: string;
+  designerUndo: string;
+  designerRedo: string;
+  stylePresets: string;
+  stylePresetHint: string;
+  cardAdd: string;
+  cardActive: string;
   nozzleDiameter: string;
   lineWidth: string;
   layerHeight: string;
@@ -253,6 +273,29 @@ export const fa: FaStrings = {
   fade: "محو شدن",
   floorEnabled: "کف ساخته شود",
   floorHole: "قطر سوراخ مرکزی (mm)",
+
+  // ---------- نسخهٔ ۱.۲: طراح گسترده‌شده ----------
+  interpolationMode: "درون‌یابی پروفایل",
+  interpolationSpline: "اسپلاین نرم (بدون لبهٔ تیز)",
+  interpolationLinear: "خط مستقیم",
+  interpolationHint:
+    "اسپلاین مونوتون از نقاط دقیقاً می‌گذرد ولی گوشه‌ها را نرم می‌کند (بدون فراجهش).",
+  centerOnBed: "مرکز‌گذاری روی صفحهٔ چاپ",
+  centerOnBedHint:
+    "طرح در مرکز صفحه (نصف ابعاد) می‌نشیند نه روی گوشهٔ (0,0) — برای چاپ واقعی لازم است.",
+  floorPattern: "الگوی چاپ کف",
+  floorSpokes: "تعداد پرتوها",
+  floorGap: "فاصلهٔ خطوط کف (mm)",
+  spotHint: "حلقه‌های نارنجی/آبی را در نمای سه‌بعدی بکشید تا جای الگو جابه‌جا شود",
+  spotPatternRange: "جابه‌جایی بازهٔ الگو",
+  spotTextureFade: "جابه‌جایی ناحیهٔ بافت",
+  spotFloorHole: "تغییر قطر سوراخ کف",
+  designerUndo: "واگرد",
+  designerRedo: "ازنو",
+  stylePresets: "استایل‌های آماده",
+  stylePresetHint: "ترکیب آمادهٔ پروفایل + الگو + بافت — بعد از اعمال کاملاً قابل‌ویرایش است",
+  cardAdd: "افزودن",
+  cardActive: "فعال",
   nozzleDiameter: "قطر نازل (mm)",
   lineWidth: "عرض خط (mm)",
   layerHeight: "ارتفاع لایه (mm)",
