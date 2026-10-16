@@ -30,6 +30,18 @@ pub enum TextureKind {
     Hammered,
     /// سبدی: شبکهٔ متقاطع سینوسی دو جهته (طول مسیر × زاویه)
     Basket,
+    /// رگهٔ چوب (wood grain): نویز مقداری نرم قطعی + رگه‌های ظریف زاویه‌ای
+    WoodGrain,
+    /// چرم (leather): نویز دوجهتی ریز دو-اکتاوی (بافت پوست/چرم)
+    Leather,
+    /// آج رزوه (knurl): شیارهای متقاطع V شکل مثل دستگیرهٔ پیچ
+    Knurl,
+    /// موج دریا (ocean): ترکیب دو سینوس با فرکانس نامتناسب (بی‌تکراری)
+    Ocean,
+    /// حباب (bubbles): فرورفتگی‌های گرد پراکنده قطعی (کف حباب‌دار)
+    Bubbles,
+    /// تخته‌ای (rows): شیارهای افقی قوسی مثل ردیف تخته‌ها
+    Rows,
 }
 
 impl TextureKind {
@@ -42,6 +54,12 @@ impl TextureKind {
             TextureKind::SpiralGroove => "شیار مارپیچی",
             TextureKind::Hammered => "چکشی",
             TextureKind::Basket => "سبدی",
+            TextureKind::WoodGrain => "رگهٔ چوب",
+            TextureKind::Leather => "چرم",
+            TextureKind::Knurl => "آج رزوه",
+            TextureKind::Ocean => "موج دریا",
+            TextureKind::Bubbles => "حباب",
+            TextureKind::Rows => "تخته‌ای",
         }
     }
 }
@@ -125,6 +143,38 @@ fn deterministic_hash(a: i64, b: i64) -> i32 {
     ((h >> 32) as i32) & i32::MAX
 }
 
+/// نویز مقداری ۱بعدی نرم و قطعی — برای رگهٔ چوب
+/// سلول‌های صحیح با درون‌یابی smoothstep؛ همان ورودی → همان خروجی
+fn value_noise_1d(x: f64, period: f64) -> f64 {
+    let scale = (period * 0.5).max(0.5);
+    let x = x / scale;
+    let i = x.floor() as i64;
+    let f = x - i as f64;
+    // smoothstep
+    let t = f * f * (3.0 - 2.0 * f);
+    let a = deterministic_hash(i, 0) as f64 / i32::MAX as f64;
+    let b = deterministic_hash(i + 1, 0) as f64 / i32::MAX as f64;
+    a + (b - a) * t // ∈ [0, 1]
+}
+
+/// نویز مقداری ۲بعدی نرم و قطعی — برای چرم و حباب
+fn value_noise_2d(x: f64, y: f64) -> f64 {
+    let xi = x.floor() as i64;
+    let yi = y.floor() as i64;
+    let fx = x - xi as f64;
+    let fy = y - yi as f64;
+    let tx = fx * fx * (3.0 - 2.0 * fx);
+    let ty = fy * fy * (3.0 - 2.0 * fy);
+    let a = deterministic_hash(xi, yi) as f64 / i32::MAX as f64;
+    let b = deterministic_hash(xi + 1, yi) as f64 / i32::MAX as f64;
+    let c = deterministic_hash(xi, yi + 1) as f64 / i32::MAX as f64;
+    let d = deterministic_hash(xi + 1, yi + 1) as f64 / i32::MAX as f64;
+    // درون‌یابی دوطرفه
+    let top = a + (b - a) * tx;
+    let bottom = c + (d - c) * tx;
+    top + (bottom - top) * ty // ∈ [0, 1]
+}
+
 /// اعمال بافت روی یک نقطهٔ مسیر
 /// ورودی/خروجی: (x, y, z) مختصات نقطه؛ s طول پیموده‌شدهٔ مسیر تا این نقطه (mm)؛
 /// r_base شعاع پایه (برای جهت شعاعی)؛ z_norm ارتفاع نسبی ۰..۱؛
@@ -191,6 +241,57 @@ pub fn apply_texture(
                 let a = (u + ph).sin();
                 let b = (theta * 6.0 + ph).sin();
                 a * b
+            }
+            // رگهٔ چوب: نویز مقداری نرم قطعی روی طول مسیر (رگه‌های کشیده)
+            // + رگه‌های ظریف زاویه‌ای — شبیه الیاف چوب پیچ‌خورده
+            TextureKind::WoodGrain => {
+                let n = value_noise_1d(s + ph.to_degrees(), t.period_mm) * 2.0 - 1.0;
+                let fibers = (theta * 2.0 + n * 3.0).sin() * 0.35;
+                (n * 0.7 + fibers) / 1.05 // ≈ [−1, 1]
+            }
+            // چرم: نویز دوجهتی ریز دو-اکتاوی — بافت دانه‌ای پوست با ترک‌های ظریف
+            TextureKind::Leather => {
+                // مقیاس دانه‌ها از دوره: دورهٔ کوچک → دانه‌های ریزتر
+                let fine = (t.period_mm * 1.5).clamp(1.5, 24.0);
+                let a = value_noise_2d(theta * fine, z_norm * fine * 2.0) * 2.0 - 1.0;
+                let b = value_noise_2d(theta * fine * 2.3 + 7.7, z_norm * fine * 4.6) * 2.0 - 1.0;
+                (a * 0.65 + b * 0.35) * 1.3
+            }
+            // آج رزوه: شیارهای متقاطع V — |sin| در دو جهت مورب (دستگیرهٔ آجدار)
+            TextureKind::Knurl => {
+                let a = (u + ph + theta * 3.0).sin().abs();
+                let b = (u + ph - theta * 3.0).sin().abs();
+                a + b - 1.0
+            }
+            // موج دریا: دو سینوس با نسبت فرکانس غیرگویا (0.37) —
+            // ترکیب بی‌تکرار که توهم موج‌های روان می‌دهد
+            TextureKind::Ocean => {
+                0.6 * (u + ph).sin() + 0.4 * (u * 0.37 + theta * 2.0 + ph).sin()
+            }
+            // حباب: فرورفتگی‌های گرد پراکنده — سلول‌های (زاویه، ارتفاع) با
+            // مرکز hash قطعی؛ فاصلهٔ شعاعی → برجستگی گرد یا گودی
+            TextureKind::Bubbles => {
+                let cells_theta = ((2.0 * std::f64::consts::PI) / (t.period_mm * 0.35 + 1e-9))
+                    .clamp(6.0, 48.0);
+                let cells_z = (200.0 / t.period_mm).clamp(4.0, 60.0);
+                let gx = (theta + std::f64::consts::PI) * cells_theta / (2.0 * std::f64::consts::PI);
+                let gy = z_norm * cells_z;
+                let ci = gx.floor() as i64;
+                let cj = gy.floor() as i64;
+                // مرکز قطعی سلول از hash — نصف‌سلول جابه‌جا
+                let ox = deterministic_hash(ci, cj) as f64 / i32::MAX as f64 * 0.6 - 0.3;
+                let oy = deterministic_hash(ci + 991, cj - 991) as f64 / i32::MAX as f64 * 0.6 - 0.3;
+                let dx = (gx - ci as f64) - 0.5 - ox;
+                let dy = (gy - cj as f64) - 0.5 - oy;
+                let d = (dx * dx + dy * dy).sqrt();
+                // پروفایل گرد: مرکز حباب برجسته، دور از آن گودی
+                (1.0 - 2.2 * d).clamp(-1.0, 1.0)
+            }
+            // تخته‌ای: شیارهای افقی قوسی — |sin| روی ارتفاع واقعی z؛
+            // ردیف‌های تخته‌مانند با درز گود
+            TextureKind::Rows => {
+                let bands = (100.0 / t.period_mm.max(0.5)).clamp(2.0, 80.0);
+                (std::f64::consts::PI * z_norm * bands).sin().abs() * 2.0 - 1.0
             }
         };
         let amount = v * t.amplitude_mm * w;
@@ -491,5 +592,166 @@ mod tests {
             }
             assert!(changed, "{kind:?} هیچ اثری نداشت");
         }
+    }
+
+    // ================= آزمون‌های بافت‌های جدید (۶ عدد) =================
+
+    #[test]
+    fn test_wood_grain_smooth_deterministic() {
+        // رگهٔ چوب: قطعی و پیوسته — دو نقطه نزدیک باید مقادیر نزدیک بدهند
+        // (نویز نرم است نه پرشی مثل چکشی)
+        let t = TextureParams {
+            kind: TextureKind::WoodGrain,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            ..Default::default()
+        };
+        let p = [10.0, 0.0, 50.0];
+        let (a1, _) = apply_texture(p, 10.0, 10.0, 0.5, &[t.clone()]);
+        let (a2, _) = apply_texture(p, 10.0, 10.0, 0.5, &[t.clone()]);
+        assert_eq!(a1, a2, "قطعیت");
+        // پیوستگی: اختلاف s کوچک → اختلاف شعاع کوچک
+        let (b1, _) = apply_texture(p, 20.0, 10.0, 0.5, &[t.clone()]);
+        let (b2, _) = apply_texture(p, 20.5, 10.0, 0.5, &[t.clone()]);
+        let r1 = (b1[0] * b1[0] + b1[1] * b1[1]).sqrt();
+        let r2 = (b2[0] * b2[0] + b2[1] * b2[1]).sqrt();
+        assert!(
+            (r1 - r2).abs() < 0.15,
+            "نویز چوب باید نرم باشد: {r1} {r2}"
+        );
+        // اثر دارد
+        let (c, _) = apply_texture(p, 60.0, 10.0, 0.5, &[t.clone()]);
+        let rc = (c[0] * c[0] + c[1] * c[1]).sqrt();
+        assert!((rc - 10.0).abs() > 0.01, "باید اثر داشته باشد: {rc}");
+    }
+
+    #[test]
+    fn test_leather_fine_and_deterministic() {
+        // چرم: دوجهتی، قطعی، دارای پراکندگی
+        let t = TextureParams {
+            kind: TextureKind::Leather,
+            amplitude_mm: 1.0,
+            period_mm: 2.0,
+            ..Default::default()
+        };
+        let mut distinct = std::collections::HashSet::new();
+        for i in 0..30 {
+            let ang = i as f64 * 0.21;
+            let (a1, _) = apply_texture(
+                [10.0 * ang.cos(), 10.0 * ang.sin(), 50.0],
+                i as f64,
+                10.0,
+                (i % 7) as f64 / 7.0,
+                &[t.clone()],
+            );
+            let (a2, _) = apply_texture(
+                [10.0 * ang.cos(), 10.0 * ang.sin(), 50.0],
+                i as f64,
+                10.0,
+                (i % 7) as f64 / 7.0,
+                &[t.clone()],
+            );
+            assert_eq!(a1, a2, "قطعیت چرم");
+            let r = (a1[0] * a1[0] + a1[1] * a1[1]).sqrt();
+            distinct.insert((r * 1000.0).round() as i64);
+        }
+        assert!(distinct.len() > 8, "پراکندگی چرم کم: {}", distinct.len());
+    }
+
+    #[test]
+    fn test_knurl_bounded() {
+        // آج رزوه: |sin|+|sin|−1 ∈ [−1, 1]
+        let t = TextureParams {
+            kind: TextureKind::Knurl,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            ..Default::default()
+        };
+        for i in 0..200 {
+            let ang = i as f64 * 0.047;
+            let s = i as f64 * 0.3;
+            let (out, _) = apply_texture(
+                [10.0 * ang.cos(), 10.0 * ang.sin(), 40.0],
+                s,
+                10.0,
+                (i % 10) as f64 / 10.0,
+                &[t.clone()],
+            );
+            let r = (out[0] * out[0] + out[1] * out[1]).sqrt();
+            assert!(r >= 9.0 - 1e-9 && r <= 11.0 + 1e-9, "r={r}");
+        }
+    }
+
+    #[test]
+    fn test_ocean_non_repeating() {
+        // موج دریا: فرکانس نامتناسب → در s مختلف مقدار متفاوت؛ همیشه کران‌دار
+        let t = TextureParams {
+            kind: TextureKind::Ocean,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            ..Default::default()
+        };
+        let p = [10.0, 0.0, 50.0];
+        let (a, _) = apply_texture(p, 1.0, 10.0, 0.5, &[t.clone()]);
+        let (b, _) = apply_texture(p, 3.0, 10.0, 0.5, &[t.clone()]);
+        let ra = (a[0] * a[0] + a[1] * a[1]).sqrt();
+        let rb = (b[0] * b[0] + b[1] * b[1]).sqrt();
+        assert!((ra - rb).abs() > 0.01, "موج باید تغییر کند: {ra} {rb}");
+        // کران: |v| ≤ 0.6+0.4 = 1
+        for i in 0..100 {
+            let (o, _) = apply_texture(p, i as f64 * 0.5, 10.0, 0.5, &[t.clone()]);
+            let r = (o[0] * o[0] + o[1] * o[1]).sqrt();
+            assert!(r >= 9.0 - 1e-9 && r <= 11.0 + 1e-9);
+        }
+    }
+
+    #[test]
+    fn test_bubbles_round_and_deterministic() {
+        // حباب: قطعی؛ برخی نقاط گودی (r < r0) و برخی برجستگی
+        let t = TextureParams {
+            kind: TextureKind::Bubbles,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            ..Default::default()
+        };
+        let mut dips = 0;
+        let mut bumps = 0;
+        for i in 0..80 {
+            // نمونه‌برداری غیرهم‌ارز تا مراکز حباب‌ها را بپوشاند
+            let ang = i as f64 * 0.105;
+            let zn = i as f64 * 0.031;
+            let p = [10.0 * ang.cos(), 10.0 * ang.sin(), 50.0];
+            let (a1, _) = apply_texture(p, i as f64, 10.0, zn, &[t.clone()]);
+            let (a2, _) = apply_texture(p, i as f64, 10.0, zn, &[t.clone()]);
+            assert_eq!(a1, a2, "قطعیت حباب");
+            let r = (a1[0] * a1[0] + a1[1] * a1[1]).sqrt();
+            if r < 9.95 {
+                dips += 1;
+            } else if r > 10.05 {
+                bumps += 1;
+            }
+        }
+        assert!(dips > 3, "حباب باید گودی بسازد: dips={dips}");
+        assert!(bumps > 3, "حباب باید برجستگی بسازد: bumps={bumps}");
+    }
+
+    #[test]
+    fn test_rows_horizontal_bands() {
+        // تخته‌ای: فقط به ارتفاع وابسته است — همان z_norm، s متفاوت → همان نتیجه
+        let t = TextureParams {
+            kind: TextureKind::Rows,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            ..Default::default()
+        };
+        let (a, _) = apply_texture([10.0, 0.0, 50.0], 0.0, 10.0, 0.5, &[t.clone()]);
+        let (b, _) = apply_texture([10.0, 0.0, 50.0], 500.0, 10.0, 0.5, &[t.clone()]);
+        assert_eq!(a, b, "تخته‌ای نباید به s وابسته باشد");
+        // اما به z وابسته است — zn=0.5 و zn=0.13 روی فازهای مختلف می‌افتند
+        // (bands=25: π·25·0.5=12.5π→sin=1؛ π·25·0.13=3.25π→sin≈0.71)
+        let (c, _) = apply_texture([10.0, 0.0, 50.0], 0.0, 10.0, 0.13, &[t.clone()]);
+        let ra = (a[0] * a[0] + a[1] * a[1]).sqrt();
+        let rc = (c[0] * c[0] + c[1] * c[1]).sqrt();
+        assert!((ra - rc).abs() > 0.01, "ردیف‌ها: ra={ra} rc={rc}");
     }
 }
