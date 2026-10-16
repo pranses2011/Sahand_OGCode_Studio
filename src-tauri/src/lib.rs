@@ -29,6 +29,7 @@ pub fn run() {
             commands::designer_compute,
             commands::designer_export_gcode,
             commands::designer_export_stl,
+            commands::designer_preview_data,
             commands::save_project,
             commands::load_project,
             // ---- فایل ----
