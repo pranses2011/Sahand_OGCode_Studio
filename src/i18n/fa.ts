@@ -116,6 +116,18 @@ export interface FaStrings {
   floorPattern: string;
   floorSpokes: string;
   floorGap: string;
+  // ---------- نسخهٔ ۱.۴: کف چندلایه + سرعت‌ها + اسپات سطحی ----------
+  floorLayers: string;
+  floorLayersHint: string;
+  speedsTitle: string;
+  speedsHint: string;
+  wallSpeed: string;
+  firstLayerSpeed: string;
+  floorSpeed: string;
+  travelSpeed: string;
+  retractLength: string;
+  retractSpeed: string;
+  retractHint: string;
   spotHint: string;
   spotPatternRange: string;
   spotTextureFade: string;
@@ -305,7 +317,23 @@ export const fa: FaStrings = {
   floorPattern: "الگوی چاپ کف",
   floorSpokes: "تعداد پرتوها",
   floorGap: "فاصلهٔ خطوط کف (mm)",
-  spotHint: "حلقه‌های نارنجی/آبی را در نمای سه‌بعدی بکشید تا جای الگو جابه‌جا شود",
+  // ---------- نسخهٔ ۱.۴ ----------
+  floorLayers: "تعداد لایه‌های کف",
+  floorLayersHint:
+    "کف با این تعداد لایهٔ توپر چاپ می‌شود و سپس حالت مارپیچی (vase) از بالای کف ادامه می‌یابد — ۲ تا ۳ لایه برای ظرف معمولی کافی است.",
+  speedsTitle: "سرعت‌ها (mm/s)",
+  speedsHint:
+    "سرعت‌ها به میلی‌متر بر ثانیه وارد می‌شوند؛ در G-code استاندارد به mm/min (F) تبدیل می‌شوند. مقادیر صفر یعنی پیروی از پیش‌فرض‌های اسلایسر (لایهٔ اول ۵۰٪ و کف ۷۵٪ سرعت دیواره).",
+  wallSpeed: "سرعت دیواره/مارپیچ (mm/s)",
+  firstLayerSpeed: "سرعت لایهٔ اول کف (mm/s)",
+  floorSpeed: "سرعت لایه‌های کف (mm/s)",
+  travelSpeed: "سرعت جابجایی (mm/s)",
+  retractLength: "طول رتراکشن (mm)",
+  retractSpeed: "سرعت رتراکشن (mm/s)",
+  retractHint:
+    "۰ = بدون رتراکشن. فقط روی جابجایی‌های کف اعمال می‌شود؛ مسیر پیوستهٔ vase رتراکشن نمی‌گیرد. برای اکسترودر Bowden مقدار بزرگ‌تر (۴ تا ۷mm) لازم است.",
+  spotHint:
+    "دستهٔ روی فرم را بکشید: عمودی = جابه‌جایی ارتفاع، افقی = چرخش زاویهٔ الگو (Shift = چفت ۱۵°)",
   spotPatternRange: "جابه‌جایی بازهٔ الگو",
   spotTextureFade: "جابه‌جایی ناحیهٔ بافت",
   spotFloorHole: "تغییر قطر سوراخ کف",
