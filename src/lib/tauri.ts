@@ -143,7 +143,10 @@ export interface PrinterProfile {
 export interface PatternParams {
   kind:
     | "Wave" | "Petal" | "Twist" | "Flute"
-    | "Diamond" | "Chevron" | "Rings" | "Scale" | "Facet";
+    | "Diamond" | "Chevron" | "Rings" | "Scale" | "Facet"
+    // ---- نسخهٔ ۱.۲: ۸ الگوی جدید ----
+    | "Braid" | "Pineapple" | "Lotus" | "TwistedFlute"
+    | "Pearl" | "Meander" | "Brick" | "Spikes";
   amplitude_mm: number;
   count: number;
   frequency: number;
@@ -153,7 +156,10 @@ export interface PatternParams {
 }
 
 export interface TextureParams {
-  kind: "Ripple" | "Weave" | "Stitch" | "SpiralGroove" | "Hammered" | "Basket";
+  kind:
+    | "Ripple" | "Weave" | "Stitch" | "SpiralGroove" | "Hammered" | "Basket"
+    // ---- نسخهٔ ۱.۲: ۶ بافت جدید ----
+    | "WoodGrain" | "Leather" | "Knurl" | "Ocean" | "Bubbles" | "Rows";
   amplitude_mm: number;
   period_mm: number;
   radial: boolean;
@@ -167,11 +173,20 @@ export interface ProfilePoint {
   h: number;
 }
 
+/** روش درون‌یابی پروفایل — نسخهٔ ۱.۲ (معادل Rust Interpolation) */
+export type ProfileInterpolation = "Linear" | "Spline";
+
+/** الگوی چاپ کف — نسخهٔ ۱.۲ (معادل Rust FloorPattern) */
+export type FloorPatternKind =
+  | "Rings" | "Spiral" | "Grid" | "Radial" | "ZigZag";
+
 export interface FloorSettings {
   enabled: boolean;
+  pattern?: FloorPatternKind;
   center_hole_diameter_mm: number;
   z_start_mm: number;
   ring_gap_mm: number;
+  spokes?: number;
 }
 
 export interface DesignerProject {
@@ -181,6 +196,10 @@ export interface DesignerProject {
   form_bottom_diameter_mm: number;
   form_top_diameter_mm: number;
   taper_percent: number;
+  /** نسخهٔ ۱.۲ — اسپلاین مونوتون (پیش‌فرض) یا خطی */
+  profile_interpolation?: ProfileInterpolation;
+  /** نسخهٔ ۱.۲ — مرکز‌گذاری روی صفحهٔ چاپ (پیش‌فرض روشن) */
+  center_on_bed?: boolean;
   patterns: PatternParams[];
   textures: TextureParams[];
   floor: FloorSettings;
@@ -230,6 +249,24 @@ export interface StlExportResult {
   byte_count: number;
   path: string;
   triangle_count: number;
+}
+
+// ============================================================================
+// دادهٔ پیش‌نمایش الگو/بافت — نسخهٔ ۱.۲ (برای کارت‌های تصویری)
+// ============================================================================
+
+/** شبکهٔ مقادیر ارزیابی‌شدهٔ یک الگو/بافت روی استوانهٔ نرمال — [rows × cols] */
+export interface PreviewGrid {
+  rows: number;
+  cols: number;
+  /** مقادیر نرمال [−۱..۱] — انحراف شعاعی در (z, θ) ردیف‌محور */
+  values: number[];
+}
+
+/** پاسخ designer_preview_data — دادهٔ واقعی هستهٔ Rust */
+export interface PreviewData {
+  patterns: Record<string, PreviewGrid>;
+  textures: Record<string, PreviewGrid>;
 }
 
 // ============================================================================
@@ -331,6 +368,12 @@ export async function designerExportGcode(
 /** فهرست ۲۰ پریست پرینتر واقعی (گام ۵) — وضعیت community */
 export async function printerPresets(): Promise<PrinterProfile[]> {
   return callCore<PrinterProfile[]>("printer_presets", {});
+}
+
+/** دادهٔ پیش‌نمایش ۱۷ الگو + ۱۲ بافت برای کارت‌های تصویری UI —
+ *  از ریاضی واقعی هستهٔ Rust (نه آیکون تزئینی) */
+export async function designerPreviewData(): Promise<PreviewData> {
+  return callCore<PreviewData>("designer_preview_data", {});
 }
 
 /** خروجی STL در مسیر انتخابی */
