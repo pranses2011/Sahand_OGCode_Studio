@@ -337,6 +337,7 @@ mod tests {
             patterns: vec![],
             textures: vec![],
             floor: FloorSettings::default(),
+            center_on_bed: true,
             printer: PrinterProfile::default(),
         }
     }
