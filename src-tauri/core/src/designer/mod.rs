@@ -18,12 +18,14 @@
 //! ============================================================================
 
 pub mod pattern;
+pub mod printer_presets;
 pub mod profile;
 pub mod spiral;
 pub mod texture;
 
 // re-export های پرکاربرد
 pub use pattern::{PatternKind, PatternParams};
+pub use printer_presets::{brand_fa, printer_presets};
 pub use profile::{ProfilePreset, ProfilePoint};
 pub use spiral::{DesignerInput, DesignerOutput};
 pub use texture::{TextureKind, TextureParams};

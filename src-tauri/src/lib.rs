@@ -33,6 +33,8 @@ pub fn run() {
             commands::load_project,
             // ---- فایل ----
             commands::read_text_file,
+            // ---- پریست‌های پرینتر (گام ۵) ----
+            commands::printer_presets,
         ])
         .setup(|app| {
             // تنظیم عنوان پنجره برای اطمینان از هویت مستقل برنامه

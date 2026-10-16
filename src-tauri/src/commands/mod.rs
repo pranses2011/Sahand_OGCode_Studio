@@ -16,10 +16,12 @@ use gcode_core::ipc::{
     designer_compute as core_designer_compute, designer_export_gcode as core_designer_export_gcode,
     designer_export_stl as core_designer_export_stl, explain_line as core_explain_line,
     load_project as core_load_project, parse_gcode as core_parse_gcode,
-    read_text_file as core_read_text_file, save_as as core_save_as,
-    save_project as core_save_project, validate_gcode as core_validate_gcode,
-    DesignerOutput, LineDetail, ParseResult, SaveAsRequest, SaveAsResult, StlExportResult,
+    printer_presets as core_printer_presets, read_text_file as core_read_text_file,
+    save_as as core_save_as, save_project as core_save_project,
+    validate_gcode as core_validate_gcode, DesignerOutput, LineDetail, ParseResult, SaveAsRequest,
+    SaveAsResult, StlExportResult,
 };
+use gcode_core::designer::PrinterProfile;
 
 // ============================================================================
 // دستورهای ویرایشگر G-code
@@ -91,4 +93,14 @@ pub fn load_project(path: String) -> Result<DesignerProject, String> {
 #[tauri::command]
 pub fn read_text_file(path: String) -> Result<String, String> {
     core_read_text_file(path)
+}
+
+// ============================================================================
+// دستور پریست‌های پرینتر (گام ۵)
+// ============================================================================
+
+/// فهرست ۲۰ پریست پرینتر واقعی (وضعیت community — داده از صفحات رسمی)
+#[tauri::command]
+pub fn printer_presets() -> Vec<PrinterProfile> {
+    core_printer_presets()
 }
