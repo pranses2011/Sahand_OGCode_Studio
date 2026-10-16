@@ -15,11 +15,12 @@ use gcode_core::export::SaveValidation;
 use gcode_core::ipc::{
     designer_compute as core_designer_compute, designer_export_gcode as core_designer_export_gcode,
     designer_export_stl as core_designer_export_stl, designer_preview_data as core_designer_preview_data,
-    explain_line as core_explain_line, load_project as core_load_project,
-    parse_gcode as core_parse_gcode, printer_presets as core_printer_presets,
-    read_text_file as core_read_text_file, save_as as core_save_as, save_project as core_save_project,
-    validate_gcode as core_validate_gcode, DesignerOutput, LineDetail, ParseResult, PreviewData,
-    SaveAsRequest, SaveAsResult, StlExportResult,
+    designer_viewport as core_designer_viewport, explain_line as core_explain_line,
+    load_project as core_load_project, parse_gcode as core_parse_gcode,
+    printer_presets as core_printer_presets, read_text_file as core_read_text_file,
+    save_as as core_save_as, save_project as core_save_project, validate_gcode as core_validate_gcode,
+    DesignerOutput, FastViewport, LineDetail, ParseResult, PreviewData, SaveAsRequest, SaveAsResult,
+    StlExportResult,
 };
 use gcode_core::designer::PrinterProfile;
 
@@ -59,6 +60,12 @@ pub fn validate_gcode(content: String, build_volume: Option<[f64; 3]>) -> SaveVa
 #[tauri::command]
 pub fn designer_compute(project: DesignerProject) -> DesignerOutput {
     core_designer_compute(project)
+}
+
+/// پیلود سریع پیش‌نمایش برای نمایشگر 3D — نسخهٔ ۱.۴ (کارایی)
+#[tauri::command]
+pub fn designer_viewport(project: DesignerProject) -> FastViewport {
+    core_designer_viewport(project)
 }
 
 /// تولید متن G-code از پروژهٔ طراح

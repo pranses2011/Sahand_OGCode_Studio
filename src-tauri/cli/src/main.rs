@@ -89,6 +89,15 @@ fn dispatch(cmd: &str, args: &serde_json::Value) -> serde_json::Value {
             };
             to_json(ipc::designer_compute(project))
         }
+        "designer_viewport" => {
+            // پیلود تخت سریع برای نمایشگر 3D — نسخهٔ ۱.۴
+            let v = args.get("project").cloned().unwrap_or_else(|| args.clone());
+            let project: DesignerProject = match serde_json::from_value(v) {
+                Ok(p) => p,
+                Err(e) => return err_json(format!("پروژهٔ نامعتبر: {e}")),
+            };
+            to_json(ipc::designer_viewport(project))
+        }
         "designer_export_gcode" => {
             let v = args.get("project").cloned().unwrap_or_else(|| args.clone());
             let project: DesignerProject = match serde_json::from_value(v) {
