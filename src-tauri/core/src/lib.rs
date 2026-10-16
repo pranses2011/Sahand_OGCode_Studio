@@ -21,6 +21,4 @@ pub mod gcode;
 pub mod toolpath;
 
 pub mod designer;
-
-// این ماژول در مرحلهٔ بعدی اضافه می‌شود:
-// pub mod export;
+pub mod export;
