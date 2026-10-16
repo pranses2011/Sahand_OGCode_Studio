@@ -1,0 +1,25 @@
+<!doctype html>
+<!--
+  صفحهٔ ورودی برنامهٔ G-code Studio
+  ==================================
+  - این فایل تنها برای محیط توسعه (vite dev) و باندل نهایی Tauri استفاده می‌شود؛
+    در محصول نهایی، خروجی build داخل executable ویندوز بسته‌بندی می‌شود.
+  - زبان سند فارسی و جهت راست‌به‌چپ است (lang="fa" و dir="rtl") طبق الزام
+    اسناد Docs/PROMPT_04_ARCHITECTURE_UI.md بخش «زبان و جهت».
+  - هیچ منبع راه‌دوری (CDN/فونت خارجی/اسکریپت بیرونی) بارگذاری نمی‌شود؛
+    همهٔ assetها محلی‌اند تا برنامه کاملاً آفلاین کار کند.
+-->
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- عنوان پنجرهٔ برنامه؛ CSP قطعی از سمت tauri.conf.json اعمال می‌شود -->
+    <title>G-code Studio — استودیوی ویرایش و طراحی G-code</title>
+  </head>
+  <body>
+    <!-- نقطهٔ اتصال React؛ کل رابط در این عنصر رندر می‌شود -->
+    <div id="root"></div>
+    <!-- اسکریپت اصلی با type=module توسط Vite تزریق می‌شود -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
