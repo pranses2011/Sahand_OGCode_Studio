@@ -102,6 +102,8 @@ fn dispatch(cmd: &str, args: &serde_json::Value) -> serde_json::Value {
         }
         // ---- پریست‌های پرینتر ----
         "printer_presets" => to_json(ipc::printer_presets()),
+        // ---- دادهٔ پیش‌نمایش الگو/بافت برای کارت‌های تصویری UI ----
+        "designer_preview_data" => to_json(ipc::designer_preview_data()),
         _ => err_json(format!("دستور ناشناخته: {cmd}")),
     }
 }
