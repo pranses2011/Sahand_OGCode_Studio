@@ -145,6 +145,20 @@ export interface PrinterProfile {
   fan_percent?: number;
   /** با M190/M109 منتظر رسیدن به دما بمان؟ (پیش‌فرض true) */
   wait_for_temps?: boolean;
+  /** ---- نسخهٔ ۱.۴: سرعت‌ها به mm/s (۰ = پیروی از mm/min قدیمی) ---- */
+  /** سرعت چاپ دیوارهٔ مارپیچی (mm/s) */
+  wall_speed_mm_s?: number;
+  /** سرعت لایهٔ اول کف (mm/s) — پیش‌فرض ۵۰٪ دیواره */
+  first_layer_speed_mm_s?: number;
+  /** سرعت لایه‌های بعدی کف (mm/s) — پیش‌فرض ۷۵٪ دیواره */
+  floor_speed_mm_s?: number;
+  /** سرعت جابجایی/travel (mm/s) */
+  travel_speed_mm_s?: number;
+  /** ---- نسخهٔ ۱.۴: رتراکشن ---- */
+  /** طول رتراکشن (mm) — ۰ = بدون رتراکشن؛ فقط روی travelهای کف */
+  retract_mm?: number;
+  /** سرعت رتراکشن (mm/s) */
+  retract_speed_mm_s?: number;
   start_gcode: string;
   end_gcode: string;
 }
@@ -196,6 +210,8 @@ export interface FloorSettings {
   z_start_mm: number;
   ring_gap_mm: number;
   spokes?: number;
+  /** ---- نسخهٔ ۱.۴: تعداد لایه‌های توپر کف (پیش‌فرض ۲)؛ پس از کف، vase ادامه می‌یابد ---- */
+  layers?: number;
 }
 
 export interface DesignerProject {
@@ -250,10 +266,31 @@ export interface DesignerOutput {
   segments: ToolpathSegmentLite[];
   line_count: number;
   mesh: MeshData;
+  /** ---- نسخهٔ ۱.۴: نمونه‌های شعاع (z, r) برای اسپات UI ---- */
+  radius_samples?: number[][];
   stats: StatsPayload;
   diagnostics: DiagLite[];
   layers: LayerPayload[];
   summary_fa: string;
+}
+
+/** پیلود سریع پیش‌نمایش طراح — معادل FastViewport در Rust (نسخهٔ ۱.۴).
+ *  به‌جای JSON شیءمحور ده‌ها هزار segment (چند MB در هر تغییر اسلایدر)،
+ *  آرایه‌های تخت با دقت ۳ رقم — رفع لگ/وقفهٔ نمایشگر سه‌بعدی. */
+export interface FastViewport {
+  revision: number;
+  count: number;
+  /** مختصات تخت: [x0,y0,z0, x1,y1,z1] × count */
+  positions: number[];
+  /** 0=Extrusion 1=Travel 2=Retract 3=Unretract 4=Arc 5=Unknown */
+  kinds: number[];
+  /** سرعت هر segment (mm/min) */
+  feedrates: number[];
+  /** نمونه‌های شعاع (z, r) برای اسپات UI بدون mesh */
+  radius_samples: number[][];
+  summary_fa: string;
+  stats: StatsPayload;
+  diagnostics: DiagLite[];
 }
 
 export interface StlExportResult {
@@ -367,6 +404,15 @@ export async function designerCompute(
   project: DesignerProject
 ): Promise<DesignerOutput> {
   return callCore<DesignerOutput>("designer_compute", { project });
+}
+
+/** محاسبهٔ طراح + پیلود تخت سریع برای نمایشگر 3D — نسخهٔ ۱.۴.
+ *  رفع لگ/وقفه: به‌جای JSON شیءمحورِ کامل (segments + mesh)، آرایه‌های
+ *  تختِ حداقلی با دقت نمایش منتقل می‌شود. */
+export async function designerViewport(
+  project: DesignerProject
+): Promise<FastViewport> {
+  return callCore<FastViewport>("designer_viewport", { project });
 }
 
 /** خروجی G-code از طراح */
