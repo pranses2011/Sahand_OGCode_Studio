@@ -1,0 +1,63 @@
+# ============================================================================
+# Cargo Workspace — استودیوی G-code (پوستهٔ Tauri + هستهٔ محاسباتی)
+# ============================================================================
+# چرا workspace؟
+# - crate با نام «gcode-studio» فقط پوستهٔ Tauri است (پنجره، IPC، دیالوگ‌ها)؛
+# - crate با نام «gcode-core» کل منطق پردازش G-code و طراح مارپیچی است و
+#   هیچ وابستگی به Tauri ندارد تا بدون WebView قابل build و آزمون باشد.
+# - با این جداسازی، دستور «cargo test -p gcode-core» روی هر سیستمی
+#   (حتی بدون ویندوز/WebView2) هسته را کامل آزمون می‌کند.
+# ============================================================================
+
+[workspace]
+resolver = "2"
+members = ["core"]
+
+# ---------- تنظیمات مشترک release برای باینری نهایی ویندوز ----------
+[profile.release]
+# کدگزینه‌های واحد + LTO → باینری کوچک‌تر؛ panic ها abort می‌شوند چون unwind لازم نیست
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+
+# ---------- profile آزمون: خطایابی سریع‌تر ----------
+[profile.test]
+opt-level = 1
+
+# ============================================================================
+# crate پوستهٔ Tauri — فقط روی ویندوز (یا CI ویندوز) build می‌شود
+# ============================================================================
+[package]
+name = "gcode-studio"
+version = "1.0.0"
+description = "استودیوی ویرایش و طراحی G-code برای ویندوز — کاملاً آفلاین"
+authors = ["Sahand OGCode Studio"]
+edition = "2021"
+rust-version = "1.77"
+
+# پوستهٔ Tauri یک کتابخانه + main کوچک است تا تست‌های integration آینده ممکن باشد
+[lib]
+name = "gcode_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# هستهٔ محاسباتی پروژه (parser/طراح/خروجی) — منبع واحد حقیقت
+gcode-core = { path = "core" }
+
+# پوستهٔ دسکتاپ Tauri v2 — بدون هیچ feature اضافی (بدون updater و ...)
+tauri = { version = "2", features = [] }
+# دیالوگ native بازکردن/ذخیرهٔ فایل از سمت Rust (بدون دادن دسترسی fs به WebView)
+tauri-plugin-dialog = "2"
+
+# سریال‌سازی داده بین Rust و WebView
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "gcode-studio"
+path = "src/main.rs"
