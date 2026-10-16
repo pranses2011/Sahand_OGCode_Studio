@@ -1,0 +1,270 @@
+/* ============================================================================
+   styles/global.css — تم تیرهٔ صنعتی RTL برای G-code Studio
+   ============================================================================
+   جهت بصری (Docs/PROMPT_04 §5): «رابط فنی، کم‌حواس‌پرتی و خوانا؛ سطح‌های
+   خنثی، کنتراست خوب، رنگ مستقل برای چاپ/travel/error، accent محدود».
+   هویت مستقل: تمام رنگ‌ها و ترکیب این برنامه اختصاصی است.
+   قواعد RTL: shell با dir="rtl"؛ بلوک‌های کد/عدد با .ltr → dir="ltr".
+   بدون هیچ فونت/منبع راه‌دور (الزام آفلاین) — فونت وزیرمتن باندل محلی است.
+   ============================================================================ */
+
+/* ---------- متغیرهای تم (سطح‌های خنثی + accent نارنجی صنعتی) ---------- */
+:root {
+  --bg-0: #14161c;        /* پس‌زمینهٔ عمیق */
+  --bg-1: #1a1d24;        /* سطح پنل */
+  --bg-2: #22262f;        /* سطح بالاتر (کارت/toolbar) */
+  --bg-3: #2a2f3a;        /* hover */
+  --line: #343945;        /* خط جداکننده */
+  --fg-0: #e8eaf0;        /* متن اصلی */
+  --fg-1: #b4b9c6;        /* متن ثانویه */
+  --fg-2: #7d8392;        /* متن کم‌رنگ */
+
+  --accent: #ff7a28;      /* نارنجی صنعتی — accent محدود */
+  --accent-dim: #b35a1e;
+
+  --print: #46c878;       /* چاپ — سبز */
+  --travel: #5a87d6;      /* travel — آبی */
+  --retract: #d65a5a;     /* retract — قرمز */
+  --arc: #46a8c8;         /* قوس — فیروزه‌ای */
+  --unknown: #9a8fd6;     /* نامطمئن — بنفش */
+  --warn: #e0b341;        /* هشدار */
+  --error: #e05252;       /* خطا */
+
+  --mono: "Sarasa Mono SC", "Cascadia Mono", Consolas, monospace;
+  --radius: 8px;
+}
+
+/* ---------- ریست پایه ---------- */
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; padding: 0; }
+body {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: Vazirmatn, "Segoe UI", Tahoma, sans-serif;
+  font-size: 14px;
+  direction: rtl; /* shell راست‌به‌چپ */
+  overflow: hidden; /* اسکرول فقط داخل پنل‌ها */
+}
+
+/* بلوک‌های فنی چپ‌به‌راست (الزام PROMPT_04 §5):
+   کد، parameterها، اعداد، مسیر فایل */
+.ltr { direction: ltr; text-align: left; font-family: var(--mono); unicode-bidi: isolate; }
+
+/* ---------- ناوبری بالا ---------- */
+.app-shell { display: flex; flex-direction: column; height: 100%; }
+
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+  padding: 6px 14px;
+  flex-wrap: wrap;
+}
+.topbar .brand { font-weight: 700; color: var(--accent); white-space: nowrap; }
+.topbar .file-name { color: var(--fg-1); font-size: 13px; max-width: 340px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .dirty { color: var(--warn); font-size: 12px; }
+
+.tabs { display: flex; gap: 4px; margin-inline-start: auto; }
+.tab-btn {
+  background: transparent; color: var(--fg-1); border: 1px solid transparent;
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 7px 16px; cursor: pointer; font-family: inherit; font-size: 14px;
+}
+.tab-btn:hover { background: var(--bg-3); color: var(--fg-0); }
+.tab-btn.active { background: var(--bg-1); color: var(--accent);
+  border-color: var(--line); border-bottom-color: var(--bg-1); }
+
+/* ---------- دکمه‌ها و کنترل‌ها ---------- */
+.btn {
+  background: var(--bg-3); color: var(--fg-0);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 14px; cursor: pointer; font-family: inherit; font-size: 13px;
+}
+.btn:hover { border-color: var(--accent-dim); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); color: #16181d; border-color: var(--accent); font-weight: 600; }
+.btn.primary:hover { background: #ff8f45; }
+.btn.danger { color: var(--error); border-color: var(--error); }
+.btn.small { padding: 3px 9px; font-size: 12px; }
+
+/* فیلدهای فرم — جهت ورودی عددی LTR */
+.field { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; }
+.field label { color: var(--fg-1); font-size: 12px; }
+.field input[type="number"], .field input[type="text"], .field select, .field textarea {
+  background: var(--bg-0); color: var(--fg-0);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 8px; font-family: var(--mono); direction: ltr; text-align: left;
+}
+.field textarea { direction: ltr; font-size: 12px; resize: vertical; }
+.field input:focus, .field select:focus, .field textarea:focus,
+.btn:focus-visible {
+  outline: 2px solid var(--accent-dim); outline-offset: 1px; /* focus ring — الزام دسترس‌پذیری */
+}
+
+/* ---------- نوار وضعیت ---------- */
+.statusbar {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--bg-2); border-top: 1px solid var(--line);
+  padding: 4px 14px; font-size: 12px; color: var(--fg-1);
+}
+.statusbar .chip { background: var(--bg-3); border-radius: 10px; padding: 2px 10px; }
+.statusbar .chip.accent { color: var(--accent); }
+.statusbar .safety { color: var(--warn); }
+
+/* ---------- چیدمان ویرایشگر ---------- */
+.editor-layout {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  flex: 1; min-height: 0;
+}
+.work { display: flex; gap: 2px; min-height: 0; flex: 1; }
+.work .col { min-width: 0; position: relative; }
+.splitter { width: 5px; cursor: col-resize; background: var(--bg-2); flex: none; }
+.splitter:hover, .splitter.active { background: var(--accent-dim); }
+
+/* CodeMirror — جهت LTR و تم تیره */
+.cm-holder { height: 100%; overflow: hidden; background: var(--bg-0); }
+.cm-editor { height: 100%; }
+.cm-editor .cm-scroller { font-family: var(--mono); font-size: 13px; }
+.cm-editor.cm-focused { outline: none; }
+.cm-gutters { background: var(--bg-1) !important; border-left: 1px solid var(--line); }
+.cm-activeLine { background: #ffffff08 !important; }
+.cm-activeLineGutter { background: #ffffff10 !important; }
+/* خطا/هشدار در حاشیه */
+.cm-line .diag-error { background: #e0525222; width: 4px; }
+.line-highlight { background: #ff7a2826 !important; }
+
+/* ---------- پنل توضیح خط ---------- */
+.inspector {
+  background: var(--bg-1); border-top: 1px solid var(--line);
+  max-height: 42vh; overflow-y: auto; padding: 10px 14px;
+}
+.inspector h3 { margin: 2px 0 8px; color: var(--accent); font-size: 14px; }
+.inspector .section { margin: 8px 0; }
+.inspector .section h4 {
+  margin: 10px 0 4px; color: var(--fg-1); font-size: 12px;
+  border-bottom: 1px solid var(--line); padding-bottom: 3px;
+}
+.badge {
+  display: inline-block; border-radius: 10px; padding: 2px 10px;
+  font-size: 11px; background: var(--bg-3); color: var(--fg-0);
+}
+.badge.print { background: #46c87826; color: var(--print); }
+.badge.travel { background: #5a87d626; color: var(--travel); }
+.badge.retract { background: #d65a5a26; color: var(--retract); }
+.badge.arc { background: #46a8c826; color: var(--arc); }
+.badge.setting { background: #ffffff12; color: var(--fg-1); }
+.badge.error { background: #e0525226; color: var(--error); }
+
+/* جدول وضعیت/پارامتر */
+table.state { border-collapse: collapse; width: 100%; font-size: 12px; }
+table.state th, table.state td {
+  border: 1px solid var(--line); padding: 3px 8px; text-align: right;
+}
+table.state td.val { direction: ltr; text-align: left; font-family: var(--mono); color: var(--accent); }
+table.state th { color: var(--fg-1); background: var(--bg-2); font-weight: 400; }
+
+/* ---------- viewport ---------- */
+.viewport { position: relative; background: var(--bg-0); }
+.viewport canvas { display: block; width: 100%; height: 100%; }
+.viewport .legend {
+  position: absolute; top: 10px; inset-inline-start: 10px;
+  background: #14161ccc; border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 12px; font-size: 12px; color: var(--fg-1);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.legend .sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px;
+  margin-inline-end: 6px; vertical-align: middle; }
+.viewport .overlay-msg {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--fg-2); font-size: 15px; text-align: center; padding: 30px;
+  background: #14161c99;
+}
+
+/* ---------- نوار شبیه‌سازی ---------- */
+.simbar {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-2); border-top: 1px solid var(--line);
+  padding: 6px 14px; flex-wrap: wrap;
+}
+.simbar input[type="range"] { width: 260px; accent-color: var(--accent); }
+.simbar .sim-label { font-size: 12px; color: var(--fg-1); }
+
+/* ---------- طراح مارپیچی ---------- */
+.designer-layout { display: flex; flex: 1; min-height: 0; }
+.designer-side {
+  width: 380px; flex: none; background: var(--bg-1);
+  border-inline-end: 1px solid var(--line); overflow-y: auto; padding: 10px 14px;
+}
+.designer-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.steps { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.step-btn {
+  flex: 1; min-width: 100px; background: var(--bg-2); color: var(--fg-1);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 6px;
+  cursor: pointer; font-family: inherit; font-size: 12px; text-align: center;
+}
+.step-btn.active { border-color: var(--accent); color: var(--accent); background: #ff7a2812; }
+.step-btn:hover:not(.active) { background: var(--bg-3); }
+
+/* لیست الگو/بافت */
+.pattern-item, .texture-item {
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; margin: 8px 0;
+}
+.pattern-item .head, .texture-item .head {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
+}
+.pattern-item .head .name, .texture-item .head .name { color: var(--accent); font-size: 13px; }
+
+/* نمودار پروفایل ۲بعدی */
+.profile-svg { background: var(--bg-0); border: 1px solid var(--line);
+  border-radius: 8px; display: block; width: 100%; }
+
+/* خلاصهٔ خروجی */
+.export-summary {
+  background: #b35a1e14; border: 1px solid var(--accent-dim);
+  border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 13px;
+}
+.export-summary .note { color: var(--warn); font-size: 12px; margin-top: 6px; }
+
+/* ---------- مودال اعتبارسنجی ---------- */
+.modal-back {
+  position: fixed; inset: 0; background: #000000aa;
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal {
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px;
+  min-width: 420px; max-width: 640px; max-height: 80vh; overflow-y: auto;
+  padding: 18px 22px;
+}
+.modal h3 { margin: 0 0 10px; color: var(--accent); }
+.modal ul { padding-inline-start: 18px; color: var(--fg-1); font-size: 13px; }
+.modal .actions { display: flex; gap: 8px; justify-content: flex-start; margin-top: 14px; }
+
+/* ---------- حالت خالی و پیام‌ها ---------- */
+.empty-state {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 10px; color: var(--fg-2);
+}
+.empty-state .icon { font-size: 42px; }
+
+/* اسکرول‌بار تیره */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--line); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* کاهش حرکت — احترام به prefers-reduced-motion (الزام دسترس‌پذیری) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- چیدمان پنجرهٔ باریک: ستون‌ها به تب (الزام PROMPT_02 §2) ---------- */
+@media (max-width: 1000px) {
+  .work { flex-direction: column; }
+  .work .col { min-height: 240px; }
+  .designer-layout { flex-direction: column; overflow-y: auto; }
+  .designer-side { width: auto; border-inline-end: none; border-bottom: 1px solid var(--line); }
+}
