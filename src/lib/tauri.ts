@@ -176,6 +176,10 @@ export interface PatternParams {
   phase_deg: number;
   z_start_mm: number;
   z_end_mm: number | null;
+  /** مرکز قوس اسپات زاویه‌ای (درجه) — نسخهٔ ۱٫۶ (درخواست ۵) */
+  spot_center_deg?: number;
+  /** گسترهٔ قوس (درجه؛ ۳۶۰ = کل دور فرم = رفتار قدیمی) */
+  spot_span_deg?: number;
 }
 
 export interface TextureParams {
@@ -189,6 +193,10 @@ export interface TextureParams {
   phase_deg: number;
   fade_in_percent: number;
   fade_out_percent: number;
+  /** مرکز قوس اسپات زاویه‌ای (درجه) — نسخهٔ ۱٫۶ (درخواست ۵) */
+  spot_center_deg?: number;
+  /** گسترهٔ قوس (درجه؛ ۳۶۰ = کل دور فرم = رفتار قدیمی) */
+  spot_span_deg?: number;
 }
 
 export interface ProfilePoint {
@@ -204,7 +212,9 @@ export type ProfileInterpolation = "Linear" | "Spline";
 
 /** الگوی چاپ کف — نسخهٔ ۱.۲ (معادل Rust FloorPattern) */
 export type FloorPatternKind =
-  | "Rings" | "Spiral" | "Grid" | "Radial" | "ZigZag";
+  | "Rings" | "Spiral" | "Grid" | "Radial" | "ZigZag"
+  // ---- نسخهٔ ۱٫۶: ۵ الگوی جدید (درخواست ۷) ----
+  | "Honeycomb" | "Wave" | "Star" | "Snowflake" | "Octagram";
 
 export interface FloorSettings {
   enabled: boolean;
@@ -215,6 +225,13 @@ export interface FloorSettings {
   spokes?: number;
   /** ---- نسخهٔ ۱.۴: تعداد لایه‌های توپر کف (پیش‌فرض ۲)؛ پس از کف، vase ادامه می‌یابد ---- */
   layers?: number;
+  /** ---- نسخهٔ ۱٫۶: تنظیمات حرفه‌ای لامپ/آویز (درخواست ۷) ---- */
+  /** تعداد سوراخ‌های لبه برای نخ آویز/کابل لامپ (۰..۱۲) */
+  rim_holes?: number;
+  /** قطر هر سوراخ لبه (mm) — پیش‌فرض ۳ */
+  rim_hole_diameter_mm?: number;
+  /** حلقه‌های تقویت اضافی لایهٔ آخر (۰..۴) — آویز/سوکت لامپ */
+  reinforce_rings?: number;
 }
 
 export interface DesignerProject {
@@ -280,6 +297,17 @@ export interface DesignerOutput {
 /** پیلود سریع پیش‌نمایش طراح — معادل FastViewport در Rust (نسخهٔ ۱.۴).
  *  به‌جای JSON شیءمحور ده‌ها هزار segment (چند MB در هر تغییر اسلایدر)،
  *  آرایه‌های تخت با دقت ۳ رقم — رفع لگ/وقفهٔ نمایشگر سه‌بعدی. */
+/** mesh دیوارهٔ چاپی برای نمای جامد — نسخهٔ ۱٫۶ (معادل WallMesh در Rust).
+ *  شبکهٔ منظم (rows+1)×(cols+1) از نقاط «واقعی مسیر» مارپیچ؛ ستون آخر
+ *  «ستون بسته‌شدن» است (یک انقلاب جلوتر — هم‌زاویهٔ ستون ۰). ایندکس
+ *  مثلث‌ها در UI ساخته می‌شود (پیلود سبک). */
+export interface WallMeshLite {
+  rows: number;
+  cols: number;
+  /** رأس‌ها تخت (x,y,z)×۳ ردیف‌محور — گردشده به ۰٫۰۱mm */
+  positions: number[];
+}
+
 export interface FastViewport {
   revision: number;
   count: number;
@@ -291,6 +319,8 @@ export interface FastViewport {
   feedrates: number[];
   /** نمونه‌های شعاع (z, r) برای اسپات UI بدون mesh */
   radius_samples: number[][];
+  /** mesh دیوارهٔ چاپی (نوار مارپیچی) — نسخهٔ ۱٫۶: نمای جامد دقیق */
+  wall_mesh?: WallMeshLite;
   summary_fa: string;
   stats: StatsPayload;
   diagnostics: DiagLite[];
@@ -420,9 +450,10 @@ export async function designerViewport(
 
 /** خروجی G-code از طراح */
 export async function designerExportGcode(
-  project: DesignerProject
+  project: DesignerProject,
+  quality?: number
 ): Promise<string> {
-  return callCore<string>("designer_export_gcode", { project });
+  return callCore<string>("designer_export_gcode", { project, quality });
 }
 
 /** فهرست ۲۰ پریست پرینتر واقعی (گام ۵) — وضعیت community */
@@ -520,6 +551,25 @@ export async function saveFileDialog(
 }
 
 /** دیالوگ بازکردن فایل SVG — ایمپورت پروفایل (نسخهٔ ۱.۵) */
+export async function savePrinterProfile(
+  profile: PrinterProfile
+): Promise<string> {
+  if (!isTauri) notInDesktop();
+  return invoke("save_printer_profile", { profile });
+}
+
+/** فهرست پروفایل‌های شخصی ذخیره‌شده — نسخهٔ ۱٫۶ (درخواست ۴) */
+export async function listPrinterProfiles(): Promise<PrinterProfile[]> {
+  if (!isTauri) notInDesktop();
+  return invoke("list_printer_profiles", {});
+}
+
+/** حذف پروفایل شخصی با نام */
+export async function deletePrinterProfile(name: string): Promise<void> {
+  if (!isTauri) notInDesktop();
+  return invoke("delete_printer_profile", { name });
+}
+
 export async function openSvgDialog(): Promise<string | null> {
   if (!isTauri) notInDesktop();
   const { open } = await import("@tauri-apps/plugin-dialog");
