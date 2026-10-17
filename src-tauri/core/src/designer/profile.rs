@@ -349,6 +349,7 @@ pub fn random_profile(seed: u64) -> Vec<ProfilePoint> {
     let mut pts: Vec<ProfilePoint> = vec![ProfilePoint { r: r_bottom, h: 0.0, m: None }];
 
     // الگوی کلی شخصیت فرم — از ۴ خلق‌وخو انتخاب
+    #[derive(Clone, Copy)]
     enum Mood {
         Bulb,     // شکم پهن + گردن
         Columnar, // ستونی با موج‌های ریز
@@ -357,14 +358,16 @@ pub fn random_profile(seed: u64) -> Vec<ProfilePoint> {
     }
     let mood = *rng.pick(&[Mood::Bulb, Mood::Columnar, Mood::Flare, Mood::Wave]);
 
-    // پراکندگی ارتفاع گره‌ها — یکنواخت با جیتر
-    let dh = height / n_knots as f64;
-    for i in 1..n_knots {
+    // پراکندگی ارتفاع گره‌ها — یکنواخت با جیتر؛
+    // گرهٔ آخر «دقیقاً» در ارتفاع کامل می‌نشیند (h_max = height تضمینی)
+    let n_segments = n_knots - 1;
+    let dh = height / n_segments as f64;
+    for i in 1..n_segments {
         let h = (dh * i as f64 + rng.range(-2.0, 2.0)).round().max(4.0).min(height - 3.0);
         let prev = pts.last().copied().unwrap();
         // دامنهٔ تغییر شعاع مجاز بر پایهٔ شیب سکانت (≤ tan50°)
         let dh_real = (h - prev.h).max(1.0);
-        let max_dr = (1.19 * dh_real).min(12.0);
+        let max_dr = (1.15 * dh_real).min(12.0);
         let target = match mood {
             Mood::Bulb => {
                 // پهن در یک‌سوم میانی، تنگ در انتها
@@ -386,6 +389,12 @@ pub fn random_profile(seed: u64) -> Vec<ProfilePoint> {
         }
         pts.push(ProfilePoint { r: r.round(), h, m: None });
     }
+
+    // گرهٔ پایانی در ارتفاع کامل (پیش از لب)
+    let r_top_base = pts.last().map(|p| p.r).unwrap_or(r_bottom)
+        + rng.range(-2.0, 2.0);
+    let r_top_base = r_top_base.clamp(8.0, 34.0);
+    pts.push(ProfilePoint { r: r_top_base.round(), h: height, m: None });
 
     // لب پایانی — بیرون‌زدگی ملایم یا درون‌فرورفتگی (۲۰/۸۰)
     if let Some(last) = pts.last_mut() {
@@ -927,10 +936,11 @@ mod tests {
             top_diameter_mm: 20.0,
             ..Default::default()
         };
-        // مماس افقی صریح در گرهٔ میانی → قلهٔ صاف‌تر از خودکار
+        // مماس منفی صریح در قله → S-curve (خودکار در قله = ۰ است؛
+        // صریح ۰ تفاوتی نمی‌سازد — با منفی تفاوت واقعی آزمیده می‌شود)
         let with_m = vec![
             ProfilePoint { r: 10.0, h: 0.0, m: None },
-            ProfilePoint { r: 30.0, h: 50.0, m: Some(0.0) },
+            ProfilePoint { r: 30.0, h: 50.0, m: Some(-0.35) },
             ProfilePoint { r: 10.0, h: 100.0, m: None },
         ];
         let f_auto = build_radius_fn(&base, &adj);

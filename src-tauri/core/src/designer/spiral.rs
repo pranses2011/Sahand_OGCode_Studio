@@ -18,7 +18,7 @@
 
 use crate::designer::pattern::apply_patterns;
 use crate::designer::profile::{build_radius_fn, FormAdjust, ProfilePoint};
-use crate::designer::texture::apply_texture;
+use crate::designer::texture::apply_texture_ex;
 use crate::designer::{FloorSettings, PrinterProfile};
 use crate::diagnostics::Diagnostic;
 use crate::toolpath::{Certainty, LayerInfo, SegmentKind, ToolpathSegment, ToolpathStats};
@@ -48,13 +48,7 @@ pub struct DesignerInput {
     /// ضریب کیفیت mesh خروجی STL — نسخهٔ ۱.۵ (۱ = استاندارد؛
     /// ۰٫۵ = سریع/پیش‌نویس؛ ۲ = ریز؛ ۳ = بسیار ریز).
     /// فقط mesh/STL را ریز می‌کند؛ مسیر G-code مستقل است.
-    #[serde(default = "default_mesh_quality")]
     pub mesh_quality: f64,
-}
-
-/// مقدار پیش‌فرض کیفیت mesh
-fn default_mesh_quality() -> f64 {
-    1.0
 }
 
 /// خروجی کامل موتور طراح
@@ -1167,6 +1161,115 @@ mod tests {
         inp.floor.layers = 4;
         let four = compute(&inp).segments.len();
         assert!(four > one, "۴ لایه ({four}) باید بیشتر از ۱ لایه ({one}) باشد");
+    }
+
+    // ================= آزمون‌های نسخهٔ ۱.۵ =================
+
+    #[test]
+    fn test_mesh_quality_scales_triangles() {
+        // کیفیت بالاتر → مثلث بیشتر (دیالوگ کیفیت STL)
+        let q05 = {
+            let mut inp = base_input();
+            inp.mesh_quality = 0.5;
+            compute(&inp).mesh.triangles.len()
+        };
+        let q1 = {
+            let mut inp = base_input();
+            inp.mesh_quality = 1.0;
+            compute(&inp).mesh.triangles.len()
+        };
+        let q2 = {
+            let mut inp = base_input();
+            inp.mesh_quality = 2.0;
+            compute(&inp).mesh.triangles.len()
+        };
+        assert!(q1 > q05, "q1={q1} q05={q05}");
+        assert!(q2 > q1, "q2={q2} q1={q1}");
+        // نسبت تقریباً مجذوری (rows×cols)
+        let ratio = q2 as f64 / q1 as f64;
+        assert!(ratio > 2.5 && ratio < 5.5, "ratio={ratio}");
+    }
+
+    #[test]
+    fn test_mesh_quality_does_not_change_toolpath() {
+        // کیفیت mesh فقط STL است — مسیر G-code نباید عوض شود
+        let a = {
+            let mut inp = base_input();
+            inp.mesh_quality = 0.5;
+            compute(&inp).segments.len()
+        };
+        let b = {
+            let mut inp = base_input();
+            inp.mesh_quality = 3.0;
+            compute(&inp).segments.len()
+        };
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_texture_speed_modulation() {
+        // بافت فعال → سرعت‌های متفاوت روی دیواره (کاهش تا ۶۰٪)
+        use crate::toolpath::SegmentKind;
+        let mut inp = base_input();
+        inp.textures.push(crate::designer::texture::TextureParams {
+            kind: crate::designer::texture::TextureKind::Ripple,
+            amplitude_mm: 0.3,
+            period_mm: 4.0,
+            radial: true,
+            phase_deg: 0.0,
+            fade_in_percent: 0.0,
+            fade_out_percent: 0.0,
+        });
+        let out = compute(&inp);
+        let wall_f: Vec<f64> = out
+            .segments
+            .iter()
+            .filter(|s| s.kind == SegmentKind::Extrusion && s.feedrate_mm_min.is_some())
+            .map(|s| s.feedrate_mm_min.unwrap())
+            .collect();
+        assert!(wall_f.len() > 10);
+        let max_f = wall_f.iter().cloned().fold(0.0f64, f64::max);
+        let min_f = wall_f.iter().cloned().fold(f64::MAX, f64::min);
+        // دامنهٔ کاهش: تا ۴۰٪ روی شدت کامل (حداقل ۶۰٪ دیواره)
+        let wall = inp.printer.effective_wall_mm_min();
+        assert!(max_f <= wall + 1e-6, "max={max_f} wall={wall}");
+        assert!(min_f < wall * 0.99, "min={min_f} wall={wall} — باید کمتر شود");
+        assert!(min_f >= wall * 0.6 - 1e-6, "min={min_f} — کف ۶۰٪");
+    }
+
+    #[test]
+    fn test_texture_amplitude_nozzle_clamp() {
+        // دامنهٔ بزرگ‌تر از ۰٫۹×نازل → هشدار W-TEX-NOZZLE
+        let mut inp = base_input();
+        inp.textures.push(crate::designer::texture::TextureParams {
+            kind: crate::designer::texture::TextureKind::Ripple,
+            amplitude_mm: 5.0, // نازل ۰٫۴ → کلمپ به ۰٫۳۶
+            period_mm: 4.0,
+            radial: true,
+            phase_deg: 0.0,
+            fade_in_percent: 0.0,
+            fade_out_percent: 0.0,
+        });
+        let out = compute(&inp);
+        assert!(
+            out.diagnostics.iter().any(|d| d.code == "W-TEX-NOZZLE"),
+            "هشدار W-TEX-NOZZLE باید صادر شود"
+        );
+    }
+
+    #[test]
+    fn test_explicit_tangent_profile_computes() {
+        // پروفایل با مماس صریح m — کل زنجیره بدون خطا اجرا می‌شود
+        let mut inp = base_input();
+        inp.profile = vec![
+            crate::designer::profile::ProfilePoint { r: 10.0, h: 0.0, m: None },
+            crate::designer::profile::ProfilePoint { r: 30.0, h: 50.0, m: Some(-0.35) },
+            crate::designer::profile::ProfilePoint { r: 10.0, h: 100.0, m: None },
+        ];
+        inp.form.height_mm = 60.0;
+        let out = compute(&inp);
+        assert!(!out.segments.is_empty());
+        assert!(out.mesh.triangles.len() > 100);
     }
 
     #[test]
