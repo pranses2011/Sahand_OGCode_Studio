@@ -80,6 +80,18 @@ pub struct TextureParams {
     pub fade_in_percent: f64,
     /// محوشدن تدریجی به بالا (۰..۱ از ارتفاع)
     pub fade_out_percent: f64,
+    /// مرکز قوس اسپات زاویه‌ای (درجه) — نسخهٔ ۱.۶ (درخواست کاربر ۵):
+    /// بافت فقط روی همین قوس از محیط فرم اعمال می‌شود.
+    #[serde(default)]
+    pub spot_center_deg: f64,
+    /// گسترهٔ قوس اسپات (درجه؛ ۳۶۰ = کل دور فرم = رفتار قدیمی).
+    #[serde(default = "default_spot_span")]
+    pub spot_span_deg: f64,
+}
+
+/// پیش‌فرض گسترهٔ اسپات — پوشش کامل (سازگاری پروژه‌های ≤۱.۵)
+fn default_spot_span() -> f64 {
+    360.0
 }
 
 impl Default for TextureParams {
@@ -92,6 +104,8 @@ impl Default for TextureParams {
             phase_deg: 0.0,
             fade_in_percent: 0.0,
             fade_out_percent: 0.0,
+            spot_center_deg: 0.0,
+            spot_span_deg: default_spot_span(),
         }
     }
 }
@@ -214,6 +228,15 @@ pub fn apply_texture_ex(
         if w <= 0.0 {
             continue;
         }
+        // اسپات زاویه‌ای — نسخهٔ ۱.۶ (درخواست کاربر ۵): وزن پنجرهٔ زاویه‌ای
+        // روی θ نقطه؛ بافت فقط روی قوس انتخابی اعمال می‌شود (۳۶۰ = همه‌جا).
+        let theta = y.atan2(x);
+        let w_theta =
+            crate::designer::angular_window_weight(t.spot_center_deg, t.spot_span_deg, theta);
+        if w_theta <= 0.0 {
+            continue;
+        }
+        let w = w * w_theta;
         let ph = t.phase_deg.to_radians();
         // فاز طول مسیر: چند دوره تا اینجا
         let cycles = s / t.period_mm;
@@ -772,5 +795,42 @@ mod tests {
         let ra = (a[0] * a[0] + a[1] * a[1]).sqrt();
         let rc = (c[0] * c[0] + c[1] * c[1]).sqrt();
         assert!((ra - rc).abs() > 0.01, "ردیف‌ها: ra={ra} rc={rc}");
+    }
+
+    // ================= آزمون‌های اسپات زاویه‌ای — نسخهٔ ۱.۶ =================
+
+    #[test]
+    fn test_spot_limits_texture_angularly() {
+        // بافت موجک با اسپات ۹۰° حول ۰ → فقط نقطه‌های همان قوس جابه‌جا می‌شوند
+        let t = TextureParams {
+            kind: TextureKind::Ripple,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            spot_center_deg: 0.0,
+            spot_span_deg: 90.0,
+            ..Default::default()
+        };
+        // نقطه روی مرکز اسپات: s=1 (بیشینه موج) → شعاع تغییر می‌کند
+        let (p_on, _) = apply_texture([10.0, 0.0, 50.0], 1.0, 10.0, 0.5, &[t.clone()]);
+        let r_on = (p_on[0] * p_on[0] + p_on[1] * p_on[1]).sqrt();
+        assert!((r_on - 11.0).abs() < 1e-9, "داخل اسپات باید بافت کامل باشد: {r_on}");
+        // نقطهٔ مقابل (θ=180) → شعاع دست‌نخورده
+        let (p_off, _) = apply_texture([-10.0, 0.0, 50.0], 1.0, 10.0, 0.5, &[t.clone()]);
+        let r_off = (p_off[0] * p_off[0] + p_off[1] * p_off[1]).sqrt();
+        assert!((r_off - 10.0).abs() < 1e-9, "خارج اسپات باید پایه باشد: {r_off}");
+    }
+
+    #[test]
+    fn test_spot_texture_full_span_legacy() {
+        // دهانهٔ کامل = همان رفتار قدیمی (بافت همه‌جا)
+        let t = TextureParams {
+            kind: TextureKind::Ripple,
+            amplitude_mm: 1.0,
+            period_mm: 4.0,
+            ..Default::default() // spot_span پیش‌فرض ۳۶۰
+        };
+        let (p, _) = apply_texture([10.0, 0.0, 50.0], 1.0, 10.0, 0.5, &[t]);
+        let r = (p[0] * p[0] + p[1] * p[1]).sqrt();
+        assert!((r - 11.0).abs() < 1e-9, "پیش‌فرض کامل: r={r}");
     }
 }

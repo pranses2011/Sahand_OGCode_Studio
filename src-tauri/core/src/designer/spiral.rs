@@ -1219,6 +1219,7 @@ mod tests {
             phase_deg: 0.0,
             fade_in_percent: 0.0,
             fade_out_percent: 0.0,
+            ..Default::default()
         });
         let out = compute(&inp);
         let wall_f: Vec<f64> = out
@@ -1249,6 +1250,7 @@ mod tests {
             phase_deg: 0.0,
             fade_in_percent: 0.0,
             fade_out_percent: 0.0,
+            ..Default::default()
         });
         let out = compute(&inp);
         assert!(

@@ -32,6 +32,39 @@ pub use texture::{TextureKind, TextureParams};
 
 use serde::{Deserialize, Serialize};
 
+/// وزن پنجرهٔ زاویه‌ای «اسپات» — نسخهٔ ۱.۶ (درخواست کاربر ۵).
+/// الگو/بافت به‌جای کل دور فرم، فقط روی یک قوس زاویه‌ای اعمال می‌شود:
+///   * span ≥ ۳۶۰ → همه‌جا ۱.۰ (رفتار قدیمی — سازگاری پروژه‌های قبلی)؛
+///   * فاصلهٔ زاویه‌ای از مرکز (با wrap) خارج از نیم‌دهانه → ۰؛
+///   * لبه‌ها با گذار نرم smoothstep روی ۱۵٪ دهانه (حداقل ۶°) —
+///     لبهٔ تیز چاپ خوب نیست (شروع/توقف ناگهانی اکستروژن).
+/// خالص و قطعی — قابل‌آزمون (test_spot_angular_window).
+pub fn angular_window_weight(center_deg: f64, span_deg: f64, theta: f64) -> f64 {
+    if !span_deg.is_finite() || span_deg >= 360.0 {
+        return 1.0; // پوشش کامل — رفتار نسخه‌های ≤۱.۵
+    }
+    if span_deg <= 1e-9 {
+        return 0.0;
+    }
+    let c = center_deg.to_radians();
+    let half = (span_deg * 0.5).to_radians();
+    // فاصلهٔ زاویه‌ای علامت‌دار با wrap به (−π, π]
+    let d = (theta - c + std::f64::consts::PI).rem_euclid(2.0 * std::f64::consts::PI)
+        - std::f64::consts::PI;
+    let a = d.abs();
+    if a >= half {
+        return 0.0;
+    }
+    // حاشیهٔ نرم لبه — ۱۵٪ نیم‌دهانه، حداقل ۶ درجه
+    let edge = (half * 0.15).max(0.1);
+    if half - a >= edge {
+        1.0
+    } else {
+        let t = ((half - a) / edge).clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t) // smoothstep
+    }
+}
+
 /// الگوی چاپ کف — نسخهٔ ۱.۲ (درخواست کاربر: الگوهای کف بیشتر)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FloorPattern {
@@ -392,6 +425,7 @@ mod tests {
             phase_deg: 0.0,
             z_start_mm: 0.0,
             z_end_mm: None,
+            ..Default::default()
         });
         let json = serde_json::to_string(&p).unwrap();
         let back: DesignerProject = serde_json::from_str(&json).unwrap();
@@ -422,6 +456,61 @@ mod tests {
         let p = PrinterProfile::default();
         assert_eq!(p.status, "unverified");
         assert!(p.build_volume_mm[0] > 0.0);
+    }
+
+    // ================= آزمون‌های نسخهٔ ۱.۶ =================
+
+    #[test]
+    fn test_spot_angular_window() {
+        // پنجرهٔ زاویه‌ای اسپات — مرکز ۹۰، دهانه ۱۲۰ (پوشش ۳۰..۱۵۰)
+        let w = |theta_deg: f64| angular_window_weight(90.0, 120.0, theta_deg.to_radians());
+        // داخل کامل
+        assert!((w(90.0) - 1.0).abs() < 1e-9, "مرکز باید ۱ باشد");
+        assert!((w(60.0) - 1.0).abs() < 1e-9, "داخل پنجره ۱");
+        // خارج کامل (روبروی مرکز)
+        assert!(w(270.0) < 1e-9, "روبروی مرکز باید ۰ باشد");
+        assert!(w(200.0) < 1e-9, "خارج پنجره ۰");
+        // wrap: ۳۵۰° = فاصلهٔ ۱۰۰ از ۹۰ → خارج؛ ۳۰° = مرز داخل
+        assert!(w(350.0) < 1e-9, "wrap: ۳۵۰ خارج");
+        assert!(w(31.0) > 0.0, "۳۱ درجه داخل/لبه");
+        // لبهٔ نرم: ۱۴۵ (نزدیک ۱۵۰) بین ۰ و ۱
+        let e = w(145.0);
+        assert!(e > 0.0 && e < 1.0, "لبهٔ نرم smoothstep: {e}");
+        // دهانهٔ کامل = همه‌جا ۱ (رفتار قدیمی)
+        assert!((angular_window_weight(0.0, 360.0, 3.0) - 1.0).abs() < 1e-9);
+        assert!((angular_window_weight(0.0, 720.0, 2.5) - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_old_project_json_loads_with_v16_spot_defaults() {
+        // فایل ۱.۵ (بدون فیلدهای اسپات) → دهانهٔ کامل ۳۶۰ (رفتار قدیمی)
+        let old_json = r#"{"schema_version":1,"profile":[{"r":22.0,"h":0.0},{"r":30.0,"h":35.0},{"r":21.0,"h":100.0}],"form_height_mm":100.0,"form_bottom_diameter_mm":60.0,"form_top_diameter_mm":60.0,"taper_percent":0.0,"patterns":[{"kind":"Petal","amplitude_mm":2.0,"count":6,"frequency":1.0,"phase_deg":0.0,"z_start_mm":0.0,"z_end_mm":null}],"textures":[{"kind":"Ripple","amplitude_mm":0.4,"period_mm":4.0,"radial":true,"phase_deg":0.0,"fade_in_percent":0.0,"fade_out_percent":0.0}],"floor":{"enabled":false,"center_hole_diameter_mm":0.0,"z_start_mm":0.0,"ring_gap_mm":0.45},"printer":{"name":"x","status":"unverified","build_volume_mm":[220,220,250],"nozzle_diameter_mm":0.4,"filament_diameter_mm":1.75,"line_width_mm":0.45,"layer_height_mm":0.25,"print_speed_mm_min":2400.0,"travel_speed_mm_min":6000.0,"flow_multiplier":1.0,"absolute_e":true,"start_gcode":"","end_gcode":""},"created_at_unix":0,"note":""}"#;
+        let p = validate_project(old_json).expect("پروژهٔ قدیمی باید بخواند");
+        assert_eq!(p.patterns[0].spot_span_deg, 360.0, "پیش‌فرض اسپات = کامل");
+        assert_eq!(p.patterns[0].spot_center_deg, 0.0);
+        assert_eq!(p.textures[0].spot_span_deg, 360.0);
+    }
+
+    #[test]
+    fn test_project_roundtrip_spot_fields() {
+        // ذخیره/بازیابی فیلدهای اسپات بدون فقدان داده
+        let mut p = DesignerProject::default();
+        p.patterns.push(PatternParams {
+            spot_center_deg: 45.0,
+            spot_span_deg: 90.0,
+            ..Default::default()
+        });
+        p.textures.push(TextureParams {
+            spot_center_deg: 200.0,
+            spot_span_deg: 60.0,
+            ..Default::default()
+        });
+        let json = serde_json::to_string(&p).unwrap();
+        let back: DesignerProject = serde_json::from_str(&json).unwrap();
+        assert!((back.patterns[0].spot_center_deg - 45.0).abs() < 1e-9);
+        assert!((back.patterns[0].spot_span_deg - 90.0).abs() < 1e-9);
+        assert!((back.textures[0].spot_center_deg - 200.0).abs() < 1e-9);
+        assert!((back.textures[0].spot_span_deg - 60.0).abs() < 1e-9);
     }
 
     // ================= آزمون‌های نسخهٔ ۱.۲ =================

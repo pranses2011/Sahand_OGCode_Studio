@@ -94,6 +94,21 @@ pub struct PatternParams {
     pub z_start_mm: f64,
     /// پایان بازهٔ اعمال (None = تا بالای فرم)
     pub z_end_mm: Option<f64>,
+    /// مرکز قوس اسپات زاویه‌ای (درجه) — نسخهٔ ۱.۶ (درخواست کاربر ۵).
+    /// الگو فقط حول این زاویه اعمال می‌شود؛ با کشیدن دسته روی 3D
+    /// (فلش‌های جهت‌دار) قابل جابه‌جایی است.
+    #[serde(default)]
+    pub spot_center_deg: f64,
+    /// گسترهٔ قوس اسپات (درجه؛ ۳۶۰ = کل دور فرم = رفتار قدیمی).
+    /// مثلاً ۹۰ یعنی الگو فقط روی یک‌چهارم محیط فرم ظاهر می‌شود.
+    #[serde(default = "default_spot_span")]
+    pub spot_span_deg: f64,
+}
+
+/// پیش‌فرض گسترهٔ اسپات — ۳۶۰ یعنی پوشش کامل (رفتار نسخه‌های ≤۱.۵؛
+/// پروژه‌های قدیمی بدون این فیلد همان رفتار قبلی را می‌گیرند)
+fn default_spot_span() -> f64 {
+    360.0
 }
 
 impl Default for PatternParams {
@@ -106,6 +121,8 @@ impl Default for PatternParams {
             phase_deg: 0.0,
             z_start_mm: 0.0,
             z_end_mm: None,
+            spot_center_deg: 0.0,
+            spot_span_deg: default_spot_span(),
         }
     }
 }
@@ -159,6 +176,12 @@ fn pattern_value(p: &PatternParams, z: f64, theta: f64, total_height: f64) -> f6
     if w <= 0.0 {
         return 0.0;
     }
+    // اسپات زاویه‌ای — نسخهٔ ۱.۶: وزن پنجرهٔ زاویه‌ای روی θ
+    let w_theta = crate::designer::angular_window_weight(p.spot_center_deg, p.spot_span_deg, theta);
+    if w_theta <= 0.0 {
+        return 0.0;
+    }
+    let w = w * w_theta;
     let phase = p.phase_deg.to_radians();
     let zn = (z / total_height.max(1e-9)).clamp(0.0, 1.0); // z نرمال‌شده
     let k = p.count.max(1) as f64;
@@ -660,5 +683,68 @@ mod tests {
         let (r_valley, _) = apply_patterns(20.0, 50.0, 0.0, 100.0, &[p.clone()]);
         assert!((r_peak - 22.0).abs() < 1e-9, "r_peak={r_peak}");
         assert!((r_valley - 18.0).abs() < 1e-9, "r_valley={r_valley}");
+    }
+
+    // ================= آزمون‌های اسپات زاویه‌ای — نسخهٔ ۱.۶ =================
+
+    #[test]
+    fn test_spot_limits_pattern_angularly() {
+        // الگوی گلبرگ با اسپات ۱۲۰° حول مرکز ۰ → فقط همان قوس تغییر می‌کند؛
+        // زاویهٔ مقابل باید شعاع پایه بماند (پیش‌نمایش و STL فقط همان ناحیه)
+        let p = PatternParams {
+            kind: PatternKind::Petal,
+            amplitude_mm: 3.0,
+            count: 8,
+            spot_center_deg: 0.0,
+            spot_span_deg: 120.0,
+            ..Default::default()
+        };
+        let (r_center, _) = apply_patterns(20.0, 50.0, 0.0, 100.0, &[p.clone()]);
+        let (r_opposite, _) = apply_patterns(20.0, 50.0, std::f64::consts::PI, 100.0, &[p.clone()]);
+        // مرکز اسپات: گلبرگ کامل (> پایه)
+        assert!(r_center > 20.5, "مرکز اسپات باید الگو بگیرد: {r_center}");
+        // مقابل: بدون الگو (شعاع پایه دقیق)
+        assert!((r_opposite - 20.0).abs() < 1e-9, "خارج اسپات باید پایه باشد: {r_opposite}");
+    }
+
+    #[test]
+    fn test_spot_span_360_is_legacy_full_coverage() {
+        // دهانهٔ ۳۶۰ = پوشش کامل — همان رفتار نسخه‌های ≤۱.۵
+        let p = PatternParams {
+            kind: PatternKind::Petal,
+            amplitude_mm: 3.0,
+            count: 8,
+            spot_span_deg: 360.0,
+            ..Default::default()
+        };
+        let (r_a, _) = apply_patterns(20.0, 50.0, 0.5, 100.0, &[p.clone()]);
+        let (r_b, _) = apply_patterns(20.0, 50.0, 3.5, 100.0, &[p.clone()]);
+        assert!(r_a != 20.0 || r_b != 20.0, "با دهانهٔ کامل باید جایی الگو باشد");
+        // بدون اسپات (پیش‌فرض) همین نتیجه
+        let p2 = PatternParams {
+            kind: PatternKind::Petal,
+            amplitude_mm: 3.0,
+            count: 8,
+            ..Default::default()
+        };
+        let (r_a2, _) = apply_patterns(20.0, 50.0, 0.5, 100.0, &[p2]);
+        assert!((r_a - r_a2).abs() < 1e-12, "پیش‌فرض = پوشش کامل");
+    }
+
+    #[test]
+    fn test_spot_center_rotates_window() {
+        // جابه‌جایی مرکز اسپات → پنجره می‌چرخد
+        let mk = |center: f64| PatternParams {
+            kind: PatternKind::Petal,
+            amplitude_mm: 3.0,
+            count: 8,
+            spot_center_deg: center,
+            spot_span_deg: 60.0,
+            ..Default::default()
+        };
+        let (r_at_90_with_90, _) = apply_patterns(20.0, 50.0, (90.0f64).to_radians(), 100.0, &[mk(90.0)]);
+        let (r_at_90_with_270, _) = apply_patterns(20.0, 50.0, (90.0f64).to_radians(), 100.0, &[mk(270.0)]);
+        assert!(r_at_90_with_90 > 20.5, "مرکز ۹۰ روی θ=۹۰ فعال");
+        assert!((r_at_90_with_270 - 20.0).abs() < 1e-9, "مرکز ۲۷۰ روی θ=۹۰ خاموش");
     }
 }

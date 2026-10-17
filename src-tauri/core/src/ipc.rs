@@ -548,6 +548,7 @@ fn eval_patterns_grid() -> std::collections::BTreeMap<String, PreviewGrid> {
             phase_deg: 0.0,
             z_start_mm: 0.0,
             z_end_mm: None,
+            ..Default::default()
         };
         let mut values = Vec::with_capacity(rows * cols);
         for i in 0..rows {
@@ -584,6 +585,7 @@ fn eval_textures_grid() -> std::collections::BTreeMap<String, PreviewGrid> {
             phase_deg: 0.0,
             fade_in_percent: 0.0,
             fade_out_percent: 0.0,
+            ..Default::default()
         };
         let mut values = Vec::with_capacity(rows * cols);
         // مسیر مارپیچی نمونه: θ یکنواخت، z یکنواخت، s متناسب
