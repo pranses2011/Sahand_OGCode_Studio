@@ -450,6 +450,9 @@ pub struct FastViewport {
     pub feedrates: Vec<f64>,
     /// نمونه‌های شعاع (z, r) برای اسپات UI بدون mesh
     pub radius_samples: Vec<[f64; 2]>,
+    /// mesh دیوارهٔ چاپی (نوار مارپیچی از نقاط واقعی مسیر) — نسخهٔ ۱٫۶:
+    /// نمای جامد دقیق با الگو + بافت (رفع باگ «سطح صاف»)
+    pub wall_mesh: crate::designer::spiral::WallMesh,
     /// خلاصهٔ فارسی
     pub summary_fa: String,
     /// آمار مسیر
@@ -494,6 +497,7 @@ pub fn designer_viewport(project: DesignerProject) -> FastViewport {
         kinds,
         feedrates,
         radius_samples: out.radius_samples,
+        wall_mesh: out.wall_mesh,
         summary_fa: out.summary_fa,
         stats: out.stats,
         diagnostics: out.diagnostics,

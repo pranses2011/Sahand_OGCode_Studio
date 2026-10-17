@@ -63,6 +63,12 @@ pub struct DesignerOutput {
     /// نمونه‌های شعاع بیرونی (z, r) — نسخهٔ ۱.۴: اسپات UI بدون انتقال mesh کامل
     #[serde(default)]
     pub radius_samples: Vec<[f64; 2]>,
+    /// mesh دیوارهٔ چاپی برای پیش‌نمایش جامد — نسخهٔ ۱٫۶ (درخواست کاربر ۱).
+    /// «نوار مارپیچی» از نقاط «واقعی مسیر»: هر سلول بین دو انقلاب متوالی
+    /// مارپیچ → دقیقاً همان سطحی که چاپ می‌شود، با الگو «و» بافت.
+    /// رفع باگ ۱٫۵: نمای جامد فقط پوش شعاعی حداکثری (سطح صاف) نشان می‌داد.
+    #[serde(default)]
+    pub wall_mesh: WallMesh,
     /// آمار مسیر
     pub stats: ToolpathStats,
     /// هشدارها
@@ -103,6 +109,75 @@ impl MeshData {
             [n[0] / len, n[1] / len, n[2] / len]
         }
     }
+}
+
+/// mesh دیوارهٔ چاپی برای پیش‌نمایش جامد — نسخهٔ ۱٫۶ (درخواست کاربر ۱)
+/// ==========================================================================
+/// شبکهٔ منظم (rows+1)×(cols+1) از نقاط «مسیر واقعی» مارپیچ:
+///   * ردیف = انقلاب مارپیچ (فاصلهٔ عمودی row_step×layer_h)؛
+///   * ستون = زاویه؛ ستون آخر (j=cols) «ستونِ بسته‌شدن» است: دقیقاً یک
+///     انقلاب جلوتر از ستون ۰ (هم‌زاویه) — حلقه بدون درز بسته می‌شود.
+///   * ایندکس مثلث‌ها در فرانت‌اند از (rows, cols) ساخته می‌شود —
+///     پیلود نصف می‌شود (قاعدهٔ کارایی ۱٫۴).
+///
+/// چرا از خود مسیر؟ «آنچه کاربر می‌بیند همان چیزی باشد که صادر می‌شود»:
+/// نقاط مسیر الگو + بافت (شعاعی و عمودی) + کلمپ‌ها را گرفته‌اند؛ نوارِ بین
+/// دو انقلاب متوالی دقیقاً سطح چاپی واقعی است — رفع باگ «سطح صاف» ۱٫۵
+/// (پیش‌نمایش جامد الگو/بافت را نشان نمی‌داد).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WallMesh {
+    /// تعداد ردیف‌ها (انقلاب‌ها) — رأس‌ها (rows+1)×(cols+1)
+    pub rows: usize,
+    /// تعداد ستون‌های زاویه‌ای هر انقلاب (ستون cols = بسته‌شدن)
+    pub cols: usize,
+    /// رأس‌های تخت (x,y,z)×۳ به‌ترتیب ردیف‌محور — گردشده به ۰٫۰۱mm
+    pub positions: Vec<f64>,
+}
+
+/// ساخت نوار مارپیچی از نقاط واقعی دیواره — نسخهٔ ۱٫۶
+/// wall_points[0] = اولین نقطهٔ چاپ دیواره؛ هر spr نقطه = یک انقلاب کامل.
+fn build_wall_ribbon(wall_points: &[[f64; 3]], spr: usize) -> WallMesh {
+    let total = wall_points.len();
+    if spr < 8 || total < spr + 2 {
+        return WallMesh::default(); // فرم خیلی کوتاه/خیلی درشت — بدون نوار
+    }
+    // انقلاب‌های کامل موجود (total_steps = total-1 مضرب spr است)
+    let revs = (total - 1) / spr;
+    if revs < 2 {
+        return WallMesh::default();
+    }
+    // نمونه‌گیری محدود برای پیلود سبک: حداکثر ۷۲ ستون زاویه‌ای و ۲۴۰ ردیف
+    let col_step = ((spr as f64) / 72.0).ceil().max(1.0) as usize;
+    let cols = spr / col_step;
+    if cols < 4 {
+        return WallMesh::default();
+    }
+    let row_step = ((revs.saturating_sub(1)) as f64 / 240.0).ceil().max(1.0) as usize;
+    // ردیف آخر باید «یک انقلاب کامل + ستون بسته‌شدن» جا داشته باشد:
+    // rows·row_step·spr + spr ≤ total-1 ⇒ rows·row_step ≤ revs-1
+    let rows = if row_step >= revs { 0 } else { (revs - 1) / row_step };
+    if rows < 1 {
+        return WallMesh::default();
+    }
+
+    let stride = cols + 1;
+    let mut positions: Vec<f64> = Vec::with_capacity((rows + 1) * stride * 3);
+    // گردکردن به ۰٫۰۱mm — دقت نمایش؛ JSON فشرده‌تر
+    let r2 = |v: f64| (v * 100.0).round() / 100.0;
+    for i in 0..=rows {
+        let base = i * row_step * spr;
+        for j in 0..cols {
+            let idx = (base + j * col_step).min(total - 1);
+            let p = wall_points[idx];
+            positions.extend_from_slice(&[r2(p[0]), r2(p[1]), r2(p[2])]);
+        }
+        // ستون بسته‌شدن: دقیقاً یک انقلاب جلوتر (هم‌زاویهٔ ستون ۰)؛
+        // ردیف آخر به آخرین نقطهٔ مسیر کلمپ می‌شود (هم‌زاویه در mod 2π)
+        let idx_c = (base + spr).min(total - 1);
+        let p = wall_points[idx_c];
+        positions.extend_from_slice(&[r2(p[0]), r2(p[1]), r2(p[2])]);
+    }
+    WallMesh { rows, cols, positions }
 }
 
 /// محاسبهٔ E برای یک گام مسیر — مستند در راهنما
@@ -159,6 +234,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
             line_count: 0,
             mesh: MeshData { vertices: vec![], triangles: vec![] },
             radius_samples: vec![],
+            wall_mesh: WallMesh::default(),
             stats: ToolpathStats::default(),
             diagnostics,
             layers: vec![],
@@ -277,6 +353,11 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         first_point_model[2],
     ];
 
+    // ---------- نقاط دیواره برای پیش‌نمایش جامد — نسخهٔ ۱٫۶ ----------
+    // همین نقاط در حلقهٔ مارپیچ جمع می‌شوند؛ نوار بین انقلاب‌ها = سطح چاپی
+    let mut wall_points: Vec<[f64; 3]> =
+        Vec::with_capacity((total_revolutions * steps_per_rev as f64) as usize + 2);
+
     // travel اولیه — از آخرین نقطهٔ کف (اگر هست) وگرنه مرکز صفحه
     let mut prev_point = segments
         .last()
@@ -297,6 +378,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     stats.accumulate(&seg);
     segments.push(seg);
     prev_point = first_point;
+    wall_points.push(first_point);
 
     // ---------- حلقهٔ مارپیچ ----------
     let mut e_counter = 0.0f64; // برای E مطلق؛ در نسبی delta مستقیم می‌رود
@@ -392,7 +474,12 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         stats.accumulate(&seg);
         segments.push(seg);
         prev_point = point;
+        wall_points.push(point);
     }
+
+    // ---------- نوار مارپیچی پیش‌نمایش — نسخهٔ ۱٫۶ (درخواست کاربر ۱) ----------
+    // از نقاط «واقعی مسیر» → الگو و بافت هر دو در نمای جامد دیده می‌شوند
+    let wall_mesh = build_wall_ribbon(&wall_points, steps_per_rev);
 
     // ---------- هشدارها ----------
     if clamped_radius_events > 0 {
@@ -472,6 +559,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         line_count: total_steps + 1,
         mesh,
         radius_samples,
+        wall_mesh,
         stats,
         diagnostics,
         layers: Vec::new(), // مارپیچ: بدون لایهٔ گسسته
@@ -1574,5 +1662,138 @@ mod tests {
             }
         }
         assert!(edge_hits >= 8, "تعداد نقاط لبه باید ≥ ۸ باشد: {edge_hits}");
+    }
+
+    // ================= آزمون‌های نوار مارپیچی — نسخهٔ ۱٫۶ =================
+
+    #[test]
+    fn test_wall_mesh_built_from_path() {
+        // نمای جامد دقیق: شبکهٔ منظم از نقاط واقعی مسیر
+        let out = compute(&base_input());
+        let wm = &out.wall_mesh;
+        assert!(wm.rows >= 1, "ردیف انقلاب: {}", wm.rows);
+        assert!(wm.cols >= 4, "ستون زاویه‌ای: {}", wm.cols);
+        assert_eq!(wm.positions.len(), (wm.rows + 1) * (wm.cols + 1) * 3);
+        // همهٔ مختصات متناهی و گردشده به ۰٫۰۱
+        for v in &wm.positions {
+            assert!(v.is_finite());
+            let s = v * 100.0;
+            assert!((s - s.round()).abs() < 1e-6, "گردشدن ۰٫۰۱: {v}");
+        }
+    }
+
+    #[test]
+    fn test_wall_mesh_vertex_matches_toolpath() {
+        // رأس (۰,۰) = اولین نقطهٔ چاپ دیواره (گردشده) — «همان چیزی که چاپ می‌شود»
+        let inp = base_input();
+        let out = compute(&inp);
+        // اولین نقطهٔ دیواره = پایان travel اولیه (شروع اکستروژن مارپیچ)
+        let first_wall = out.segments[0].end_mm.unwrap();
+        let v0 = &out.wall_mesh.positions[..3];
+        assert!((v0[0] - first_wall[0]).abs() <= 0.01);
+        assert!((v0[1] - first_wall[1]).abs() <= 0.01);
+        assert!((v0[2] - first_wall[2]).abs() <= 0.01);
+        // ستون بسته‌شدن ردیف ۰ (j=cols، ایندکس تخت cols) = نقطهٔ یک انقلاب
+        // بعد از ستون ۰ — هم‌زاویه و layer_h بالاتر
+        let cols = out.wall_mesh.cols;
+        let vc = &out.wall_mesh.positions[cols * 3..cols * 3 + 3];
+        let lh = inp.printer.layer_height_mm;
+        assert!(
+            (vc[2] - first_wall[2] - lh).abs() <= 0.02,
+            "ستون بسته‌شدن باید یک لایه بالاتر باشد: {} vs {}",
+            vc[2],
+            first_wall[2] + lh
+        );
+        // رأس ردیف ۱ ستون ۰: row_step انقلاب بالاتر (row_step ≥ ۱)
+        let stride = cols + 1;
+        let v10 = &out.wall_mesh.positions[stride * 3..stride * 3 + 3];
+        assert!(v10[2] > first_wall[2], "ردیف بعد باید بالاتر باشد");
+    }
+
+    #[test]
+    fn test_wall_mesh_reflects_texture() {
+        // رفع باگ ۱٫۵: بافت باید در نمای جامد دیده شود — نوار از نقاط مسیر
+        let mut inp = base_input();
+        let base = compute(&inp);
+        inp.textures.push(TextureParams {
+            kind: crate::designer::texture::TextureKind::Ripple,
+            amplitude_mm: 0.35, // زیر کلمپ نازل
+            period_mm: 3.0,
+            ..Default::default()
+        });
+        let with_tex = compute(&inp);
+        assert_eq!(base.wall_mesh.rows, with_tex.wall_mesh.rows);
+        assert_eq!(base.wall_mesh.cols, with_tex.wall_mesh.cols);
+        let mut diff = 0usize;
+        for (a, b) in base.wall_mesh.positions.iter().zip(with_tex.wall_mesh.positions.iter()) {
+            if (a - b).abs() > 1e-9 {
+                diff += 1;
+            }
+        }
+        assert!(diff > 30, "بافت باید نوار را تغییر دهد: {diff} مختصات");
+    }
+
+    #[test]
+    fn test_wall_mesh_reflects_pattern() {
+        // الگو هم در نمای جامد دیده می‌شود (قبلاً فقط پوش حداکثری دیده می‌شد)
+        let mut inp = base_input();
+        let base = compute(&inp);
+        inp.patterns.push(PatternParams {
+            kind: crate::designer::pattern::PatternKind::Flute,
+            amplitude_mm: 2.0,
+            count: 10,
+            ..Default::default()
+        });
+        let with_pat = compute(&inp);
+        // با الگوی شیار عمودی، رأس‌های مختلف زاویه‌ای باید شعاع متفاوت بگیرند
+        let wm = &with_pat.wall_mesh;
+        let stride = wm.cols + 1;
+        let mut radii: Vec<f64> = Vec::new();
+        for j in 0..wm.cols {
+            let x = wm.positions[j * 3];
+            let y = wm.positions[j * 3 + 1];
+            radii.push((x * x + y * y).sqrt());
+        }
+        let _ = stride;
+        let rmin = radii.iter().cloned().fold(f64::MAX, f64::min);
+        let rmax = radii.iter().cloned().fold(0.0f64, f64::max);
+        assert!(
+            rmax - rmin > 1.0,
+            "شیارها باید در ردیف اول دیده شوند: rmin={rmin} rmax={rmax}"
+        );
+    }
+
+    #[test]
+    fn test_wall_mesh_reflects_angular_spot() {
+        // اسپات زاویه‌ای: الگو فقط روی قوس — رأس‌های خارج قوس شعاع پایه
+        let mut inp = base_input();
+        inp.patterns.push(PatternParams {
+            kind: crate::designer::pattern::PatternKind::Petal,
+            amplitude_mm: 4.0,
+            count: 6,
+            spot_center_deg: 0.0,
+            spot_span_deg: 90.0,
+            ..Default::default()
+        });
+        let out = compute(&inp);
+        let wm = &out.wall_mesh;
+        // شعاع رأس‌ها نسبت به محور فرم (مرکز صفحه)
+        let vol = inp.printer.build_volume_mm;
+        let (cx, cy) = (vol[0] / 2.0, vol[1] / 2.0);
+        let mut r_on = f64::MIN;
+        let mut r_off = f64::MAX;
+        for j in 0..wm.cols {
+            let x = wm.positions[j * 3] - cx;
+            let y = wm.positions[j * 3 + 1] - cy;
+            let r = (x * x + y * y).sqrt();
+            let theta = y.atan2(x).to_degrees();
+            let d = (theta - 0.0 + 180.0).rem_euclid(360.0) - 180.0;
+            if d.abs() < 20.0 {
+                r_on = r_on.max(r);
+            } else if d.abs() > 120.0 {
+                r_off = r_off.min(r);
+            }
+        }
+        assert!(r_on > r_off + 0.5, "داخل اسپات برجسته، خارج پایه: {r_on} vs {r_off}");
     }
 }
