@@ -45,7 +45,7 @@
  * ============================================================================
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { SegmentsPayload } from "../lib/tauri";
 
@@ -115,6 +115,14 @@ export interface ViewportProps extends ViewportCallbacks {
   webglMessage: string;
   /** رنگ رشتهٔ چاپ (اکستروژن) — انتخاب کاربر؛ پیش‌فرض سبز */
   extrusionColor?: string;
+  /** نمونه‌های شعاع (z, r) فرم — نسخهٔ ۱.۵: نمای جامد سایه‌دار.
+   *  با این داده، سطح انقلاب با MeshStandardMaterial ساخته می‌شود تا
+   *  «طرح» مثل اپ مرجع کاملاً قابل‌ مشاهده باشد (نه فقط خطوط مسیر).
+   *  null = بدون سطح جامد (ویرایشگر G-code). */
+  surfaceSamples?: number[][] | null;
+  /** دیسک کف — نسخهٔ ۱.۵: نمایش کف در نمای جامد.
+   *  null = بدون کف؛ { holeDiameter } = دیسک با سوراخ مرکزی. */
+  floorDisk?: { holeDiameter: number } | null;
 }
 
 /** تبدیل شمارهٔ نوع به رنگ پایه (از مجموعهٔ رنگ نمونه) */
@@ -192,6 +200,13 @@ export function Viewport(props: ViewportProps) {
   const applyCamRef = useRef<(() => void) | null>(null);
   /** آخرین fit — فقط تغییر دامنهٔ بزرگ دوباره fit می‌کند (رفع پرش) */
   const lastFitRef = useRef<{ x: number; y: number; z: number; r: number } | null>(null);
+  // ---- نسخهٔ ۱.۵: نمای جامد ----
+  const surfaceRef = useRef<THREE.Mesh | null>(null);
+  const floorDiskRef = useRef<THREE.Mesh | null>(null);
+  /** حالت نما: solid = فقط سطح؛ both = سطح + مسیر؛ path = فقط مسیر */
+  const [viewMode, setViewMode] = useState<"solid" | "both" | "path">("both");
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
 
   const markDirty = () => {
     dirtyRef.current = true;
@@ -247,11 +262,18 @@ export function Viewport(props: ViewportProps) {
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 10000);
     cameraRef.current = camera;
 
-    // ---- نورپردازی ساده (برای mesh و حلقه‌های اسپات) ----
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    // ---- نورپردازی (نسخهٔ ۱.۵: غنی‌تر برای نمای جامد سایه‌دار) ----
+    // Ambient ملایم + Hemisphere (آسمان/زمین) + Directional اصلی + rim
+    // نتیجه: سطح فرم با سایه‌روشن خوانا می‌شود — «طرح دیده شود».
+    scene.add(new THREE.AmbientLight(0xffffff, 0.42));
+    const hemi = new THREE.HemisphereLight(0xdfe8ff, 0x2a2f3a, 0.55);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
     dir.position.set(200, 300, 100);
     scene.add(dir);
+    const rim = new THREE.DirectionalLight(0x88aaff, 0.35);
+    rim.position.set(-250, 120, -180);
+    scene.add(rim);
 
     // ---- grid و محورها (جابه‌جایی به مرکز صفحه در افکت buildVolume) ----
     const grid = new THREE.GridHelper(400, 40, 0x343945, 0x22262f);
@@ -777,6 +799,165 @@ export function Viewport(props: ViewportProps) {
   }, [props.buildVolume]);
 
   // ------------------------------------------------------------------------
+  // نمای جامد — نسخهٔ ۱.۵: سطح انقلاب از radius_samples + دیسک کف
+  // ------------------------------------------------------------------------
+  // radius_samples = ۱۲۹ نمونهٔ (z, r) «با الگوها» از هستهٔ Rust؛ چرخش
+  // حول محور ⇒ سطح دقیق فرم. تراکم: ۴۸ ستون زاویه‌ای (~۱۲k مثلث) — سبک.
+  // z پایه از کمینهٔ z اکستروژن‌ها محاسبه می‌شود تا سطح با مسیر هم‌راستا
+  // شود (پس از کفِ چندلایه، فرم از بالای کف شروع می‌شود).
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    // حذف قبلی
+    for (const ref of [surfaceRef, floorDiskRef]) {
+      if (ref.current) {
+        scene.remove(ref.current);
+        ref.current.geometry.dispose();
+        (ref.current.material as THREE.Material).dispose();
+        ref.current = null;
+      }
+    }
+    const samples = props.surfaceSamples;
+    if (!samples || samples.length < 2) return;
+
+    // z پایه: کمینهٔ z اکستروژن‌ها (شروع واقعی فرم روی صفحه)
+    const segs = props.segments;
+    let zBase = 0;
+    if (segs) {
+      const n = Math.floor(segs.positions.length / 6);
+      let minZ = Infinity;
+      for (let i = 0; i < n; i++) {
+        if (segs.kinds[i] === 0) {
+          minZ = Math.min(minZ, segs.positions[i * 6 + 2], segs.positions[i * 6 + 5]);
+        }
+      }
+      if (Number.isFinite(minZ)) zBase = minZ;
+    }
+
+    // ---- سطح انقلاب ----
+    const rows = samples.length;
+    const cols = 48;
+    const positions = new Float32Array(rows * (cols + 1) * 3);
+    const normals = new Float32Array(rows * (cols + 1) * 3);
+    const indices: number[] = [];
+    const cx = 0, cz = 0; // مرکز محور در فضای Three (جابه‌جایی با bedOffset زیر)
+    // bedOffset: مرکز فرم روی صفحه — مثل اسپات
+    const [ax, ay] = props.spot?.bedOffset ?? [0, 0];
+    const center3x = ax;
+    const center3z = -ay;
+    for (let i = 0; i < rows; i++) {
+      const z = zBase + samples[i][0];
+      const r = Math.max(samples[i][1], 0.05);
+      for (let j = 0; j <= cols; j++) {
+        const th = (j / cols) * Math.PI * 2;
+        const k = (i * (cols + 1) + j) * 3;
+        positions[k] = center3x + r * Math.cos(th);
+        positions[k + 1] = z;
+        positions[k + 2] = center3z - r * Math.sin(th);
+      }
+    }
+    // نرمال‌ها: هر رأس → از سطح بیرون (تقریب شعاعی + شیب z)
+    for (let i = 0; i < rows; i++) {
+      const r = Math.max(samples[i][1], 0.05);
+      const rPrev = i > 0 ? Math.max(samples[i - 1][1], 0.05) : r;
+      const rNext = i < rows - 1 ? Math.max(samples[i + 1][1], 0.05) : r;
+      const dr = (rNext - rPrev) / 2;
+      // نرمال در صفحهٔ (r,z): (1, -dr) نرمال‌شده (بیرون‌رونده)
+      const len = Math.hypot(1, dr) || 1;
+      const nr = 1 / len;
+      const nz = -dr / len;
+      for (let j = 0; j <= cols; j++) {
+        const th = (j / cols) * Math.PI * 2;
+        const k = (i * (cols + 1) + j) * 3;
+        normals[k] = nr * Math.cos(th);
+        normals[k + 1] = nz;
+        normals[k + 2] = -nr * Math.sin(th);
+      }
+    }
+    // مثلث‌ها — دو نیمهٔ هر quad
+    for (let i = 0; i < rows - 1; i++) {
+      for (let j = 0; j < cols; j++) {
+        const a = i * (cols + 1) + j;
+        const b = a + 1;
+        const c = (i + 1) * (cols + 1) + j;
+        const d = c + 1;
+        indices.push(a, c, d, a, d, b);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+    geo.setIndex(indices);
+    const mat = new THREE.MeshStandardMaterial({
+      color: extrusionColor,
+      side: THREE.DoubleSide,
+      roughness: 0.5,
+      metalness: 0.08,
+      // کمی درخشش داخلی تا فرم روی پس‌زمینهٔ تیره «جان» بگیرد
+      emissive: new THREE.Color(extrusionColor).multiplyScalar(0.06),
+    });
+    const surface = new THREE.Mesh(geo, mat);
+    surface.name = "solid-surface";
+    surface.renderOrder = 1;
+    scene.add(surface);
+    surfaceRef.current = surface;
+
+    // ---- دیسک کف (اگر کف فعال است) ----
+    const fd = props.floorDisk;
+    if (fd) {
+      const rOuter = Math.max(samples[0][1], 1);
+      const rHole = Math.max(fd.holeDiameter / 2, 0);
+      const diskGeo = rHole > 0.4
+        ? new THREE.RingGeometry(rHole, rOuter, 64)
+        : new THREE.CircleGeometry(rOuter, 64);
+      // RingGeometry در صفحهٔ XY → چرخش به افقی
+      const diskMat = new THREE.MeshStandardMaterial({
+        color: extrusionColor,
+        side: THREE.DoubleSide,
+        roughness: 0.7,
+        metalness: 0.02,
+      });
+      const disk = new THREE.Mesh(diskGeo, diskMat);
+      disk.rotation.x = -Math.PI / 2;
+      disk.position.set(center3x, Math.max(zBase - 0.4, 0.05), center3z);
+      disk.name = "solid-floor";
+      disk.renderOrder = 1;
+      scene.add(disk);
+      floorDiskRef.current = disk;
+    }
+
+    // bounding دستی برای fit اولیهٔ سطح (وقتی مسیر هنوز خالی است)
+    markDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.surfaceSamples, props.floorDisk, extrusionColor]);
+
+  // ------------------------------------------------------------------------
+  // تغییر حالت نما (جامد/هر دو/مسیر) — فقط visible سوییچ می‌شود
+  // ------------------------------------------------------------------------
+  useEffect(() => {
+    const solid = viewMode !== "path";
+    const path = viewMode !== "solid";
+    if (surfaceRef.current) surfaceRef.current.visible = solid;
+    if (floorDiskRef.current) floorDiskRef.current.visible = solid;
+    if (linesRef.current) linesRef.current.visible = path;
+    markDirty();
+  }, [viewMode]);
+
+  // تغییر رنگ رشتهٔ چاپ → به‌روزرسانی متریال سطح
+  useEffect(() => {
+    if (surfaceRef.current) {
+      (surfaceRef.current.material as THREE.MeshStandardMaterial).color.copy(extrusionColor);
+      (surfaceRef.current.material as THREE.MeshStandardMaterial).emissive.copy(
+        new THREE.Color(extrusionColor).multiplyScalar(0.06)
+      );
+    }
+    if (floorDiskRef.current) {
+      (floorDiskRef.current.material as THREE.MeshStandardMaterial).color.copy(extrusionColor);
+    }
+    markDirty();
+  }, [extrusionColor]);
+
+  // ------------------------------------------------------------------------
   // اسپات — ۱.۴: دستهٔ مستقیم روی سطح فرم (مثل مرجع) + حلقه‌های ظریف
   // ------------------------------------------------------------------------
   useEffect(() => {
@@ -809,13 +990,16 @@ export function Viewport(props: ViewportProps) {
       opacity = 0.85
     ) => {
       const geo = new THREE.TorusGeometry(Math.max(radius, 2), tube, 10, 64);
+      // ۱.۵: depthTest خاموش + renderOrder — حلقه روی سطح جامد هم پیدا/دیده می‌شود
       const mat = new THREE.MeshBasicMaterial({
         color,
         transparent: true,
         opacity,
+        depthTest: false,
       });
       const ring = new THREE.Mesh(geo, mat);
       ring.rotation.x = Math.PI / 2; // افقی
+      ring.renderOrder = 900; // بالای سطح جامد
       ring.position.set(center[0], z, center[2]);
       ring.name = name;
       return ring;
@@ -964,6 +1148,25 @@ export function Viewport(props: ViewportProps) {
     <div className="viewport" ref={holderRef}>
       {segCount === 0 && (
         <div className="overlay-msg">{props.emptyMessage}</div>
+      )}
+      {props.surfaceSamples && props.surfaceSamples.length > 1 && (
+        <div className="viewmode-toggle" role="radiogroup" aria-label="حالت نمای سه‌بعدی">
+          {([
+            ["solid", "جامد"],
+            ["both", "جامد + مسیر"],
+            ["path", "فقط مسیر"],
+          ] as const).map(([mode, label]) => (
+            <button
+              key={mode}
+              className={`vm-btn ${viewMode === mode ? "active" : ""}`}
+              role="radio"
+              aria-checked={viewMode === mode}
+              onClick={() => setViewMode(mode)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       )}
       <div className="legend">
         <span><span className="sw" style={{ background: "#" + extrusionColor.getHexString() }} />چاپ (اکستروژن)</span>

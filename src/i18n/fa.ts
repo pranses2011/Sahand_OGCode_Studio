@@ -88,10 +88,45 @@ export interface FaStrings {
   smoothing: string;
   addPoint: string;
   removePoint: string;
+  // ---------- نسخهٔ ۱.۵ ----------
+  addPointHint: string;
+  tangentHint: string;
+  randomProfile: string;
+  randomProfileHint: string;
+  importSvg: string;
+  importSvgHint: string;
+  importSvgDone: string;
+  moreProfiles: string;
+  stlQualityTitle: string;
+  stlQualityHint: string;
+  stlQualityDraft: string;
+  stlQualityStandard: string;
+  stlQualityFine: string;
+  stlQualityUltra: string;
+  stlQualityTriangles: string;
+  stlQualityExport: string;
+  saveDirectGcode: string;
+  saveDirectDone: string;
+  solidViewHint: string;
   presets: string;
   presetVase: string;
   presetLamp: string;
   presetPlanter: string;
+  presetCup: string;
+  presetBottle: string;
+  presetBowl: string;
+  presetHourglass: string;
+  presetGoblet: string;
+  presetLantern: string;
+  presetAmphora: string;
+  presetPencilHolder: string;
+  presetStackedPlanter: string;
+  presetEggCup: string;
+  presetBarrel: string;
+  presetCone: string;
+  presetSconce: string;
+  presetBucket: string;
+  presetCeladon: string;
   patternAdd: string;
   patternAmplitude: string;
   patternCount: string;
@@ -286,10 +321,45 @@ export const fa: FaStrings = {
   smoothing: "هموارسازی",
   addPoint: "افزودن نقطه",
   removePoint: "حذف نقطه",
+  // ---------- نسخهٔ ۱.۵ ----------
+  addPointHint: "دابل‌کلیک روی فضای خالی: افزودن نقطه — دابل‌کلیک روی نقطه: حذف",
+  tangentHint: "کلیک روی نقطه → فلش‌های مماس دو طرف؛ کشیدن فلش = تنظیم دقیق انحنای اسپلاین؛ دابل‌کلیک روی فلش = مماس خودکار",
+  randomProfile: "پروفایل تصادفی",
+  randomProfileHint: "شکل تصادفی چاپ‌پسند: شیب دیواره ≤ ۵۰°، شعاع ۸..۳۴mm، کف ≥ ۱۰mm",
+  importSvg: "ایمپورت از SVG",
+  importSvgHint: "نیم‌رخ راست کانتور SVG به پروفایل تبدیل می‌شود (فرم باید دورانی/متقارن باشد)",
+  importSvgDone: "پروفایل از SVG ایمپورت شد",
+  moreProfiles: "کتابخانهٔ پروفایل‌ها",
+  stlQualityTitle: "کیفیت خروجی STL",
+  stlQualityHint: "کیفیت فقط ریزباشدِ سطح STL است؛ G-code و مسیر چاپ مستقل می‌مانند.",
+  stlQualityDraft: "سریع (۰٫۵×)",
+  stlQualityStandard: "استاندارد (۱×)",
+  stlQualityFine: "ریز (۲×)",
+  stlQualityUltra: "بسیار ریز (۳×)",
+  stlQualityTriangles: "تخمین مثلث‌ها",
+  stlQualityExport: "خروجی STL",
+  saveDirectGcode: "ذخیرهٔ مستقیم G-code",
+  saveDirectDone: "G-code مستقیماً ذخیره شد",
+  solidViewHint: "نمای جامد: طرح با سایه‌روشن کامل دیده می‌شود (مثل مرجع)؛ حالت نمایش را از دکمه‌های بالا عوض کنید",
   presets: "پروفایل‌های آماده",
   presetVase: "گلدان",
   presetLamp: "سایه‌روشن",
   presetPlanter: "گلدان کشت",
+  presetCup: "لیوان",
+  presetBottle: "بطری",
+  presetBowl: "کاسه",
+  presetHourglass: "ساعت شنی",
+  presetGoblet: "جام",
+  presetLantern: "فانوس",
+  presetAmphora: "آمفورا",
+  presetPencilHolder: "قلم‌خانه",
+  presetStackedPlanter: "گلدان دوطبقه",
+  presetEggCup: "تخم‌مرغی",
+  presetBarrel: "بشکه",
+  presetCone: "مخروط",
+  presetSconce: "شمع‌دان",
+  presetBucket: "دلو",
+  presetCeladon: "سلادون",
   patternAdd: "افزودن الگو",
   patternAmplitude: "دامنه (mm)",
   patternCount: "تعداد",
