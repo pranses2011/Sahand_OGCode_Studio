@@ -295,11 +295,23 @@ pub fn serialize_gcode(input: &DesignerInput, output: &DesignerOutput) -> String
         g.push('\n');
     }
 
-    // ---------- پایان استاندارد ----------
-    g.push_str("M104 S0 ; nozzle off\n");
+    // ---------- پایان استاندارد — نسخهٔ ۱٫۶ (درخواست کاربر ۲) ----------
+    // ترتیب صحیح پس از اتمام چاپ (رفع باگ «به محل اشتباهی می‌رود»):
+    //   ۱) رتراکشن (بالا — پیش از کد end کاربر، رشتهٔ اضافی نمی‌چکد)؛
+    //   ۲) خاموشی هیتر بستر (M140) و نازل (M104) و فن (M107) — بلافاصله؛
+    //   ۳) بالارفتن ۱mm نسبی (G91 → G1 Z1 → G90) — قطعه از نازل دور می‌شود؛
+    //   ۴) هوم X فقط (G28 X) — «بدون پایین آمدن»: Z همان‌جا بالا می‌ماند
+    //      (قبلاً G28 کامل صادر می‌شد که Z را تا میز پایین می‌آورد و نازل
+    //      داغ روی قطعه/میز گیر می‌کرد)؛
+    //   ۵) خاموشی موتورها (M84).
+    g.push_str("; --- shutdown sequence ---\n");
     g.push_str("M140 S0 ; bed off\n");
+    g.push_str("M104 S0 ; nozzle off\n");
     g.push_str("M107 ; fan off\n");
-    g.push_str("G28 ; home\n");
+    g.push_str("G91 ; relative mode\n");
+    g.push_str("G1 Z1.0 F600 ; lift 1mm\n");
+    g.push_str("G90 ; absolute mode\n");
+    g.push_str("G28 X ; home X only (Z stays up)\n");
     g.push_str("M84 ; motors off\n");
 
     g
@@ -619,6 +631,8 @@ mod tests {
         let print_g1 = g1_lines
             .iter()
             .filter(|l| !l.contains("; retract") && !l.contains("; unretract"))
+            // ۱٫۶: بالارفتن پایانی ۱mm (دنبالهٔ خاموشی) جزو مسیر چاپ نیست
+            .filter(|l| !l.contains("; lift 1mm"))
             .count();
         assert_eq!(print_g1, out.segments.len() - 1);
     }
@@ -949,5 +963,48 @@ mod tests {
         assert!(g.contains("M109 S240 ; wait for nozzle"));
         assert!(g.contains("M106 S77")); // 30% → 76.5 → رند 77
     }
-}
 
+    // ================= آزمون‌های پایان‌بندی — نسخهٔ ۱٫۶ =================
+
+    #[test]
+    fn test_shutdown_sequence_order() {
+        // درخواست کاربر ۲: رتراکشن → M140/M104/M107 → Z+1 نسبی → هوم X
+        // (بدون پایین آمدن) → M84 — و بازگشت به G90 پس از G91
+        let inp = base_input();
+        let out = compute(&inp);
+        let g = serialize_gcode(&inp, &out);
+        // آخرین رتراکشن (پایانی) قبل از همهٔ فرمان‌های خاموشی است
+        let pos_retract = g.rfind("; retract").expect("رتراکشن پایانی");
+        let pos_m140 = g.find("M140 S0").unwrap();
+        let pos_m104 = g.find("M104 S0").unwrap();
+        let pos_m107 = g.rfind("M107").unwrap();
+        let pos_lift = g.find("G1 Z1.0 F600").unwrap();
+        let pos_g91 = g.rfind("G91").unwrap();
+        let pos_g28x = g.find("G28 X").unwrap();
+        let pos_m84 = g.find("M84").unwrap();
+        assert!(pos_retract < pos_m140, "رتراکشن قبل از خاموشی بستر");
+        assert!(pos_m140 < pos_m104, "بستر قبل از نازل");
+        assert!(pos_m104 < pos_m107, "نازل قبل از فن");
+        assert!(pos_m107 < pos_lift, "خاموشی‌ها قبل از بالارفتن");
+        assert!(pos_lift < pos_g28x, "بالارفتن قبل از هوم X");
+        assert!(pos_g28x < pos_m84, "هوم X قبل از خاموشی موتورها");
+        // G91 → lift → G90 (بازگشت به مطلق پیش از M84)
+        let pos_g90_after = g[pos_g91..].find("G90").map(|i| i + pos_g91).unwrap();
+        assert!(pos_g91 < pos_lift && pos_lift < pos_g90_after);
+        // آخرین G28 «فقط X» است — Z پایین نمی‌آید
+        let g28_lines: Vec<&str> = g
+            .lines()
+            .filter(|l| l.trim_start().starts_with("G28"))
+            .collect();
+        assert_eq!(g28_lines.len(), 2, "هوم شروع خودکار + هوم X پایانی");
+        assert!(
+            g28_lines[1].starts_with("G28 X"),
+            "هوم پایانی فقط X: {}",
+            g28_lines[1]
+        );
+        // هیچ G28 کامل (XYZ) پس از دنبالهٔ خاموشی نیست
+        let shutdown = g.find("; --- shutdown sequence ---").unwrap();
+        assert!(!g[shutdown..].contains("G28\n"));
+        assert!(!g[shutdown..].contains("G28 ;"));
+    }
+}
