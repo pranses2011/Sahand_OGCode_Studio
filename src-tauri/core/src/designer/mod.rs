@@ -78,6 +78,16 @@ pub enum FloorPattern {
     Radial,
     /// ردیف‌های رفت‌وبرگشتی (مارپیچ خطی) روی دیسک
     ZigZag,
+    /// شانه‌زنبوری — نسخهٔ ۱٫۶: شبکهٔ شش‌گوش (استحکام بالا/فیلامنت کم)
+    Honeycomb,
+    /// موج دایره‌ای — نسخهٔ ۱٫۶: مارپیچ با موج شعاعی سینوسی (کف تزئینی)
+    Wave,
+    /// ستاره‌ای — نسخهٔ ۱٫۶: چند ستارهٔ تودرتو با پرتوهای کامل
+    Star,
+    /// دانه‌برفی — نسخهٔ ۱٫۶: ۶ شاخه + شاخه‌های فرعی (کف نمایشی)
+    Snowflake,
+    /// گره هندسی — نسخهٔ ۱٫۶: ستارهٔ هشت‌پر تکرارشونده (نقش هندسی)
+    Octagram,
 }
 
 impl Default for FloorPattern {
@@ -95,6 +105,11 @@ impl FloorPattern {
             FloorPattern::Grid => "شبکهٔ متقاطع",
             FloorPattern::Radial => "پرتوهای شعاعی",
             FloorPattern::ZigZag => "رفت‌وبرگشتی",
+            FloorPattern::Honeycomb => "شانه‌زنبوری",
+            FloorPattern::Wave => "موج دایره‌ای",
+            FloorPattern::Star => "ستاره‌ای",
+            FloorPattern::Snowflake => "دانه‌برفی",
+            FloorPattern::Octagram => "گره هندسی (هشت‌پر)",
         }
     }
 }
@@ -121,6 +136,23 @@ pub struct FloorSettings {
     /// حالت مارپیچی/vase از بالای کف ادامه می‌یابد.
     #[serde(default = "default_floor_layers")]
     pub layers: u32,
+    /// تنظیمات حرفه‌ای کف — نسخهٔ ۱٫۶ (درخواست کاربر ۷: لامپ/آویز):
+    /// تعداد سوراخ‌های لبه (۰..۱۲) برای رد کردن سیم/نخ آویز یا کابل لامپ؛
+    /// الگوهای کف این نقاط را خالی می‌گذارند و حلقهٔ تقویت دورشان چاپ می‌شود.
+    #[serde(default)]
+    pub rim_holes: u32,
+    /// قطر هر سوراخ لبه (mm) — پیش‌فرض ۳mm (عبور نخ/سیم)
+    #[serde(default = "default_rim_hole_d")]
+    pub rim_hole_diameter_mm: f64,
+    /// حلقه‌های تقویت اضافی دور لبه/سوراخ مرکزی (۰..۴) — نسخهٔ ۱٫۶:
+    /// برای آویزکردن و سوکت لامپ؛ لایهٔ آخر کف ضخیم‌تر/مقاوم‌تر می‌شود.
+    #[serde(default)]
+    pub reinforce_rings: u32,
+}
+
+/// پیش‌فرض قطر سوراخ لبه — ۳mm (عبور نخ/سیم آویز)
+fn default_rim_hole_d() -> f64 {
+    3.0
 }
 
 /// پیش‌فرض تعداد پرتوهای کف شعاعی
@@ -143,6 +175,9 @@ impl Default for FloorSettings {
             ring_gap_mm: 0.45,
             spokes: 12,
             layers: default_floor_layers(),
+            rim_holes: 0,
+            rim_hole_diameter_mm: default_rim_hole_d(),
+            reinforce_rings: 0,
         }
     }
 }

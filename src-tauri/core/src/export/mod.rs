@@ -747,11 +747,42 @@ mod tests {
         assert!(g.contains("F1200"), "سرعت لایهٔ اول");
         assert!(g.contains("F1800"), "سرعت لایه‌های کف");
         assert!(g.contains("F2400"), "سرعت دیواره");
-        // ترتیب گذار: F1200 قبل از F1800 قبل از F2400
+        // ترتیب گذار: F1200 (لایهٔ اول) → F1800 (لایهٔ ۲ کف) → دیواره ۲۴۰۰.
+        // ۱٫۶: F مودال است — پس از آنرتراکشن (F2400 = سرعت رتراکشن 40mm/s)
+        // خطوط دیواره بدون F تکراری می‌آیند؛ معنای واقعی را می‌سنجمیم:
+        // «F مودال هنگام اولین اکستروژن دیواره = 2400»
         let i1 = g.find("F1200").unwrap();
         let i2 = g.find("F1800").unwrap();
-        let i3 = g.find("F2400").unwrap();
-        assert!(i1 < i2 && i2 < i3, "توالی سرعت‌ها: {i1} < {i2} < {i3}");
+        assert!(i1 < i2, "لایهٔ اول قبل از لایهٔ ۲ کف: {i1} < {i2}");
+        // F مودال در نقطهٔ شروع دیواره
+        let mut modal_f = 0.0f64;
+        let mut wall_checked = false;
+        for l in g.lines() {
+            if let Some(pos) = l.find(" F") {
+                let digits: String =
+                    l[pos + 2..].chars().take_while(|c| c.is_ascii_digit()).collect();
+                if let Ok(v) = digits.parse::<f64>() {
+                    modal_f = v;
+                }
+            }
+            if l.contains(";TYPE:WALL-OUTER") {
+                // اولین اکستروژن پس از نشانگر دیواره
+                continue;
+            }
+            if !wall_checked && l.starts_with("G1") && l.contains(" E") && modal_f > 0.0 {
+                // اگر این خط بعد از نشانگر WALL است (اولین چاپ دیواره)
+                let wall_pos = g.find(";TYPE:WALL-OUTER").unwrap();
+                let line_pos = g.find(l).unwrap();
+                if line_pos > wall_pos {
+                    assert!(
+                        (modal_f - 2400.0).abs() < 1e-6,
+                        "F مودال دیواره = {modal_f} (باید 2400 باشد)"
+                    );
+                    wall_checked = true;
+                }
+            }
+        }
+        assert!(wall_checked, "اکستروژن دیواره پیدا نشد");
     }
 
     #[test]
