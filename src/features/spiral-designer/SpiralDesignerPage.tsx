@@ -42,8 +42,10 @@ import {
   designerRandomProfile, writeTextFile, readTextFile,
   saveProject, loadProject, saveFileDialog, openFileDialog, openSvgDialog,
   coreAvailable, printerPresets, designerPreviewData,
+  savePrinterProfile, listPrinterProfiles, deletePrinterProfile,
 } from "../../lib/tauri";
 import { importProfileFromSvg } from "./svgImport";
+import { GcodeCommandPalette } from "./GcodeCommandPalette";
 
 // ============================================================================
 // فهرست الگوها/بافت‌ها/کف‌ها — ۱۷ الگو + ۱۲ بافت + ۵ کف (نسخهٔ ۱.۲)
@@ -90,6 +92,12 @@ const FLOORS: { kind: FloorPatternKind; name: string; hint: string }[] = [
   { kind: "Grid", name: "شبکهٔ متقاطع", hint: "خطوط X و Y روی دیسک" },
   { kind: "Radial", name: "پرتوهای شعاعی", hint: "پرتو از سوراخ مرکزی تا لبه" },
   { kind: "ZigZag", name: "رفت‌وبرگشتی", hint: "ردیف‌های مارپیچی بدون درز" },
+  // ---- نسخهٔ ۱٫۶ (درخواست کاربر ۷): ۵ الگوی جدید ----
+  { kind: "Honeycomb", name: "شانه‌زنبوری", hint: "شبکهٔ شش‌گوش — استحکام بالا با فیلامنت کم" },
+  { kind: "Wave", name: "موج دایره‌ای", hint: "مارپیچ با موج شعاعی — کف تزئینی" },
+  { kind: "Star", name: "ستاره‌ای", hint: "ستارهٔ چندپر پیوسته — نمایشی" },
+  { kind: "Snowflake", name: "دانه‌برفی", hint: "۶ شاخه با شاخه‌های فرعی ۴۵°" },
+  { kind: "Octagram", name: "گره هندسی", hint: "دو مربع چرخیده + هشت‌ضلعی — نقش هندسی" },
 ];
 
 // ============================================================================
@@ -266,7 +274,12 @@ function defaultProject(): DesignerProject {
     phase_start_deg: 0,
     patterns: [],
     textures: [],
-    floor: { enabled: false, pattern: "Rings", center_hole_diameter_mm: 0, z_start_mm: 0, ring_gap_mm: 0.45, spokes: 12, layers: 2 },
+    floor: {
+      enabled: false, pattern: "Rings", center_hole_diameter_mm: 0,
+      z_start_mm: 0, ring_gap_mm: 0.45, spokes: 12, layers: 2,
+      // ---- نسخهٔ ۱٫۶: تنظیمات حرفه‌ای لامپ/آویز ----
+      rim_holes: 0, rim_hole_diameter_mm: 3, reinforce_rings: 0,
+    },
     printer: {
       name: "Custom / Unverified", status: "unverified",
       build_volume_mm: [220, 220, 250],
@@ -360,8 +373,14 @@ export function SpiralDesignerPage(props: {
   // ---- نسخهٔ ۱.۵ ----
   // دیالوگ کیفیت STL: null = بسته
   const [stlDialog, setStlDialog] = useState<null | { quality: number }>(null);
+  // دیالوگ کیفیت G-code — نسخهٔ ۱٫۶ (درخواست کاربر ۶): null = بسته
+  const [gcodeDialog, setGcodeDialog] = useState<null | { quality: number; save: boolean }>(null);
   // در حال رندوم/ایمپورت SVG (برای دکمه‌ها)
   const [profileBusy, setProfileBusy] = useState(false);
+  // ---- پروفایل‌های شخصی پرینتر — نسخهٔ ۱٫۶ (درخواست کاربر ۴) ----
+  const [myProfiles, setMyProfiles] = useState<PrinterProfile[]>([]);
+  const [profileName, setProfileName] = useState("");
+  const [profileBusy2, setProfileBusy2] = useState(false);
 
   // ---------------- واگرد/ازنو (نسخهٔ ۱.۲) ----------------
   const historyRef = useRef<DesignerProject[]>([]);
@@ -428,6 +447,42 @@ export function SpiralDesignerPage(props: {
       .then((d) => setPreviewData(d))
       .catch(() => setPreviewData(null)); // بدون هسته → کارت‌های جایگزین صادقانه
   }, []);
+
+  // بارگذاری پروفایل‌های شخصی — نسخهٔ ۱٫۶ (فقط پوستهٔ دسکتاپ)
+  const refreshMyProfiles = useCallback(() => {
+    listPrinterProfiles()
+      .then((list) => setMyProfiles(list))
+      .catch(() => setMyProfiles([])); // در مرورگر dev: بدون پروفایل شخصی
+  }, []);
+  useEffect(() => {
+    refreshMyProfiles();
+  }, [refreshMyProfiles]);
+
+  /** ذخیرهٔ پروفایل جاری به‌عنوان پروفایل شخصی (درخواست کاربر ۴) */
+  const doSavePrinterProfile = async () => {
+    setProfileBusy2(true);
+    try {
+      const name = profileName.trim() || project.printer.name;
+      await savePrinterProfile({ ...project.printer, name });
+      setProfileName("");
+      refreshMyProfiles();
+      setNote(`پروفایل «${name}» ذخیره شد — در فهرست «پروفایل‌های من» قابل انتخاب است.`);
+    } catch (e) {
+      setNote(`ذخیرهٔ پروفایل ناموفق: ${e}`);
+    }
+    setProfileBusy2(false);
+  };
+
+  /** حذف پروفایل شخصی */
+  const doDeleteMyProfile = async (name: string) => {
+    try {
+      await deletePrinterProfile(name);
+      refreshMyProfiles();
+      setNote(`پروفایل «${name}» حذف شد.`);
+    } catch (e) {
+      setNote(`حذف ناموفق: ${e}`);
+    }
+  };
 
   // ------------------------------------------------------------ محاسبهٔ زنده
   const recompute = useCallback(async (p: DesignerProject) => {
@@ -549,20 +604,41 @@ export function SpiralDesignerPage(props: {
     setProfileBusy(false);
   };
 
-  /** ذخیرهٔ مستقیم G-code — نسخهٔ ۱.۵ (بدون گذر از ویرایشگر) */
+  /** ذخیرهٔ مستقیم G-code — ۱.۶: ابتدا دیالوگ کیفیت (درخواست کاربر ۶) */
   const doSaveDirectGcode = async () => {
+    setGcodeDialog({ quality: 1, save: true });
+  };
+
+  /** تخمین شمار خط خروجی G-code در کیفیت q — آینهٔ هسته (arc≈۲/q mm) */
+  function estimateGcodeLines(currentCount: number, quality: number): number {
+    const q = Math.max(0.25, Math.min(4, quality));
+    // شمار خط ≈ خطوط فعلی (کیفیت ۱) × نسبت تراکم؛ +۵٪ سربار ثابت
+    return Math.round(currentCount * q * 1.05 + 30);
+  }
+
+  /** اجرای خروجی G-code با کیفیت — نسخهٔ ۱.۶ (دیالوگ کیفیت) */
+  const runGcodeExport = async (quality: number, directSave: boolean) => {
+    setGcodeDialog(null);
     setBusy(true);
     try {
-      const gcode = await designerExportGcode(project);
-      const path = await saveFileDialog("spiral-form.gcode", "gcode");
-      if (path) {
-        await writeTextFile(path, gcode);
-        setNote(`${fa.saveDirectDone}: ${path} (${gcode.length.toLocaleString("fa-IR")} بایت)`);
+      const gcode = await designerExportGcode(project, quality);
+      if (directSave) {
+        const path = await saveFileDialog("spiral-form.gcode", "gcode");
+        if (path) {
+          await writeTextFile(path, gcode);
+          setNote(
+            `G-code (کیفیت ${quality}) ذخیره شد: ${path} ` +
+            `(${gcode.length.toLocaleString("fa-IR")} بایت)`
+          );
+        } else {
+          setNote("ذخیره لغو شد.");
+        }
       } else {
-        setNote("ذخیرهٔ مستقیم لغو شد.");
+        props.onSendToEditor(gcode);
+        setNote("G-code تولید و به ویرایشگر ارسال شد.");
       }
     } catch (e) {
-      setNote(`خطا در ذخیرهٔ مستقیم: ${e}`);
+      setNote(`خطا در خروجی: ${e}`);
     }
     setBusy(false);
   };
@@ -613,16 +689,9 @@ export function SpiralDesignerPage(props: {
   const maxR = Math.max(...project.profile.map((p) => p.r), 10) * 1.2;
 
   // ------------------------------------------------------------ خروجی‌ها
+  /** ارسال به ویرایشگر — ۱.۶: ابتدا دیالوگ کیفیت (درخواست کاربر ۶) */
   const exportGcode = async () => {
-    setBusy(true);
-    try {
-      const gcode = await designerExportGcode(project);
-      props.onSendToEditor(gcode);
-      setNote("G-code تولید و به ویرایشگر ارسال شد.");
-    } catch (e) {
-      setNote(`خطا در خروجی: ${e}`);
-    }
-    setBusy(false);
+    setGcodeDialog({ quality: 1, save: false });
   };
 
   const doSaveProject = async () => {
@@ -704,6 +773,11 @@ export function SpiralDesignerPage(props: {
         bedOffset,
         // ۱.۴: فاز «خود الگو» — دسته روی سطح در همین زاویه؛ درگ افقی = چرخش
         phaseDeg: p.phase_deg ?? 0,
+        // ۱٫۶: پنجرهٔ اسپات زاویه‌ای (درخواست کاربر ۵) — span<۳۶۰ فعال
+        spot:
+          (p.spot_span_deg ?? 360) < 359
+            ? { centerDeg: p.spot_center_deg ?? 0, spanDeg: p.spot_span_deg ?? 360 }
+            : undefined,
       };
     }
     if (spotSel.type === "texture") {
@@ -720,6 +794,11 @@ export function SpiralDesignerPage(props: {
         height,
         bedOffset,
         phaseDeg: t.phase_deg ?? 0,
+        // ۱٫۶: پنجرهٔ اسپات زاویه‌ای (درخواست کاربر ۵)
+        spot:
+          (t.spot_span_deg ?? 360) < 359
+            ? { centerDeg: t.spot_center_deg ?? 0, spanDeg: t.spot_span_deg ?? 360 }
+            : undefined,
       };
     }
     // کف — سوراخ مرکزی
@@ -796,6 +875,40 @@ export function SpiralDesignerPage(props: {
       next = { ...cur, textures };
     } else if (spotSel?.type === "floor" && change.holeDiameter !== undefined) {
       next = { ...cur, floor: { ...cur.floor, center_hole_diameter_mm: change.holeDiameter } };
+    } else if (
+      spotSel?.type === "pattern" &&
+      (change.spotCenterDeg !== undefined || change.spotSpanDeg !== undefined)
+    ) {
+      // ---- ۱٫۶: اسپات زاویه‌ای الگو (درخواست کاربر ۵) ----
+      const patterns = cur.patterns.map((x, j) =>
+        j === spotSel.index
+          ? {
+              ...x,
+              spot_center_deg:
+                change.spotCenterDeg !== undefined ? change.spotCenterDeg : (x.spot_center_deg ?? 0),
+              spot_span_deg:
+                change.spotSpanDeg !== undefined ? change.spotSpanDeg : (x.spot_span_deg ?? 360),
+            }
+          : x
+      );
+      next = { ...cur, patterns };
+    } else if (
+      spotSel?.type === "texture" &&
+      (change.spotCenterDeg !== undefined || change.spotSpanDeg !== undefined)
+    ) {
+      // ---- ۱٫۶: اسپات زاویه‌ای بافت ----
+      const textures = cur.textures.map((x, j) =>
+        j === spotSel.index
+          ? {
+              ...x,
+              spot_center_deg:
+                change.spotCenterDeg !== undefined ? change.spotCenterDeg : (x.spot_center_deg ?? 0),
+              spot_span_deg:
+                change.spotSpanDeg !== undefined ? change.spotSpanDeg : (x.spot_span_deg ?? 360),
+            }
+          : x
+      );
+      next = { ...cur, textures };
     }
     if (next) setProject(next);
   }, [spotSel]);
@@ -1036,6 +1149,28 @@ export function SpiralDesignerPage(props: {
                     onChange={(e) => updatePattern(i, {
                       z_end_mm: e.target.value === "" ? null : +e.target.value,
                     })} /></div>
+                {/* ---- اسپات زاویه‌ای — نسخهٔ ۱٫۶ (درخواست کاربر ۵) ---- */}
+                <div className="spot-fields">
+                  <div className="field"><label>مرکز اسپات (درجه)</label>
+                    <input type="number" step="15" min="0" max="360" style={{ width: 90 }}
+                      value={Math.round((pat.spot_center_deg ?? 0) * 10) / 10}
+                      onChange={(e) => updatePattern(i, {
+                        spot_center_deg: ((+e.target.value || 0) % 360 + 360) % 360,
+                      })} /></div>
+                  <div className="field"><label>گستره (درجه؛ ۳۶۰ = کل)</label>
+                    <input type="number" step="15" min="10" max="360" style={{ width: 90 }}
+                      value={pat.spot_span_deg ?? 360}
+                      onChange={(e) => updatePattern(i, {
+                        spot_span_deg: Math.min(360, Math.max(10, Math.round(+e.target.value) || 360)),
+                      })} /></div>
+                </div>
+                {(pat.spot_span_deg ?? 360) < 359 && (
+                  <span className="hint-text">
+                    اسپات فعال: الگو فقط روی قوس {Math.round(pat.spot_span_deg ?? 360)}°
+                    حول {Math.round(pat.spot_center_deg ?? 0)}° اعمال می‌شود —
+                    با 🎯 روی 3D لبه‌های طلایی را بکشید تا قوس پهن/باریک شود.
+                  </span>
+                )}
                 {spotSel?.type === "pattern" && spotSel.index === i && (
                   <div className="spot-note">🎯 {fa.spotHint}</div>
                 )}
@@ -1101,6 +1236,28 @@ export function SpiralDesignerPage(props: {
                 <div className="field"><label>{fa.fade} ↑%</label>
                   <input type="number" step="5" min="0" max="100" value={tex.fade_out_percent}
                     onChange={(e) => updateTexture(i, { fade_out_percent: +e.target.value })} /></div>
+                {/* ---- اسپات زاویه‌ای — نسخهٔ ۱٫۶ (درخواست کاربر ۵) ---- */}
+                <div className="spot-fields">
+                  <div className="field"><label>مرکز اسپات (درجه)</label>
+                    <input type="number" step="15" min="0" max="360" style={{ width: 90 }}
+                      value={Math.round((tex.spot_center_deg ?? 0) * 10) / 10}
+                      onChange={(e) => updateTexture(i, {
+                        spot_center_deg: ((+e.target.value || 0) % 360 + 360) % 360,
+                      })} /></div>
+                  <div className="field"><label>گستره (درجه؛ ۳۶۰ = کل)</label>
+                    <input type="number" step="15" min="10" max="360" style={{ width: 90 }}
+                      value={tex.spot_span_deg ?? 360}
+                      onChange={(e) => updateTexture(i, {
+                        spot_span_deg: Math.min(360, Math.max(10, Math.round(+e.target.value) || 360)),
+                      })} /></div>
+                </div>
+                {(tex.spot_span_deg ?? 360) < 359 && (
+                  <span className="hint-text">
+                    اسپات فعال: بافت فقط روی قوس {Math.round(tex.spot_span_deg ?? 360)}°
+                    حول {Math.round(tex.spot_center_deg ?? 0)}° اعمال می‌شود —
+                    با 🎯 روی 3D لبه‌های طلایی را بکشید.
+                  </span>
+                )}
                 {spotSel?.type === "texture" && spotSel.index === i && (
                   <div className="spot-note">🎯 {fa.spotHint}</div>
                 )}
@@ -1174,6 +1331,49 @@ export function SpiralDesignerPage(props: {
                   value={project.floor.spokes ?? 12}
                   onChange={(e) => setFloor({ spokes: Math.round(+e.target.value) || 12 })} /></div>
             )}
+            {(project.floor.pattern ?? "Rings") === "Wave" && (
+              <div className="field"><label>تعداد موج در هر دور</label>
+                <input type="number" step="1" min="3" max="24" disabled={!project.floor.enabled}
+                  value={project.floor.spokes ?? 12}
+                  onChange={(e) => setFloor({ spokes: Math.round(+e.target.value) || 12 })} />
+                <span className="hint-text">موج‌های شعاعی کف تزئینی — از فیلد پرتوها استفاده می‌کند</span>
+              </div>
+            )}
+            {(project.floor.pattern ?? "Rings") === "Star" && (
+              <div className="field"><label>تعداد پرتوهای ستاره (۵..۲۴)</label>
+                <input type="number" step="2" min="5" max="24" disabled={!project.floor.enabled}
+                  value={project.floor.spokes ?? 12}
+                  onChange={(e) => setFloor({ spokes: Math.round(+e.target.value) || 12 })} /></div>
+            )}
+            {/* ---- تنظیمات حرفه‌ای: لامپ/آویز — نسخهٔ ۱٫۶ (درخواست کاربر ۷) ---- */}
+            <div className="field" style={{ marginTop: 10 }}>
+              <label>⚙️ تنظیمات حرفه‌ای کف (لامپ / آویز)</label>
+              <span className="hint-text">
+                برای آویزان‌کردن با نخ/سیم، سوکت لامپ یا عبور کابل — سوراخ‌ها در
+                الگوها خالی می‌مانند و حلقهٔ تقویت دورشان چاپ می‌شود.
+              </span>
+            </div>
+            <div className="field"><label>سوراخ‌های لبه (تعداد ۰..۱۲)</label>
+              <input type="number" step="1" min="0" max="12" disabled={!project.floor.enabled}
+                value={project.floor.rim_holes ?? 0}
+                onChange={(e) => setFloor({ rim_holes: Math.min(12, Math.max(0, Math.round(+e.target.value) || 0)) })} />
+              <span className="hint-text">۳ یا ۴ سوراخ = آویز متقارن با نخ؛ ۱ سوراخ = عبور کابل لامپ</span>
+            </div>
+            <div className="field"><label>قطر سوراخ لبه (mm)</label>
+              <input type="number" step="0.5" min="1" max="20" disabled={!project.floor.enabled || !(project.floor.rim_holes ?? 0)}
+                value={project.floor.rim_hole_diameter_mm ?? 3}
+                onChange={(e) => setFloor({ rim_hole_diameter_mm: Math.max(1, +e.target.value || 3) })} />
+              <span className="hint-text">۳mm برای نخ/سیم معمولی؛ بیشتر برای کابل شیلددار</span>
+            </div>
+            <div className="field"><label>حلقه‌های تقویت (۰..۴)</label>
+              <input type="number" step="1" min="0" max="4" disabled={!project.floor.enabled}
+                value={project.floor.reinforce_rings ?? 0}
+                onChange={(e) => setFloor({ reinforce_rings: Math.min(4, Math.max(0, Math.round(+e.target.value) || 0)) })} />
+              <span className="hint-text">
+                لایهٔ آخر کف ضخیم‌تر می‌شود: دور لبه (آویز سنگین‌تر)، دور سوراخ
+                مرکزی (سوکت لامپ) و دور سوراخ‌های لبه — استحکام باربری
+              </span>
+            </div>
           </div>
         )}
 
@@ -1222,6 +1422,53 @@ export function SpiralDesignerPage(props: {
                 <span className="dot" aria-hidden="true" /> {project.printer.name}
               </div>
             )}
+            {/* ---- پروفایل‌های شخصی — نسخهٔ ۱٫۶ (درخواست کاربر ۴) ---- */}
+            <div className="field" style={{ marginTop: 10 }}>
+              <label>💾 پروفایل‌های من</label>
+              <span className="hint-text">
+                تنظیمات فعلی پرینتر را با نام دلخواه ذخیره کنید — دفعات بعد از
+                همین فهرست انتخاب می‌شود (فقط در برنامهٔ دسکتاپ).
+              </span>
+              <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                <input
+                  type="text"
+                  placeholder="نام پروفایل (مثلاً: Ender سفارشی)"
+                  style={{ flex: 1, minWidth: 140 }}
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                />
+                <button
+                  className="btn small primary"
+                  disabled={profileBusy2}
+                  onClick={doSavePrinterProfile}
+                  title="ذخیرهٔ تنظیمات فعلی پرینتر"
+                >
+                  {profileBusy2 ? "…" : "ذخیرهٔ پروفایل"}
+                </button>
+              </div>
+              {myProfiles.length > 0 ? (
+                <div className="my-profiles" style={{ marginTop: 6 }}>
+                  {myProfiles.map((p) => (
+                    <div key={p.name} className="my-profile-row">
+                      <button
+                        className={`btn small ${project.printer.name === p.name ? "primary" : ""}`}
+                        title={`${p.build_volume_mm[0]}×${p.build_volume_mm[1]}×${p.build_volume_mm[2]}mm`}
+                        onClick={() => commitProject({ ...project, printer: { ...p } })}
+                      >
+                        {p.name}
+                      </button>
+                      <button
+                        className="btn small danger"
+                        title="حذف پروفایل"
+                        onClick={() => doDeleteMyProfile(p.name)}
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="hint-text">هنوز پروفایل شخصی ذخیره نشده است.</span>
+              )}
+            </div>
             {/* ---- تنظیمات دما و خنک‌کاری — نسخهٔ ۱.۳ (درخواست کاربر) ---- */}
             <div className="field" style={{ marginTop: 10 }}>
               <label>{fa.tempsTitle}</label>
@@ -1351,9 +1598,27 @@ export function SpiralDesignerPage(props: {
             <div className="field"><label>{fa.startGcode} (پیش‌نمایش در خروجی)</label>
               <textarea rows={3} value={project.printer.start_gcode}
                 onChange={(e) => setPrinter({ start_gcode: e.target.value })} /></div>
-            <div className="field"><label>{fa.endGcode}</label>
+            {/* ---- پالت دستورات شروع — نسخهٔ ۱٫۶ (درخواست کاربر ۳) ---- */}
+            <GcodeCommandPalette
+              slot="start"
+              onInsert={(snippet) => {
+                const cur = project.printer.start_gcode.trimEnd();
+                const nextGcode = cur ? cur + "\n" + snippet : snippet;
+                setPrinter({ start_gcode: nextGcode });
+              }}
+            />
+            <div className="field" style={{ marginTop: 10 }}><label>{fa.endGcode}</label>
               <textarea rows={3} value={project.printer.end_gcode}
                 onChange={(e) => setPrinter({ end_gcode: e.target.value })} /></div>
+            {/* ---- پالت دستورات پایان — نسخهٔ ۱٫۶ (درخواست کاربر ۳) ---- */}
+            <GcodeCommandPalette
+              slot="end"
+              onInsert={(snippet) => {
+                const cur = project.printer.end_gcode.trimEnd();
+                const nextGcode = cur ? cur + "\n" + snippet : snippet;
+                setPrinter({ end_gcode: nextGcode });
+              }}
+            />
           </div>
         )}
 
@@ -1379,6 +1644,7 @@ export function SpiralDesignerPage(props: {
           webglMessage={fa.webglMissing}
           extrusionColor={props.extrusionColor}
           surfaceSamples={output?.radius_samples}
+          wallMesh={output?.wall_mesh ?? null}
           floorDisk={project.floor.enabled
             ? { holeDiameter: project.floor.center_hole_diameter_mm }
             : null}
@@ -1465,6 +1731,51 @@ export function SpiralDesignerPage(props: {
                 </span>
               </button>
               <button className="btn" onClick={() => setStlDialog(null)}>انصراف</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------- دیالوگ کیفیت خروجی G-code — نسخهٔ ۱٫۶ (درخواست کاربر ۶) ---------- */}
+      {gcodeDialog && (
+        <div className="modal-back" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h3>کیفیت خروجی G-code</h3>
+            <p style={{ color: "var(--fg-2)", fontSize: 12.5, marginTop: 4 }}>
+              کیفیت، «تراکم نقاط مسیر» و «دقت اعشار مختصات» را تعیین می‌کند —
+              مسیر ریزتر = سطح نرم‌تر و فایل بزرگ‌تر. پیش‌نمایش همیشه استاندارد است.
+            </p>
+            <div className="stl-quality-grid">
+              {([
+                [0.5, "زبر (پیش‌نمایشی)", "قوس ۴mm · اعشار ۲ — فایل کوچک؛ تست شکل"],
+                [1, "استاندارد", "قوس ۲mm · اعشار ۳ — تعادل حجم/کیفیت (پیش‌فرض)"],
+                [2, "ریز", "قوس ۱mm · اعشار ۳ — سطوح نرم‌تر؛ چاپ نمایشی"],
+                [3, "بسیار ریز", "قوس ۰٫۶۷mm · اعشار ۴ — بالاترین کیفیت؛ فایل بزرگ"],
+              ] as [number, string, string][]).map(([q, name, desc]) => (
+                <button
+                  key={q}
+                  className={`stl-q-card ${gcodeDialog.quality === q ? "selected" : ""}`}
+                  onClick={() => setGcodeDialog({ ...gcodeDialog, quality: q })}
+                >
+                  <span className="t">{name}</span>
+                  <span className="d">{desc}</span>
+                  <span className="n ltr">
+                    ≈ {estimateGcodeLines(output?.count ?? 0, q).toLocaleString("en-US")} خط
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="actions">
+              <button
+                className="btn primary"
+                disabled={busy}
+                onClick={() => runGcodeExport(gcodeDialog.quality, gcodeDialog.save)}
+              >
+                {gcodeDialog.save ? "💾 ذخیرهٔ مستقیم" : "ارسال به ویرایشگر"}
+                {" "}
+                (کیفیت {gcodeDialog.quality})
+              </button>
+              <button className="btn" onClick={() => setGcodeDialog(null)}>انصراف</button>
             </div>
           </div>
         </div>

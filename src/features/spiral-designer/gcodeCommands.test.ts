@@ -9,7 +9,6 @@ import {
   COMMAND_CATEGORIES,
   GCODE_COMMANDS,
   filterCommands,
-  type CommandSlot,
 } from "./gcodeCommands";
 
 describe("کتابخانهٔ دستورات G-code (درخواست کاربر ۳)", () => {

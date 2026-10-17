@@ -668,3 +668,30 @@ table.state th { color: var(--fg-1); background: var(--bg-2); font-weight: 400; 
   padding: 10px;
   text-align: center;
 }
+
+/* ==========================================================================
+   نسخهٔ ۱٫۶ — اسپات زاویه‌ای / پروفایل‌های من / فیلدهای اسپات
+   ========================================================================== */
+.spot-fields {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.spot-fields .field {
+  flex: 1;
+  min-width: 130px;
+}
+.my-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.my-profile-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.my-profile-row .btn {
+  flex: 1;
+  text-align: start;
+}
