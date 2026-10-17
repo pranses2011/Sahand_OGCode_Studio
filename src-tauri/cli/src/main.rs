@@ -113,6 +113,31 @@ fn dispatch(cmd: &str, args: &serde_json::Value) -> serde_json::Value {
         }
         // ---- پریست‌های پرینتر ----
         "printer_presets" => to_json(ipc::printer_presets()),
+        // ---- پروفایل‌های شخصی — نسخهٔ ۱٫۶ (مسیر از args؛ برای تست پل) ----
+        "save_printer_profile" => {
+            let dir = args.get("baseDir").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let v = args.get("profile").cloned().unwrap_or(serde_json::Value::Null);
+            let profile: gcode_core::designer::PrinterProfile = match serde_json::from_value(v) {
+                Ok(p) => p,
+                Err(e) => return err_json(format!("پروفایل نامعتبر: {e}")),
+            };
+            match ipc::save_printer_profile(dir, profile) {
+                Ok(s) => to_json(s),
+                Err(e) => err_json(e),
+            }
+        }
+        "list_printer_profiles" => {
+            let dir = args.get("baseDir").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            to_json(ipc::list_printer_profiles(dir))
+        }
+        "delete_printer_profile" => {
+            let dir = args.get("baseDir").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            match ipc::delete_printer_profile(dir, name) {
+                Ok(()) => to_json(serde_json::Value::Null),
+                Err(e) => err_json(e),
+            }
+        }
         // ---- دادهٔ پیش‌نمایش الگو/بافت برای کارت‌های تصویری UI ----
         "designer_preview_data" => to_json(ipc::designer_preview_data()),
         // ---- پروفایل تصادفی چاپ‌پسند — نسخهٔ ۱.۵ ----

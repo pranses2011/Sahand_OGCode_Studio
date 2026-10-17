@@ -1,8 +1,8 @@
 {
-  "name": "gcode-studio",
+  "name": "sahand-gcode-studio",
   "private": true,
-  "version": "1.5.0",
-  "description": "استودیوی ویرایش و طراحی G-code — نرم‌افزار دسکتاپ ویندوز آفلاین",
+  "version": "1.6.0",
+  "description": "Sahand GCode Studio — استودیوی ویرایش و طراحی G-code — نرم‌افزار دسکتاپ ویندوز",
   "type": "module",
   "scripts": {
     "dev": "vite",

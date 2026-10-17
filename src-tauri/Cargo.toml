@@ -31,9 +31,9 @@ opt-level = 1
 # ============================================================================
 [package]
 name = "gcode-studio"
-version = "1.5.0"
+version = "1.6.0"
 description = "استودیوی ویرایش و طراحی G-code برای ویندوز — کاملاً آفلاین"
-authors = ["Sahand OGCode Studio"]
+authors = ["Saeid Najafi — Sahand GCode Studio"]
 edition = "2021"
 rust-version = "1.77"
 
@@ -53,6 +53,9 @@ gcode-core = { path = "core" }
 tauri = { version = "2", features = [] }
 # دیالوگ native بازکردن/ذخیرهٔ فایل از سمت Rust (بدون دادن دسترسی fs به WebView)
 tauri-plugin-dialog = "2"
+# HTTP با دامنهٔ محدود — فقط ارسال بازخورد/گزارش خطا به ایمیل سازنده
+# (نسخهٔ ۱٫۶، درخواست کاربر ۹)؛ دامنه در tauri.conf.json/capabilities محدود است
+tauri-plugin-http = "2"
 
 # سریال‌سازی داده بین Rust و WebView
 serde = { version = "1", features = ["derive"] }

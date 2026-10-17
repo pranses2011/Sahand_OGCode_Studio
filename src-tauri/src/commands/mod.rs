@@ -16,9 +16,12 @@ use gcode_core::ipc::{
     designer_compute as core_designer_compute, designer_export_gcode as core_designer_export_gcode,
     designer_export_stl as core_designer_export_stl, designer_preview_data as core_designer_preview_data,
     designer_random_profile as core_designer_random_profile, designer_viewport as core_designer_viewport,
-    explain_line as core_explain_line, load_project as core_load_project, parse_gcode as core_parse_gcode,
+    delete_printer_profile as core_delete_printer_profile,
+    explain_line as core_explain_line, list_printer_profiles as core_list_printer_profiles,
+    load_project as core_load_project, parse_gcode as core_parse_gcode,
     printer_presets as core_printer_presets, read_text_file as core_read_text_file,
-    save_as as core_save_as, save_project as core_save_project, validate_gcode as core_validate_gcode,
+    save_as as core_save_as, save_printer_profile as core_save_printer_profile,
+    save_project as core_save_project, validate_gcode as core_validate_gcode,
     write_text_file as core_write_text_file, DesignerOutput, FastViewport, LineDetail, ParseResult,
     PreviewData, SaveAsRequest, SaveAsResult, StlExportResult,
 };
@@ -68,10 +71,14 @@ pub fn designer_viewport(project: DesignerProject) -> FastViewport {
     core_designer_viewport(project)
 }
 
-/// تولید متن G-code از پروژهٔ طراح
+/// تولید متن G-code از پروژهٔ طراح — quality: نسخهٔ ۱٫۶ (دیالوگ کیفیت)
+/// None|۱ = استاندارد؛ ۰٫۵ = زبر؛ ۲ = ریز؛ ۳ = بسیار ریز
 #[tauri::command]
-pub fn designer_export_gcode(project: DesignerProject) -> Result<String, String> {
-    core_designer_export_gcode(project)
+pub fn designer_export_gcode(
+    project: DesignerProject,
+    quality: Option<f64>,
+) -> Result<String, String> {
+    core_designer_export_gcode(project, quality)
 }
 
 /// تولید فایل STL باینری از پروژهٔ طراح در مسیر انتخابی —
@@ -137,4 +144,46 @@ pub fn write_text_file(path: String, content: String) -> Result<usize, String> {
 #[tauri::command]
 pub fn printer_presets() -> Vec<PrinterProfile> {
     core_printer_presets()
+}
+
+// ============================================================================
+// دستورهای نسخهٔ ۱٫۶ — پروفایل شخصی پرینتر (درخواست کاربر ۴)
+// ============================================================================
+
+/// ذخیرهٔ پروفایل شخصی در app_data/printer_profiles — نام از پروفایل
+#[tauri::command]
+pub fn save_printer_profile(
+    app: tauri::AppHandle,
+    profile: PrinterProfile,
+) -> Result<String, String> {
+    let dir = profiles_base_dir(&app)?;
+    core_save_printer_profile(dir, profile)
+}
+
+/// فهرست پروفایل‌های شخصی ذخیره‌شده
+#[tauri::command]
+pub fn list_printer_profiles(app: tauri::AppHandle) -> Vec<PrinterProfile> {
+    match profiles_base_dir(&app) {
+        Ok(dir) => core_list_printer_profiles(dir),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// حذف پروفایل شخصی با نام
+#[tauri::command]
+pub fn delete_printer_profile(
+    app: tauri::AppHandle,
+    name: String,
+) -> Result<(), String> {
+    let dir = profiles_base_dir(&app)?;
+    core_delete_printer_profile(dir, name)
+}
+
+/// مسیر پایهٔ دادهٔ برنامه (app_data) — سازگار با هر پلتفرم
+fn profiles_base_dir(app: &tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    app.path()
+        .app_data_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .map_err(|e| format!("دسترسی به مسیر دادهٔ برنامه ناموفق بود: {e}"))
 }
