@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- ====================================================================
+       Sahand GCode Studio — لوگوی برند (آینهٔ طرح آیکون ۱٫۶)
+       گلدان مارپیچی سه‌بعدی + نازل + موج G-code
+       ==================================================================== -->
+  <defs>
+    <!-- پس‌زمینهٔ گرادیانی عمق‌دار -->
+    <radialGradient id="bg" cx="35%" cy="28%" r="85%">
+      <stop offset="0%" stop-color="#1d2740"/>
+      <stop offset="55%" stop-color="#121828"/>
+      <stop offset="100%" stop-color="#0b0f1a"/>
+    </radialGradient>
+    <!-- بدنهٔ گلدان — حس سه‌بعدی با گرادیان خطی -->
+    <linearGradient id="body" x1="30%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#7ee8a2"/>
+      <stop offset="45%" stop-color="#35c47a"/>
+      <stop offset="100%" stop-color="#128a4e"/>
+    </linearGradient>
+    <!-- نوارهای مارپیچ روشن (برجستگی) -->
+    <linearGradient id="ribbon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c9ffe0" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#6fe0a8" stop-opacity="0.25"/>
+    </linearGradient>
+    <!-- نازل داغ -->
+    <linearGradient id="nozzle" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e8edf6"/>
+      <stop offset="60%" stop-color="#9aa7bd"/>
+      <stop offset="100%" stop-color="#5d6880"/>
+    </linearGradient>
+    <!-- رشتهٔ چاپ درخشان -->
+    <linearGradient id="thread" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#ff9f43"/>
+    </linearGradient>
+    <!-- سایهٔ کف -->
+    <radialGradient id="shadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- پس‌زمینه با گوشه‌گرد -->
+  <rect x="8" y="8" width="496" height="496" rx="108" fill="url(#bg)"/>
+  <rect x="8" y="8" width="496" height="496" rx="108" fill="none"
+        stroke="#2de08a" stroke-opacity="0.28" stroke-width="4"/>
+
+  <!-- حلقهٔ کف (صفحهٔ چاپ) -->
+  <ellipse cx="256" cy="420" rx="150" ry="34" fill="url(#shadow)"/>
+  <ellipse cx="256" cy="416" rx="128" ry="26" fill="none"
+           stroke="#26402f" stroke-width="10" stroke-opacity="0.85"/>
+  <ellipse cx="256" cy="416" rx="128" ry="26" fill="#0e1522" fill-opacity="0.55"/>
+
+  <!-- بدنهٔ گلدان مارپیچی -->
+  <path d="M 196 416
+           C 186 360, 168 336, 172 286
+           C 176 236, 150 216, 158 176
+           C 166 136, 208 116, 256 112
+           C 304 116, 346 136, 354 176
+           C 362 216, 336 236, 340 286
+           C 344 336, 326 360, 316 416
+           Z"
+        fill="url(#body)" stroke="#0a5c36" stroke-width="6" stroke-opacity="0.55"/>
+
+  <!-- مارپیچ‌های برجسته روی بدنه (نمای سه‌بعدی) -->
+  <path d="M 205 402 C 216 372 232 368 244 396" fill="none" stroke="url(#ribbon)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 262 398 C 274 366 292 362 304 392" fill="none" stroke="url(#ribbon)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 212 330 C 226 300 244 296 258 326" fill="none" stroke="url(#ribbon)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 272 324 C 284 294 300 290 312 318" fill="none" stroke="url(#ribbon)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 220 258 C 234 228 252 224 266 254" fill="none" stroke="url(#ribbon)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 282 252 C 294 222 308 218 320 246" fill="none" stroke="url(#ribbon)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 232 190 C 244 164 260 160 272 186" fill="none" stroke="url(#ribbon)" stroke-width="9" stroke-linecap="round"/>
+
+  <!-- درز مارپیچ (seam) عمودی روشن -->
+  <path d="M 256 112 C 252 170 262 300 256 416" fill="none"
+        stroke="#b8ffd8" stroke-opacity="0.35" stroke-width="4"/>
+
+  <!-- نازل + سر چاپ در بالا -->
+  <g>
+    <!-- بازوی چاپ -->
+    <rect x="196" y="36" width="150" height="26" rx="10" fill="url(#nozzle)"/>
+    <!-- بدنهٔ نازل -->
+    <path d="M 232 62 L 280 62 L 272 96 L 240 96 Z" fill="url(#nozzle)"/>
+    <!-- نوک داغ -->
+    <path d="M 240 96 L 272 96 L 264 118 L 248 118 Z" fill="#ff9f43"/>
+    <circle cx="256" cy="106" r="5" fill="#ffd166"/>
+    <!-- رشتهٔ فیلامنت از داخل بازو -->
+    <path d="M 256 36 L 256 96" fill="none" stroke="url(#thread)" stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <!-- رشتهٔ چاپ در حال خروج از نازل تا دهانهٔ گلدان -->
+  <path d="M 256 118
+           C 256 140, 250 150, 258 166
+           C 266 182, 248 194, 258 210"
+        fill="none" stroke="url(#thread)" stroke-width="6" stroke-linecap="round"
+        stroke-dasharray="2 10" stroke-opacity="0.9"/>
+
+  <!-- نقطهٔ پایان چاپ (glow) -->
+  <circle cx="258" cy="210" r="7" fill="#ffd166">
+    <animate attributeName="r" values="5;8;5" dur="1.8s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- امضا -->
+  <g font-family="Segoe UI, Vazirmatn, sans-serif" font-size="34" font-weight="700">
+    <text x="256" y="478" text-anchor="middle" fill="#2de08a" fill-opacity="0.9">Sahand GCode Studio</text>
+  </g>
+</svg>

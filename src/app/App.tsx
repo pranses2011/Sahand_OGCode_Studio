@@ -9,11 +9,14 @@
  * ============================================================================
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { GcodeEditorPage } from "../features/gcode-editor/GcodeEditorPage";
 import { SpiralDesignerPage } from "../features/spiral-designer/SpiralDesignerPage";
 import { ColorBar, storedFilamentColor } from "../components/ColorBar";
+import { AboutModal } from "../components/AboutModal";
 import { fa } from "../i18n/fa";
+// ۱٫۶ (درخواست کاربر ۹): گزارش خودکار خطا به ایمیل سازنده + صف محلی
+import { flushFeedbackQueue, installGlobalErrorReporter } from "../lib/feedback";
 // نسخهٔ برنامه از package.json — منبع واحد (همان که CI/رلیز می‌سازد).
 // درخواست کاربر ۱.۵: «نسخه برنامه در عنوان باشه».
 import pkg from "../../package.json";
@@ -33,6 +36,17 @@ export function App() {
   const [handoff, setHandoff] = useState<DesignerHandoff | null>(null);
   // رنگ رشتهٔ چاپ (اکستروژن) در پیش‌نمایش سه‌بعدی — صرفاً نمایشی
   const [filamentColor, setFilamentColor] = useState<string>(storedFilamentColor);
+  // پنجرهٔ «درباره/بازخورد» — نسخهٔ ۱٫۶ (درخواست کاربر ۹)
+  const [aboutOpen, setAboutOpen] = useState(false);
+
+  // گزارشگر سراسری خطا (error + unhandledrejection) — نسخهٔ ۱٫۶:
+  // خطاها به‌صورت خودکار برای سازنده ارسال می‌شوند تا اصلاح شوند؛
+  // صف محلی در نبود اینترنت باقی می‌ماند و در بوت بعدی تلاش می‌شود.
+  useEffect(() => {
+    const cleanup = installGlobalErrorReporter();
+    void flushFeedbackQueue();
+    return cleanup;
+  }, []);
 
   /** دریافت G-code از طراح و پرش به ویرایشگر */
   const handleSendToEditor = useCallback((gcode: string) => {
@@ -44,7 +58,14 @@ export function App() {
     <div className="app-shell">
       <div className="topbar">
         <span className="brand">
-          G-code Studio
+          <img
+            src="brand-icon.svg"
+            alt="نشان Sahand GCode Studio"
+            className="brand-icon"
+            width={22}
+            height={22}
+          />
+          Sahand GCode Studio
           <span className="brand-version ltr" title="نسخهٔ برنامه">v{pkg.version}</span>
         </span>
         <div className="tabs" role="tablist">
@@ -64,8 +85,19 @@ export function App() {
           >
             {fa.navDesigner}
           </button>
+          {/* دربارهٔ برنامه + بازخورد مستقیم به سازنده — نسخهٔ ۱٫۶ (درخواست ۹) */}
+          <button
+            className="btn small about-btn"
+            onClick={() => setAboutOpen(true)}
+            title="دربارهٔ برنامه · تماس سازنده · نظرات و پیشنهادات"
+          >
+            ⓘ درباره
+          </button>
         </div>
       </div>
+
+      {/* پنجرهٔ درباره/بازخورد */}
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
 
       <ColorBar filamentColor={filamentColor} onFilamentChange={setFilamentColor} />
 
