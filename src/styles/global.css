@@ -537,3 +537,16 @@ table.state th { color: var(--fg-1); background: var(--bg-2); font-weight: 400; 
   .profile-library { grid-template-columns: repeat(2, 1fr); }
   .stl-quality-grid { grid-template-columns: 1fr; }
 }
+
+/* ---- نسخهٔ برنامه در عنوان ---- */
+.brand-version {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-inline-start: 8px;
+  vertical-align: middle;
+}

@@ -14,6 +14,9 @@ import { GcodeEditorPage } from "../features/gcode-editor/GcodeEditorPage";
 import { SpiralDesignerPage } from "../features/spiral-designer/SpiralDesignerPage";
 import { ColorBar, storedFilamentColor } from "../components/ColorBar";
 import { fa } from "../i18n/fa";
+// نسخهٔ برنامه از package.json — منبع واحد (همان که CI/رلیز می‌سازد).
+// درخواست کاربر ۱.۵: «نسخه برنامه در عنوان باشه».
+import pkg from "../../package.json";
 
 type Tab = "editor" | "designer";
 
@@ -40,7 +43,10 @@ export function App() {
   return (
     <div className="app-shell">
       <div className="topbar">
-        <span className="brand">G-code Studio</span>
+        <span className="brand">
+          G-code Studio
+          <span className="brand-version ltr" title="نسخهٔ برنامه">v{pkg.version}</span>
+        </span>
         <div className="tabs" role="tablist">
           <button
             className={`tab-btn ${tab === "editor" ? "active" : ""}`}
