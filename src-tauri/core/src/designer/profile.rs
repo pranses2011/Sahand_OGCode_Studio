@@ -18,12 +18,22 @@
 use serde::{Deserialize, Serialize};
 
 /// یک نقطهٔ پروفایل — r شعاع (mm)، h ارتفاع (mm)
+///
+/// نسخهٔ ۱.۵ — مماس صریح اختیاری (درگ فلش‌های دوطرف در UI):
+///   * `m = None` → مماس خودکار Fritsch–Carlson (رفتار ۱.۲..۱.۴)؛
+///   * `m = Some(v)` → شیب dr/dh صریح کاربر؛ v در «فضای نرمال‌شدهٔ نقاط
+///     مقیاس‌شده» تفسیر می‌شود (نه mm خام) — یعنی شیب نسبت به dh محلی؛
+///     صریحِ ۰ = مماس افقی (قله/دره);
+///   * سرریز/نامعتبر → به خودکار برمی‌گردد (گارد ایمنی).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ProfilePoint {
     /// شعاع از محور مرکزی (mm) — همیشه ≥ 0
     pub r: f64,
     /// ارتفاع از کف (mm)
     pub h: f64,
+    /// شیب مماس صریح dr/dh (اختیاری — نسخهٔ ۱.۵)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub m: Option<f64>,
 }
 
 /// روش درون‌یابی بین نقاط پروفایل — نسخهٔ ۱.۲
@@ -109,9 +119,290 @@ impl ProfilePreset {
             ProfilePoint { r: 32.0, h: 65.0 },
         ]
     }
+
+    /// لیوان (cup): دیوارهٔ تقریباً مستقیم با لبهٔ کوچک
+    pub fn cup() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 20.0, h: 0.0 },
+            ProfilePoint { r: 21.0, h: 8.0 },
+            ProfilePoint { r: 24.0, h: 80.0 },
+            ProfilePoint { r: 25.0, h: 90.0 },
+        ]
+    }
+
+    /// بطری (bottle): بدنهٔ پهن + گردن باریک
+    pub fn bottle() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 18.0, h: 0.0 },
+            ProfilePoint { r: 24.0, h: 15.0 },
+            ProfilePoint { r: 25.0, h: 45.0 },
+            ProfilePoint { r: 18.0, h: 75.0 },
+            ProfilePoint { r: 8.0, h: 90.0 },
+            ProfilePoint { r: 8.0, h: 110.0 },
+            ProfilePoint { r: 9.5, h: 115.0 },
+        ]
+    }
+
+    /// کاسه (bowl): نیم‌کرهٔ پهن با کف کوچک
+    pub fn bowl() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 12.0, h: 0.0 },
+            ProfilePoint { r: 16.0, h: 4.0 },
+            ProfilePoint { r: 24.0, h: 16.0 },
+            ProfilePoint { r: 29.0, h: 34.0 },
+            ProfilePoint { r: 31.0, h: 55.0 },
+        ]
+    }
+
+    /// ساعت شنی (hourglass): دو مخروط با گلو باریک
+    pub fn hourglass() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 22.0, h: 0.0 },
+            ProfilePoint { r: 20.0, h: 10.0 },
+            ProfilePoint { r: 12.0, h: 35.0 },
+            ProfilePoint { r: 7.0, h: 50.0 },
+            ProfilePoint { r: 12.0, h: 65.0 },
+            ProfilePoint { r: 20.0, h: 90.0 },
+            ProfilePoint { r: 22.0, h: 100.0 },
+        ]
+    }
+
+    /// جام (goblet): ساقهٔ باریک + کاسهٔ مخروطی
+    pub fn goblet() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 16.0, h: 0.0 },
+            ProfilePoint { r: 14.0, h: 5.0 },
+            ProfilePoint { r: 5.0, h: 20.0 },
+            ProfilePoint { r: 4.5, h: 55.0 },
+            ProfilePoint { r: 6.0, h: 62.0 },
+            ProfilePoint { r: 16.0, h: 80.0 },
+            ProfilePoint { r: 20.0, h: 95.0 },
+        ]
+    }
+
+    /// فانوس (lantern): بدنهٔ کشیده با کمربند
+    pub fn lantern() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 14.0, h: 0.0 },
+            ProfilePoint { r: 17.0, h: 10.0 },
+            ProfilePoint { r: 18.5, h: 40.0 },
+            ProfilePoint { r: 16.5, h: 55.0 },
+            ProfilePoint { r: 18.0, h: 75.0 },
+            ProfilePoint { r: 15.0, h: 90.0 },
+            ProfilePoint { r: 16.5, h: 100.0 },
+        ]
+    }
+
+    /// رکاب سفید (amphora): کوزهٔ یونانی با دو برجستگی
+    pub fn amphora() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 10.0, h: 0.0 },
+            ProfilePoint { r: 15.0, h: 6.0 },
+            ProfilePoint { r: 24.0, h: 30.0 },
+            ProfilePoint { r: 25.5, h: 55.0 },
+            ProfilePoint { r: 20.0, h: 80.0 },
+            ProfilePoint { r: 11.0, h: 95.0 },
+            ProfilePoint { r: 12.5, h: 105.0 },
+        ]
+    }
+
+    /// قلم‌خانه (pencil holder): استوانهٔ ساده با شیار پایین
+    pub fn pencil_holder() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 19.0, h: 0.0 },
+            ProfilePoint { r: 17.5, h: 5.0 },
+            ProfilePoint { r: 19.5, h: 12.0 },
+            ProfilePoint { r: 20.0, h: 95.0 },
+        ]
+    }
+
+    /// گلدان دوطبقه (stacked planter)
+    pub fn stacked_planter() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 14.0, h: 0.0 },
+            ProfilePoint { r: 18.0, h: 6.0 },
+            ProfilePoint { r: 17.0, h: 40.0 },
+            ProfilePoint { r: 20.0, h: 45.0 },
+            ProfilePoint { r: 23.0, h: 48.0 },
+            ProfilePoint { r: 22.0, h: 80.0 },
+            ProfilePoint { r: 24.0, h: 85.0 },
+        ]
+    }
+
+    /// تخم‌مرغی (egg cup): پایهٔ کوچک + کاسهٔ تخم‌مرغی
+    pub fn egg_cup() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 12.0, h: 0.0 },
+            ProfilePoint { r: 10.0, h: 4.0 },
+            ProfilePoint { r: 5.0, h: 15.0 },
+            ProfilePoint { r: 7.0, h: 22.0 },
+            ProfilePoint { r: 15.0, h: 30.0 },
+            ProfilePoint { r: 16.5, h: 40.0 },
+        ]
+    }
+
+    /// بشکه (barrel): کمربند میانی پهن
+    pub fn barrel() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 18.0, h: 0.0 },
+            ProfilePoint { r: 22.0, h: 15.0 },
+            ProfilePoint { r: 24.0, h: 30.0 },
+            ProfilePoint { r: 24.0, h: 45.0 },
+            ProfilePoint { r: 22.0, h: 60.0 },
+            ProfilePoint { r: 18.0, h: 75.0 },
+        ]
+    }
+
+    /// مخروط ساده (cone)
+    pub fn cone() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 25.0, h: 0.0 },
+            ProfilePoint { r: 24.0, h: 30.0 },
+            ProfilePoint { r: 16.0, h: 70.0 },
+            ProfilePoint { r: 5.0, h: 95.0 },
+        ]
+    }
+
+    /// شمع‌دان دیواری (wall sconce): نیم‌استوانهٔ کشیده
+    pub fn sconce() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 9.0, h: 0.0 },
+            ProfilePoint { r: 13.0, h: 8.0 },
+            ProfilePoint { r: 22.0, h: 70.0 },
+            ProfilePoint { r: 24.0, h: 85.0 },
+        ]
+    }
+
+    /// دلو (bucket): مخروط معکوس با لبهٔ غلتان
+    pub fn bucket() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 14.0, h: 0.0 },
+            ProfilePoint { r: 15.0, h: 6.0 },
+            ProfilePoint { r: 22.0, h: 70.0 },
+            ProfilePoint { r: 23.5, h: 85.0 },
+        ]
+    }
+
+    /// گلدان بلند چینی (celadon): گردن باریک و شکم گِرد
+    pub fn celadon() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 13.0, h: 0.0 },
+            ProfilePoint { r: 16.0, h: 8.0 },
+            ProfilePoint { r: 23.0, h: 30.0 },
+            ProfilePoint { r: 24.0, h: 48.0 },
+            ProfilePoint { r: 17.0, h: 72.0 },
+            ProfilePoint { r: 10.5, h: 88.0 },
+            ProfilePoint { r: 11.0, h: 98.0 },
+        ]
+    }
 }
 
 /// اعتبارسانی نقاط پروفایل — شعاع منفی و NaN رد می‌شود (گارد ایمنی)
+/// تولیدکنندهٔ قطعی شبه‌تصادفی (xorshift64*) — بدون crate خارجی
+/// همان seed → همان دنباله (قابل بازتولید در آزمون‌ها)
+struct SmallRng(u64);
+
+impl SmallRng {
+    fn new(seed: u64) -> Self {
+        // seed صفر/کوچک را پراکنده می‌کنیم (golden ratio)
+        SmallRng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1)
+    }
+    fn next_u64(&mut self) -> u64 {
+        // xorshift64* — George Marsaglia
+        let mut x = self.0;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.0 = x;
+        x.wrapping_mul(0x2545F4914F6CDD1D)
+    }
+    /// float یکنواخت [lo, hi)
+    fn range(&mut self, lo: f64, hi: f64) -> f64 {
+        let u = (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64;
+        lo + u * (hi - lo)
+    }
+    /// انتخاب از چند گزینه
+    fn pick<'a, T>(&mut self, items: &'a [T]) -> &'a T {
+        &items[(self.next_u64() % items.len() as u64) as usize]
+    }
+}
+
+/// پروفایل تصادفی چاپ‌پسند — نسخهٔ ۱.۵ (درخواست کاربر: «دکمهٔ رندوم»)
+///
+/// قواعد «چاپ خوب» (حس مارپیچی vase):
+///   * ۴..۷ نقطه؛ ارتفاع کل ۶۰..۱۴۰mm؛
+///   * شعاع کف ≥ ۱۰mm (چسبندگی به میز) و همهٔ شعاع‌ها در ۸..۳۴mm؛
+///   * شیب دیواره بین هر جفت نقطه ≤ tan(۵۰°) ≈ ۱٫۲ — فراجهش چاپ‌ناپذیر نه؛
+///   * شروع/پایان همیشه مماس افقی خودکار (m=None → Fritsch–Carlson)؛
+///   * نقطهٔ پایانی لب: بیرون‌زدگی یا گردن (جمع‌شدن تصادفی).
+///
+/// خروجی همیشه «اعتبارسانی‌شده» است — گارد داخلی.
+pub fn random_profile(seed: u64) -> Vec<ProfilePoint> {
+    let mut rng = SmallRng::new(seed);
+
+    // ارتفاع کل و تعداد گره‌ها
+    let height = rng.range(60.0, 140.0).round();
+    let n_knots = 4 + (rng.next_u64() % 4) as usize; // 4..7
+
+    // شعاع کف — چسبندگی کافی
+    let r_bottom = rng.range(11.0, 22.0).round();
+    let mut pts: Vec<ProfilePoint> = vec![ProfilePoint { r: r_bottom, h: 0.0, m: None }];
+
+    // الگوی کلی شخصیت فرم — از ۴ خلق‌وخو انتخاب
+    enum Mood {
+        Bulb,     // شکم پهن + گردن
+        Columnar, // ستونی با موج‌های ریز
+        Flare,    // شیب بازشونده
+        Wave,     // موج‌های متناوب
+    }
+    let mood = *rng.pick(&[Mood::Bulb, Mood::Columnar, Mood::Flare, Mood::Wave]);
+
+    // پراکندگی ارتفاع گره‌ها — یکنواخت با جیتر
+    let dh = height / n_knots as f64;
+    for i in 1..n_knots {
+        let h = (dh * i as f64 + rng.range(-2.0, 2.0)).round().max(4.0).min(height - 3.0);
+        let prev = pts.last().copied().unwrap();
+        // دامنهٔ تغییر شعاع مجاز بر پایهٔ شیب سکانت (≤ tan50°)
+        let dh_real = (h - prev.h).max(1.0);
+        let max_dr = (1.19 * dh_real).min(12.0);
+        let target = match mood {
+            Mood::Bulb => {
+                // پهن در یک‌سوم میانی، تنگ در انتها
+                let t = h / height;
+                let base = if t < 0.7 { r_bottom + 6.0 + 6.0 * (1.0 - (t - 0.35).abs() / 0.35).max(0.0) } else { r_bottom * 0.55 };
+                base + rng.range(-3.0, 3.0)
+            }
+            Mood::Columnar => prev.r + rng.range(-2.0, 2.0),
+            Mood::Flare => prev.r + dh_real * rng.range(0.05, 0.55),
+            Mood::Wave => prev.r - (if i % 2 == 0 { 1.0 } else { -1.0 }) * rng.range(0.5, 3.0),
+        };
+        // اعمال محدودیت شیب + گزاره‌های چاپ
+        let mut r = target;
+        r = r.clamp(prev.r - max_dr, prev.r + max_dr);
+        r = r.clamp(8.0, 34.0);
+        // پایهٔ تماس کف هرگز زیر ۱۰mm نمی‌رود (دو نقطهٔ نخست)
+        if i == 1 {
+            r = r.max(10.0);
+        }
+        pts.push(ProfilePoint { r: r.round(), h, m: None });
+    }
+
+    // لب پایانی — بیرون‌زدگی ملایم یا درون‌فرورفتگی (۲۰/۸۰)
+    if let Some(last) = pts.last_mut() {
+        let lip = if rng.next_u64() % 5 == 0 {
+            (last.r * 0.92).round() // لب جمع‌شده
+        } else {
+            (last.r * 1.06 + 1.0).round().min(34.0) // لب باز
+        };
+        last.r = lip.max(8.0);
+    }
+
+    // مرتب‌سازی نهایی بر اساس h (گارد) و اعتبارسانی
+    sort_by_height(&mut pts);
+    debug_assert!(validate_profile(&pts).is_ok());
+    pts
+}
+
 pub fn validate_profile(points: &[ProfilePoint]) -> Result<(), String> {
     if points.len() < 2 {
         return Err("پروفایل حداقل باید ۲ نقطه داشته باشد".into());
@@ -122,6 +413,11 @@ pub fn validate_profile(points: &[ProfilePoint]) -> Result<(), String> {
         }
         if p.r < 0.0 {
             return Err(format!("شعاع منفی ({} mm) مجاز نیست", p.r));
+        }
+        if let Some(m) = p.m {
+            if !m.is_finite() {
+                return Err(format!("مماس نامعتبر ({} mm) مجاز نیست", m));
+            }
         }
     }
     Ok(())
@@ -194,10 +490,15 @@ pub fn build_radius_fn<'a>(
     // مرتب‌سازی مطمئن بر اساس h (درون‌یابی تابعی h↦r نیاز دارد)
     pts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
-    // شیب‌های هرمیتی گره‌ها (فقط در حالت Spline محاسبه و مصرف می‌شوند)
+    // ---------- مماس‌های مؤثر (نسخهٔ ۱.۵) ----------
+    // مماس صریح کاربر به «فضای مقیاس‌شده» تبدیل می‌شود: m فضایی dr/dh
+    // نسبت به dh محلی نقاط خام است؛ پس از مقیاس ارتفاع/شعاع، شیب
+    // مؤثر = m × (scale_r/scale_h) موضعی تقریبی می‌شود. ساده و پایدار:
+    // تبدیل یک‌بار در همان گره با ضریب مقیاس میانگین آن نقطه.
+    // مماس‌های خودکار همچنان Fritsch–Carlson روی نقاط مقیاس‌شده‌اند.
     let use_spline = adjust.interpolation == Interpolation::Spline;
     let tangents = if use_spline {
-        monotone_tangents(&pts)
+        effective_tangents(&pts, points, h_scale)
     } else {
         Vec::new()
     };
@@ -305,8 +606,75 @@ fn monotone_tangents(pts: &[(f64, f64)]) -> Vec<f64> {
                 m[i + 1] = 0.0;
             }
         }
+    }    m
+}
+
+/// مماس‌های مؤثر — نسخهٔ ۱.۵ (فلش‌های دوطرف در UI)
+///
+/// قاعده:
+///   * گره بدون مماس صریح → Fritsch–Carlson خودکار (رفتار ۱.۲..۱.۴)؛
+///   * گره با مماس صریح `m` (فضای نقاط خام dr/dh) → تبدیل به فضای مقیاس‌شده
+///     با ضریب s_i/h_scale موضعی و اعتبارسنجی دامنه:
+///     |m| ≤ ۶·max(|δ_chap|, |δ_rast|) — کنترل خلاقانه ولی بدون بی‌نهایت.
+///
+/// برخلاف مماس خودکار، مماس صریح «علامت مخالف δ» مجاز است (S-curves بین
+/// گره‌ها = خمیدگی خلاقانه مثل اپ‌های ویرایش منحنی). فراجهش نرم محدود است؛
+/// مصرف‌کننده‌ها شعاع را با `.max(0)` ایمن می‌کنند.
+fn effective_tangents(
+    pts: &[(f64, f64)],
+    source: &[ProfilePoint],
+    h_scale: f64,
+) -> Vec<f64> {
+    let mut t = monotone_tangents(pts);
+    if pts.is_empty() {
+        return t;
     }
-    m
+    // δ چپ/راست هر گره (برای سقف دامنه) — روی نقاط مقیاس‌شده
+    let n = pts.len();
+    let delta_at = |i: usize| -> f64 {
+        // بازهٔ چپ i-1→i و بازهٔ راست i→i+1؛ بزرگ‌ترین قدرمطلق
+        let mut best = 0.0f64;
+        if i > 0 {
+            let dh = pts[i].0 - pts[i - 1].0;
+            if dh.abs() > 1e-12 {
+                best = best.max(((pts[i].1 - pts[i - 1].1) / dh).abs());
+            }
+        }
+        if i + 1 < n {
+            let dh = pts[i + 1].0 - pts[i].0;
+            if dh.abs() > 1e-12 {
+                best = best.max(((pts[i + 1].1 - pts[i].1) / dh).abs());
+            }
+        }
+        best
+    };
+    // تطبیق نقطهٔ خام (h·h_scale) به ایندکس مرتب‌شده — نزدیک‌ترین گره
+    for s in source {
+        let Some(m_raw) = s.m.filter(|m| m.is_finite()) else {
+            continue;
+        };
+        let h_s = s.h * h_scale;
+        let mut best_i: Option<usize> = None;
+        let mut best_d = f64::INFINITY;
+        for (i, (h, _)) in pts.iter().enumerate() {
+            let d = (h - h_s).abs();
+            if d < best_d {
+                best_d = d;
+                best_i = Some(i);
+            }
+        }
+        let Some(i) = best_i else { continue };
+        if best_d > 1e-6 * (pts[n - 1].0 - pts[0].0).max(1.0) {
+            continue; // نقطهٔ خام بدون گره متناظر (نباید رخ دهد)
+        }
+        // تبدیل فضای خام → مقیاس‌شده: r' = r·s؛ h' = h·h_scale
+        let s_scale = if s.r.abs() > 1e-9 { pts[i].1 / s.r } else { 1.0 };
+        let m_scaled = m_raw * s_scale / h_scale.max(1e-9);
+        // سقف دامنه — ۶ برابر شیب سکانت مجاور (خلاق ولی مهارشده)
+        let cap = 6.0 * delta_at(i);
+        t[i] = m_scaled.clamp(-cap.max(0.05), cap.max(0.05));
+    }
+    t
 }
 
 // ============================================================================
@@ -542,5 +910,124 @@ mod tests {
         let f = build_radius_fn(&pts, &adj);
         assert!((f(25.0) - 20.0).abs() < 1e-9);
         assert!((f(75.0) - 20.0).abs() < 1e-9);
+    }
+
+    // ================= آزمون‌های نسخهٔ ۱.۵ =================
+
+    #[test]
+    fn test_explicit_tangent_changes_shape() {
+        // مماس صریح باید شکل بین دو گره را عوض کند
+        let base = vec![
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 30.0, h: 50.0, m: None },
+            ProfilePoint { r: 10.0, h: 100.0, m: None },
+        ];
+        let adj = FormAdjust {
+            bottom_diameter_mm: 20.0,
+            top_diameter_mm: 20.0,
+            ..Default::default()
+        };
+        // مماس افقی صریح در گرهٔ میانی → قلهٔ صاف‌تر از خودکار
+        let with_m = vec![
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 30.0, h: 50.0, m: Some(0.0) },
+            ProfilePoint { r: 10.0, h: 100.0, m: None },
+        ];
+        let f_auto = build_radius_fn(&base, &adj);
+        let f_manual = build_radius_fn(&with_m, &adj);
+        // در نزدیکی گرهٔ میانی (۴۵mm)، شکل‌ها باید تفاوت معنادار داشته باشند
+        let da = (f_auto(45.0) - f_manual(45.0)).abs()
+            + (f_auto(55.0) - f_manual(55.0)).abs();
+        assert!(da > 0.05, "مماس صریح باید شکل را عوض کند: diff={da}");
+        // هر دو از گره‌ها می‌گذرند
+        for f in [&f_auto, &f_manual] {
+            assert!((f(50.0) - 30.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn test_explicit_tangent_nonfinite_falls_back() {
+        // مماس NaN → نادیده گرفته می‌شود؛ نتیجه = خودکار
+        let pts = vec![
+            ProfilePoint { r: 10.0, h: 0.0, m: Some(f64::NAN) },
+            ProfilePoint { r: 25.0, h: 100.0, m: Some(f64::INFINITY) },
+        ];
+        let adj = FormAdjust {
+            bottom_diameter_mm: 20.0,
+            top_diameter_mm: 50.0,
+            ..Default::default()
+        };
+        let f = build_radius_fn(&pts, &adj);
+        assert!((f(0.0) - 10.0).abs() < 1e-9);
+        assert!((f(100.0) - 25.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_new_presets_valid() {
+        // همهٔ پریست‌های ۱.۵ معتبر و مرتب
+        let all = [
+            ProfilePreset::cup(),
+            ProfilePreset::bottle(),
+            ProfilePreset::bowl(),
+            ProfilePreset::hourglass(),
+            ProfilePreset::goblet(),
+            ProfilePreset::lantern(),
+            ProfilePreset::amphora(),
+            ProfilePreset::pencil_holder(),
+            ProfilePreset::stacked_planter(),
+            ProfilePreset::egg_cup(),
+            ProfilePreset::barrel(),
+            ProfilePreset::cone(),
+            ProfilePreset::sconce(),
+            ProfilePreset::bucket(),
+            ProfilePreset::celadon(),
+        ];
+        assert_eq!(all.len(), 15);
+        for pts in all {
+            assert!(validate_profile(&pts).is_ok());
+            for w in pts.windows(2) {
+                assert!(w[0].h <= w[1].h, "hها باید صعودی باشند");
+            }
+            // شعاع کف ≥ ۱۰mm (چسبندگی) — برای همهٔ پریست‌های نمایشی
+            assert!(pts.first().map(|p| p.r >= 9.0).unwrap_or(false));
+        }
+    }
+
+    #[test]
+    fn test_random_profile_deterministic() {
+        // همان seed → همان پروفایل (قطعیت)
+        let a = random_profile(12345);
+        let b = random_profile(12345);
+        assert_eq!(a, b);
+        // seed متفاوت → معمولاً پروفایل متفاوت
+        let c = random_profile(999);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn test_random_profile_print_safe() {
+        // ۲۰۰ seed: همیشه چاپ‌پسند
+        for seed in 0..200u64 {
+            let pts = random_profile(seed);
+            assert!(validate_profile(&pts).is_ok(), "seed={seed} نامعتبر");
+            // ارتفاع معقول
+            let h_max = pts.last().map(|p| p.h).unwrap_or(0.0);
+            assert!(h_max >= 55.0 && h_max <= 145.0, "seed={seed} h={h_max}");
+            // شعاع‌ها در بازهٔ چاپ خوب
+            for p in &pts {
+                assert!(p.r >= 8.0 && p.r <= 34.5, "seed={seed} r={}", p.r);
+            }
+            // شعاع کف ≥ ۱۰ (چسبندگی)
+            assert!(pts[0].r >= 10.0, "seed={seed} پایه={}", pts[0].r);
+            // شیب دیواره ≤ tan(۵۱°) با تلورانس گردشدن
+            for w in pts.windows(2) {
+                let dr = (w[1].r - w[0].r).abs();
+                let dh = (w[1].h - w[0].h).max(0.5);
+                assert!(
+                    dr / dh <= 1.25,
+                    "seed={seed} شیب تند: dr={dr} dh={dh}"
+                );
+            }
+        }
     }
 }
