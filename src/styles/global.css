@@ -439,3 +439,101 @@ table.state th { color: var(--fg-1); background: var(--bg-2); font-weight: 400; 
 @media (max-width: 1000px) {
   .style-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================================
+ * نسخهٔ ۱.۵ — نمای جامد + فلش‌های مماس + کتابخانهٔ پروفایل + دیالوگ کیفیت STL
+ * ========================================================================== */
+
+/* ---- دکمه‌های حالت نما (جامد/جامد+مسیر/فقط مسیر) — بالای legend ---- */
+.viewmode-toggle {
+  position: absolute;
+  top: 10px;
+  inset-inline-start: 12px;
+  display: flex;
+  gap: 4px;
+  z-index: 5;
+  background: rgba(20, 22, 28, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+  backdrop-filter: blur(4px);
+}
+.vm-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.vm-btn:hover { background: var(--bg-3); color: var(--fg-1); }
+.vm-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vm-btn.active {
+  background: var(--accent-dim);
+  color: var(--fg-1);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- فلش‌های مماس ادیتور پروفایل ---- */
+.tangent-g line { pointer-events: none; }
+.tangent-g polygon { pointer-events: none; }
+.tangent-g circle { filter: drop-shadow(0 0 3px rgba(255, 210, 63, 0.45)); }
+.profile-svg { touch-action: none; }
+
+/* ---- کتابخانهٔ پروفایل‌ها (۱۸ پریست ۱.۵) ---- */
+.profile-library {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 6px;
+}
+.profile-lib-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.profile-lib-btn:hover { border-color: var(--accent-dim); background: var(--bg-3); transform: translateY(-1px); }
+.profile-lib-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.profile-lib-btn .name { font-size: 11px; color: var(--fg-1); }
+.profile-lib-btn svg { background: rgba(255, 255, 255, 0.02); border-radius: 5px; }
+
+/* ---- ردیف ابزار پروفایل (رندوم/SVG/بازنشانی) ---- */
+.profile-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.profile-tools .btn { flex: 0 0 auto; }
+
+/* ---- دیالوگ کیفیت STL ---- */
+.stl-quality-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+.stl-q-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-2);
+  cursor: pointer;
+  text-align: start;
+  transition: border-color 0.15s, background 0.15s;
+}
+.stl-q-card:hover { border-color: var(--accent-dim); background: var(--bg-3); }
+.stl-q-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stl-q-card.selected { border-color: var(--accent); background: var(--accent-dim); }
+.stl-q-card .t { font-weight: 600; font-size: 13px; }
+.stl-q-card .d { font-size: 11px; color: var(--fg-2); }
+.stl-q-card .n { font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 900px) {
+  .profile-library { grid-template-columns: repeat(2, 1fr); }
+  .stl-quality-grid { grid-template-columns: 1fr; }
+}
