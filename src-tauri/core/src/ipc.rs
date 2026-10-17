@@ -760,6 +760,29 @@ pub fn printer_presets() -> Vec<crate::designer::PrinterProfile> {
 }
 
 // ============================================================================
+// دستور ۱۲: ذخیره‌گاه پروفایل‌های شخصی — نسخهٔ ۱٫۶ (درخواست کاربر ۴)
+// ============================================================================
+// توابع خالص با پارامتر دایرکتوری (آزمودنی)؛ پوستهٔ Tauri مسیر app_data
+// را می‌دهد و CLI پل توسعه هم می‌تواند مسیر موقت بدهد.
+pub fn save_printer_profile(
+    base_dir: String,
+    profile: crate::designer::PrinterProfile,
+) -> Result<String, String> {
+    crate::designer::printer_presets::save_custom_profile(std::path::Path::new(&base_dir), &profile)
+}
+
+pub fn list_printer_profiles(base_dir: String) -> Vec<crate::designer::PrinterProfile> {
+    crate::designer::printer_presets::list_custom_profiles(std::path::Path::new(&base_dir))
+}
+
+pub fn delete_printer_profile(base_dir: String, name: String) -> Result<(), String> {
+    crate::designer::printer_presets::delete_custom_profile(
+        std::path::Path::new(&base_dir),
+        &name,
+    )
+}
+
+// ============================================================================
 // آزمون‌های داخلی IPC — داده‌های فشرده و رفتار Save As
 // ============================================================================
 #[cfg(test)]
@@ -916,5 +939,26 @@ mod tests {
         let g_none = designer_export_gcode(proj, None).unwrap();
         assert!(g_none.contains("gcode_quality=1.00"));
         assert_eq!(sample_dec(&g_none), 3);
+    }
+
+    #[test]
+    fn test_printer_profile_store_ipc() {
+        // ذخیره/فهرست/حذف از لایهٔ IPC با دایرکتوری موقت
+        let dir = std::env::temp_dir().join(format!("gcs_ipc_prof_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let dir_s = dir.to_str().unwrap().to_string();
+        let mut p = crate::designer::PrinterProfile::default();
+        p.name = "Test Custom".into();
+        p.build_volume_mm = [250.0, 210.0, 210.0];
+        let saved = save_printer_profile(dir_s.clone(), p.clone()).unwrap();
+        assert!(saved.contains("Test-Custom.json"));
+        let list = list_printer_profiles(dir_s.clone());
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "Test Custom");
+        assert_eq!(list[0].status, "custom");
+        assert_eq!(list[0].build_volume_mm, [250.0, 210.0, 210.0]);
+        delete_printer_profile(dir_s.clone(), "Test Custom".into()).unwrap();
+        assert!(list_printer_profiles(dir_s).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

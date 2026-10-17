@@ -118,6 +118,118 @@ pub fn brand_fa(name: &str) -> &'static str {
 // ============================================================================
 // آزمون‌های واحد
 // ============================================================================
+
+// ============================================================================
+// ذخیره‌گاه پروفایل‌های شخصی کاربر — نسخهٔ ۱٫۶ (درخواست کاربر ۴)
+// ============================================================================
+// پروفایل دلخواه (تنظیم‌شده در گام ۵) با نام ذخیره می‌شود و در اجراهای
+// بعدی از همان مسیر بارگذاری می‌شود. توابع «خالص» با پارامتر دایرکتوری‌اند
+// تا در cargo test آزمودنی باشند؛ پوستهٔ Tauri مسیر app_data را می‌دهد.
+//
+// قواعد:
+//   * نام فایل از نام پروفایل «بهداشتی‌سازی» می‌شود (حروف/اعداد/-/_ فقط)؛
+//   * هر پروفایل یک فایل JSON مستقل در <dir>/printer_profiles/؛
+//   * status ذخیره‌شده همیشه «custom» است (صداقت: آزموده‌نشده)؛
+//   * حذف/بازنویسی فقط فایل «همان نام» را لمس می‌کند.
+
+/// بهداشتی‌سازی نام برای نام فایل — حروف فارسی/نمادها به «-»
+pub fn sanitize_profile_name(name: &str) -> String {
+    let cleaned: String = name
+        .trim()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    // فشرده‌سازی «--»های پشت‌سرهم و حذف «-» ابتدا/انتها
+    let mut out = String::new();
+    let mut last_dash = false;
+    for c in cleaned.chars() {
+        if c == '-' {
+            if !last_dash {
+                out.push(c);
+            }
+            last_dash = true;
+        } else {
+            out.push(c);
+            last_dash = false;
+        }
+    }
+    let out = out.trim_matches('-').to_string();
+    if out.is_empty() {
+        "my-printer".into()
+    } else {
+        out.chars().take(64).collect()
+    }
+}
+
+/// پوشهٔ ذخیره‌گاه — ساخته‌شده در صورت نبود
+fn profiles_dir(base_dir: &std::path::Path) -> std::path::PathBuf {
+    let dir = base_dir.join("printer_profiles");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+/// ذخیرهٔ پروفایل شخصی — status به «custom» تنظیم می‌شود (صداقت)
+pub fn save_custom_profile(
+    base_dir: &std::path::Path,
+    profile: &PrinterProfile,
+) -> Result<String, String> {
+    let name = if profile.name.trim().is_empty() {
+        "my-printer".to_string()
+    } else {
+        profile.name.trim().to_string()
+    };
+    let mut p = profile.clone();
+    p.name = name.clone();
+    p.status = "custom".into(); // آزموده‌نشده — برچسب صادقانه
+    let file = profiles_dir(base_dir).join(format!("{}.json", sanitize_profile_name(&name)));
+    let json = serde_json::to_string_pretty(&p).map_err(|e| e.to_string())?;
+    std::fs::write(&file, json.as_bytes())
+        .map_err(|e| format!("نوشتن پروفایل ناموفق بود: {e}"))?;
+    Ok(file.to_string_lossy().into_owned())
+}
+
+/// فهرست پروفایل‌های شخصی — نام‌های فایل مرتب (پایدار برای UI)
+pub fn list_custom_profiles(base_dir: &std::path::Path) -> Vec<PrinterProfile> {
+    let dir = profiles_dir(base_dir);
+    let mut out: Vec<PrinterProfile> = Vec::new();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return out;
+    };
+    let mut files: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|e| e == "json").unwrap_or(false))
+        .collect();
+    files.sort();
+    for f in files {
+        if let Ok(text) = std::fs::read_to_string(&f) {
+            if let Ok(p) = serde_json::from_str::<PrinterProfile>(&text) {
+                // پروفایل خراب نصفه‌شده هم رد نمی‌شود اگر فیلدهای اصلی دارد
+                if p.build_volume_mm[0] > 0.0 && p.layer_height_mm > 0.0 {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// حذف پروفایل شخصی با نام
+pub fn delete_custom_profile(base_dir: &std::path::Path, name: &str) -> Result<(), String> {
+    let file = profiles_dir(base_dir).join(format!("{}.json", sanitize_profile_name(name)));
+    match std::fs::remove_file(&file) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()), // حذفِ نبوده = موفق
+        Err(e) => Err(format!("حذف پروفایل ناموفق بود: {e}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,5 +325,64 @@ mod tests {
         let smallest_z = presets.iter().map(|p| p.build_volume_mm[2]).fold(f64::MAX, f64::min);
         assert!(smallest_z >= 180.0);
         assert!(smallest_z > 100.0, "حجم Z حداقل باید گلدان ۱۰۰mm را جا دهد");
+    }
+
+    // ================= پروفایل شخصی — نسخهٔ ۱٫۶ =================
+
+    #[test]
+    fn test_custom_profile_roundtrip() {
+        // ذخیره → فهرست → همان پروفایل (status=custom)
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("gcs_prof_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut p = PrinterProfile::default();
+        p.name = "پرینتر من ۲".into();
+        p.build_volume_mm = [300.0, 300.0, 350.0];
+        p.nozzle_temp_c = 235.0;
+        p.start_gcode = "G28 ; home\nM104 S200".into();
+        let saved = save_custom_profile(&dir, &p).unwrap();
+        assert!(saved.contains("printer_profiles"));
+        assert!(saved.ends_with(".json"));
+        let list = list_custom_profiles(&dir);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "پرینتر من ۲");
+        assert_eq!(list[0].status, "custom");
+        assert_eq!(list[0].build_volume_mm, [300.0, 300.0, 350.0]);
+        assert_eq!(list[0].start_gcode, "G28 ; home\nM104 S200");
+        // بازنویسی همان نام → همچنان ۱ فایل
+        save_custom_profile(&dir, &p).unwrap();
+        assert_eq!(list_custom_profiles(&dir).len(), 1);
+        // حذف
+        delete_custom_profile(&dir, "پرینتر من ۲").unwrap();
+        assert_eq!(list_custom_profiles(&dir).len(), 0);
+        // حذف دوباره (نبوده) = موفق
+        delete_custom_profile(&dir, "پرینتر من ۲").unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_sanitize_profile_name() {
+        assert_eq!(sanitize_profile_name("My Printer X1"), "My-Printer-X1");
+        assert_eq!(sanitize_profile_name("Ender//3??"), "Ender-3");
+        assert_eq!(sanitize_profile_name("   "), "my-printer");
+        assert_eq!(sanitize_profile_name("a__b"), "a__b");
+        // فارسی کاملاً حذف می‌شود → نام جایگزین پیش‌فرض
+        assert_eq!(sanitize_profile_name("سلام دوست"), "my-printer");
+    }
+
+    #[test]
+    fn test_multiple_profiles_and_order() {
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("gcs_prof_multi_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for name in ["Zeta", "Alpha", "Mid"] {
+            let mut p = PrinterProfile::default();
+            p.name = name.into();
+            save_custom_profile(&dir, &p).unwrap();
+        }
+        let list = list_custom_profiles(&dir);
+        let names: Vec<&str> = list.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["Alpha", "Mid", "Zeta"]); // مرتب الفبایی فایل
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
