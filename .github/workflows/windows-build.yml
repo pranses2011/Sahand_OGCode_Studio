@@ -78,8 +78,8 @@ jobs:
           $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
           if (-not $exe) { throw "نصب کامل NSIS پیدا نشد" }
           New-Item -ItemType Directory -Force -Path "staging" | Out-Null
-          Copy-Item $exe.FullName "staging/G-code.Studio_full-setup.exe"
-          Write-Host "full: $($exe.Name) → staging/G-code.Studio_full-setup.exe ($([math]::Round($exe.Length/1MB,1)) MB)"
+          Copy-Item $exe.FullName "staging/Sahand.GCode.Studio_full-setup.exe"
+          Write-Host "full: $($exe.Name) → staging/Sahand.GCode.Studio_full-setup.exe ($([math]::Round($exe.Length/1MB,1)) MB)"
 
       # ------------------------------------------------------------------
       # ۲) نصب آپدیت/سبک — downloadBootstrapper (نسخهٔ ۱.۳؛ کد Rust همان
@@ -95,16 +95,16 @@ jobs:
         run: |
           $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
           if (-not $exe) { throw "نصب سبک NSIS پیدا نشد" }
-          Copy-Item $exe.FullName "staging/G-code.Studio_light-setup.exe"
-          Write-Host "light: $($exe.Name) → staging/G-code.Studio_light-setup.exe ($([math]::Round($exe.Length/1MB,1)) MB)"
+          Copy-Item $exe.FullName "staging/Sahand.GCode.Studio_light-setup.exe"
+          Write-Host "light: $($exe.Name) → staging/Sahand.GCode.Studio_light-setup.exe ($([math]::Round($exe.Length/1MB,1)) MB)"
 
       - name: Upload installers artifact
         uses: actions/upload-artifact@v4
         with:
           name: gcode-studio-windows-x64
           path: |
-            staging/G-code.Studio_full-setup.exe
-            staging/G-code.Studio_light-setup.exe
+            staging/Sahand.GCode.Studio_full-setup.exe
+            staging/Sahand.GCode.Studio_light-setup.exe
           if-no-files-found: error
 
       # ------------------------------------------------------------------
@@ -117,69 +117,74 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $full = "staging/G-code.Studio_full-setup.exe"
-          $light = "staging/G-code.Studio_light-setup.exe"
+          $full = "staging/Sahand.GCode.Studio_full-setup.exe"
+          $light = "staging/Sahand.GCode.Studio_light-setup.exe"
           if (-not (Test-Path $full)) { throw "نصب کامل پیدا نشد" }
           if (-not (Test-Path $light)) { throw "نصب سبک پیدا نشد" }
           Write-Host "full: $([math]::Round((Get-Item $full).Length/1MB,1)) MB | light: $([math]::Round((Get-Item $light).Length/1MB,1)) MB"
 
           # یادداشت رلیس فارسی صادقانه — دستی-اجرا‌نشده‌ها صریح ذکر می‌شوند
           $notes = @"
-          # G-code Studio $tag
+          # Sahand GCode Studio $tag
 
-          دو نسبـت نصب ارائه می‌شود:
+          > **طراح و نویسنده: سعید نجفی** · ۰۹۱۴۴۲۲۰۴۳۰ · Pranses2011@GMail.com · EA-Fixer.ir
+          > 💚 حمایت از توسعه: کارت ۶۲۱۹۸۶۱۹۱۸۹۳۴۶۷۹ — بانک سامان
+
+          دو نصب‌کننده ارائه می‌شود:
 
           | فایل | حجم تقریبی | مناسب چه کسی؟ |
           |---|---|---|
           | **full-setup.exe** (نصب کامل) | ~۲۰۰ MB | ویندوز بدون اینترنت — WebView2 داخل بسته است |
-          | **light-setup.exe** (نصب آپدیت/سبک) | ~۱.۵ MB | به‌روزرسانی سریع — WebView2 فقط در صورت نبود، آنلاین دانلود می‌شود (ویندوز ۱۰/۱۱ به‌روز معمولاً دارد) |
+          | **light-setup.exe** (نصب آپدیت/سبک) | ~۱.۵ MB | به‌روزرسانی سریع — WebView2 فقط در صورت نبود، آنلاین دانلود می‌شود |
 
           💡 برای «آپدیت» نسخه‌های قبلی، همان light-setup.exe را نصب کنید — روی نسخهٔ موجود نصب می‌شود.
 
-          ## آنچه در این نسخه است (۱.۵)
-          - 🪢 **اسپلاین پروفایل با فلش‌های مماس**: انتخاب هر نقطه → دو فلش زرد
-            در دو سمت آن ظاهر می‌شود؛ کشیدن فلش = تنظیم دقیق انحنای اسپلاین
-            (مماس dr/dh)؛ دابل‌کلیک روی فلش = مماس خودکار
-          - 📚 **کتابخانهٔ ۱۸ پروفایل آماده**: گلدان/سایه‌روشن/گلدان‌کشت/لیوان/بطری/
-            کاسه/ساعت‌شنی/جام/فانوس/آمفورا/قلم‌خانه/گلدان‌دوطبقه/تخم‌مرغی/بشکه/
-            مخروط/شمع‌دان/دلو/سلادون — همهٔ قابل‌ویرایش با thumbnail زنده
-          - 🎲 **دکمهٔ پروفایل تصادفی چاپ‌پسند**: شیب دیواره ≤ ۵۰°، شعاع ۸..۳۴mm،
-            کف ≥ ۱۰mm — تولید در هستهٔ Rust با قواعد چاپ خوب
-          - 📥 **ایمپورت پروفایل از SVG**: پارسر کامل مسیر SVG
-            (M/L/H/V/C/S/Q/T/A/Z + transformها) → نیم‌رخ راست → پروفایل
-          - 🎚️ **دیالوگ کیفیت خروجی STL**: ۴ سطح (۰٫۵×/۱×/۲×/۳×) با تخمین زندهٔ
-            تعداد مثلث — کیفیت فقط ریزباشدِ STL؛ G-code مستقل می‌ماند
-          - 💾 **ذخیرهٔ مستقیم G-code از طراح**: بدون گذر از ویرایشگر، مستقیم روی دیسک
-          - 🗿 **نمای جامد سایه‌دار در پیش‌نمایش 3D**: سطح فرم با نورپردازی
-            Hemisphere+Rim مثل اپ مرجع — طرح کامل دیده می‌شود نه فقط خطوط مسیر؛
-            سه حالت نما: جامد / جامد+مسیر / فقط مسیر + دیسک کف
-          - 🐌 **مدولاسیون سرعت بافت**: نازل روی قله/درهٔ بافت آرام‌تر می‌رود
-            (تا ۴۰٪ کاهش) مثل ویدئوهای مرجع؛ دامنهٔ بافت به ۰٫۹×قطر نازل محدود
-            می‌شود (جلوگیری از برخورد نازل/لایهٔ معلق) با هشدار W-TEX-NOZZLE
-          - 🏷️ **نسخهٔ برنامه در عنوان پنجره** (منبع واحد package.json)
-          - و همهٔ قابلیت‌های ۱.۴: کف چندلایه/سرعت‌های mm/s/G-code استاندارد/
-            نمایشگر سریع/اسپات سطحی + ۱.۳: دما/فن/دیال θ
-          
+          ## آنچه در این نسخه است (۱.۶)
+          - 🗿 **نمای جامد دقیق (رفع باگ مهم)**: مش از «نقاط واقعی مسیر چاپ» ساخته
+            می‌شود — الگو و بافت دقیقاً همان‌طور که چاپ می‌شوند دیده می‌شوند
+            (قبلاً سطح صاف) + نورپردازی روشن‌تر (رفع «تیرگی»)
+          - 🎯 **اسپات زاویه‌ای الگو/بافت**: اعمال فقط روی یک قوس از محیط فرم —
+            روی 3D قوس طلایی + لبه‌های فلش‌دار (پهن‌کردن) + دستهٔ سبز (چرخش)
+          - 🏁 **پایان‌بندی صحیح چاپ (رفع باگ مهم)**: رتراکشن → خاموشی بستر/نازل/فن
+            → بالارفتن ۱mm → **هوم فقط X** (Z پایین نمی‌آید) → خاموشی موتورها
+          - 🎚️ **کیفیت خروجی G-code**: ۴ سطح (زبر/استاندارد/ریز/بسیار ریز) با
+            تراکم نقاط + اعشار متغیر و تخمین شمار خط — برای ارسال به ویرایشگر و ذخیرهٔ مستقیم
+          - 📚 **پالت دستورات شروع/پایان**: ۳۷ دستور رایج با توضیح فارسی کامل +
+            افزودن یک‌کلیکی به کادر کد شروع/پایان
+          - 💾 **پروفایل‌های شخصی پرینتر**: ذخیرهٔ تنظیمات با نام دلخواه در AppData
+          - 🔷 **۵ الگوی کف جدید (جمعاً ۱۰)**: شانه‌زنبوری · موج دایره‌ای · ستاره‌ای ·
+            دانه‌برفی · گره هندسی هشت‌پر
+          - 🔧 **تنظیمات حرفه‌ای کف (لامپ/آویز)**: سوراخ‌های لبه برای نخ/کابل + حلقه‌های
+            تقویت دور لبه/سوکت لامپ/سوراخ‌ها در لایهٔ آخر
+          - 📧 **بازخورد و گزارش خطای خودکار**: خطاها به‌صورت خودکار به ایمیل سازنده
+            ارسال می‌شوند (با صف محلی در نبود اینترنت)؛ فرم «نظرات و پیشنهادات»
+            داخل برنامه — بدون نرم‌افزار ایمیل
+          - 🏷️ **برندینگ کامل**: نام جدید Sahand GCode Studio + آیکون سه‌بعدی جدید
+          - و همهٔ قابلیت‌های ۱.۵: اسپلاین مماس‌دار/۱۸ پروفایل/رندوم/SVG/کیفیت STL/
+            ذخیرهٔ مستقیم + ۱.۴: کف چندلایه/mm/s/G-code استاندارد + ۱.۳: دما/فن/دیال θ
+
           ## نکات ایمنی (صداقت)
           - این برنامه صحت چاپ فیزیکی را تضمین نمی‌کند؛ فایل را با ابزار معتبر بازبینی کنید.
           - دماهای پریست مواد «شروع مناسب رایج» هستند نه عدد قطعی — به فیلامنت/دستگاه شما وابسته‌اند.
           - پریست‌های پرینتر «community» هستند: داده از صفحات رسمی سازنده، اما روی دستگاه
             توسط ما آزموده نشده‌اند.
+          - ارسال بازخورد/گزارش خطا نیازمند اینترنت است و فقط به دامنهٔ formsubmit.co
+            محدود است؛ نخستین ارسال نیازمند تأیید یک‌بارهٔ مالک ایمیل است.
           - تست نصب روی ویندوز واقعی با اینترنت قطع (full) و اینترنت روشن (light)، دستی انجام
             نشده است (CI فقط build می‌سازد).
 
           ## آزمون‌ها
-          - cargo test -p gcode-core: 176 آزمون واحد — سبز در این CI
-          - npm test (Vitest): 39 آزمون — سبز در این CI
+          - cargo test -p gcode-core: ۲۰۹ آزمون واحد — سبز در این CI
+          - npm test (Vitest): ۷۵ آزمون — سبز در این CI
           "@
 
-          gh release create $tag $full $light --title "G-code Studio $tag" --notes $notes
+          gh release create $tag $full $light --title "Sahand GCode Studio $tag" --notes $notes
           Write-Host "رلیس $tag با دو نصب‌کننده منتشر شد."
 
       - name: Summary
         shell: pwsh
         run: |
-          Write-Host "دو نصب‌کننده آماده شد: staging/G-code.Studio_full-setup.exe + staging/G-code.Studio_light-setup.exe"
+          Write-Host "دو نصب‌کننده آماده شد: staging/Sahand.GCode.Studio_full-setup.exe + staging/Sahand.GCode.Studio_light-setup.exe"
           if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
             Write-Host "رلیس ${{ github.ref_name }} با هر دو فایل نصب منتشر شد."
           } else {
