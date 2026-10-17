@@ -39,9 +39,11 @@ import type {
 } from "../../lib/tauri";
 import {
   designerViewport, designerExportGcode, designerExportStl,
-  saveProject, loadProject, saveFileDialog, openFileDialog,
+  designerRandomProfile, writeTextFile, readTextFile,
+  saveProject, loadProject, saveFileDialog, openFileDialog, openSvgDialog,
   coreAvailable, printerPresets, designerPreviewData,
 } from "../../lib/tauri";
+import { importProfileFromSvg } from "./svgImport";
 
 // ============================================================================
 // فهرست الگوها/بافت‌ها/کف‌ها — ۱۷ الگو + ۱۲ بافت + ۵ کف (نسخهٔ ۱.۲)
@@ -89,6 +91,82 @@ const FLOORS: { kind: FloorPatternKind; name: string; hint: string }[] = [
   { kind: "Radial", name: "پرتوهای شعاعی", hint: "پرتو از سوراخ مرکزی تا لبه" },
   { kind: "ZigZag", name: "رفت‌وبرگشتی", hint: "ردیف‌های مارپیچی بدون درز" },
 ];
+
+// ============================================================================
+// کتابخانهٔ پروفایل‌ها — ۱۸ شکل آمادهٔ قابل‌ویرایش (نسخهٔ ۱.۵)
+// ۳ پریست اصلی + ۱۵ پریست جدید هستهٔ Rust (ProfilePreset)
+// ============================================================================
+const PROFILE_LIBRARY: {
+  key: string;
+  name: string;
+  profile: ProfilePoint[];
+}[] = [
+  { key: "vase", name: fa.presetVase, profile: [
+    { r: 22, h: 0 }, { r: 28, h: 10 }, { r: 30, h: 35 },
+    { r: 26, h: 60 }, { r: 18, h: 80 }, { r: 17, h: 88 }, { r: 21, h: 100 }] },
+  { key: "lamp", name: fa.presetLamp, profile: [
+    { r: 8, h: 0 }, { r: 15, h: 15 }, { r: 35, h: 90 }, { r: 40, h: 100 }] },
+  { key: "planter", name: fa.presetPlanter, profile: [
+    { r: 15, h: 0 }, { r: 18, h: 5 }, { r: 30, h: 60 }, { r: 32, h: 65 }] },
+  { key: "cup", name: fa.presetCup, profile: [
+    { r: 20, h: 0 }, { r: 21, h: 8 }, { r: 24, h: 80 }, { r: 25, h: 90 }] },
+  { key: "bottle", name: fa.presetBottle, profile: [
+    { r: 18, h: 0 }, { r: 24, h: 15 }, { r: 25, h: 45 }, { r: 18, h: 75 },
+    { r: 8, h: 90 }, { r: 8, h: 110 }, { r: 9.5, h: 115 }] },
+  { key: "bowl", name: fa.presetBowl, profile: [
+    { r: 12, h: 0 }, { r: 16, h: 4 }, { r: 24, h: 16 }, { r: 29, h: 34 }, { r: 31, h: 55 }] },
+  { key: "hourglass", name: fa.presetHourglass, profile: [
+    { r: 22, h: 0 }, { r: 20, h: 10 }, { r: 12, h: 35 }, { r: 7, h: 50 },
+    { r: 12, h: 65 }, { r: 20, h: 90 }, { r: 22, h: 100 }] },
+  { key: "goblet", name: fa.presetGoblet, profile: [
+    { r: 16, h: 0 }, { r: 14, h: 5 }, { r: 5, h: 20 }, { r: 4.5, h: 55 },
+    { r: 6, h: 62 }, { r: 16, h: 80 }, { r: 20, h: 95 }] },
+  { key: "lantern", name: fa.presetLantern, profile: [
+    { r: 14, h: 0 }, { r: 17, h: 10 }, { r: 18.5, h: 40 }, { r: 16.5, h: 55 },
+    { r: 18, h: 75 }, { r: 15, h: 90 }, { r: 16.5, h: 100 }] },
+  { key: "amphora", name: fa.presetAmphora, profile: [
+    { r: 10, h: 0 }, { r: 15, h: 6 }, { r: 24, h: 30 }, { r: 25.5, h: 55 },
+    { r: 20, h: 80 }, { r: 11, h: 95 }, { r: 12.5, h: 105 }] },
+  { key: "pencil", name: fa.presetPencilHolder, profile: [
+    { r: 19, h: 0 }, { r: 17.5, h: 5 }, { r: 19.5, h: 12 }, { r: 20, h: 95 }] },
+  { key: "stacked", name: fa.presetStackedPlanter, profile: [
+    { r: 14, h: 0 }, { r: 18, h: 6 }, { r: 17, h: 40 }, { r: 20, h: 45 },
+    { r: 23, h: 48 }, { r: 22, h: 80 }, { r: 24, h: 85 }] },
+  { key: "eggcup", name: fa.presetEggCup, profile: [
+    { r: 12, h: 0 }, { r: 10, h: 4 }, { r: 5, h: 15 }, { r: 7, h: 22 },
+    { r: 15, h: 30 }, { r: 16.5, h: 40 }] },
+  { key: "barrel", name: fa.presetBarrel, profile: [
+    { r: 18, h: 0 }, { r: 22, h: 15 }, { r: 24, h: 30 }, { r: 24, h: 45 },
+    { r: 22, h: 60 }, { r: 18, h: 75 }] },
+  { key: "cone", name: fa.presetCone, profile: [
+    { r: 25, h: 0 }, { r: 24, h: 30 }, { r: 16, h: 70 }, { r: 5, h: 95 }] },
+  { key: "sconce", name: fa.presetSconce, profile: [
+    { r: 9, h: 0 }, { r: 13, h: 8 }, { r: 22, h: 70 }, { r: 24, h: 85 }] },
+  { key: "bucket", name: fa.presetBucket, profile: [
+    { r: 14, h: 0 }, { r: 15, h: 6 }, { r: 22, h: 70 }, { r: 23.5, h: 85 }] },
+  { key: "celadon", name: fa.presetCeladon, profile: [
+    { r: 13, h: 0 }, { r: 16, h: 8 }, { r: 23, h: 30 }, { r: 24, h: 48 },
+    { r: 17, h: 72 }, { r: 10.5, h: 88 }, { r: 11, h: 98 }] },
+];
+
+/** تخمین شمار مثلث STL — آینهٔ TS از build_mesh هسته (برای دیالوگ کیفیت) */
+export function estimateTriangles(
+  samples: number[][] | undefined,
+  height: number,
+  layerH: number,
+  quality: number
+): number {
+  const q = Math.max(0.25, Math.min(4, quality));
+  const rMax = samples && samples.length > 0
+    ? Math.max(...samples.map((s) => s[1]), 5)
+    : 25;
+  const rowsBase = Math.min(Math.max(Math.ceil(height / Math.max(layerH, 0.05)), 8), 400) * 2;
+  const steps = Math.min(Math.max(Math.ceil((2 * Math.PI * rMax) / 2), 24), 720);
+  const cols = Math.min(Math.max(Math.round(steps * q), 24), 1080);
+  const rows = Math.min(Math.max(Math.round(rowsBase * q), 8), 1600);
+  return 2 * rows * cols;
+}
+
 
 // ============================================================================
 // ۶ استایل آماده — ترکیب پروفایل + الگو + بافت (کاملاً قابل‌ویرایش)
@@ -279,6 +357,11 @@ export function SpiralDesignerPage(props: {
   // اسپات انتخاب‌شده برای درگ روی 3D
   const [spotSel, setSpotSel] = useState<SpotSelection>(null);
   const debounceRef = useRef<number | null>(null);
+  // ---- نسخهٔ ۱.۵ ----
+  // دیالوگ کیفیت STL: null = بسته
+  const [stlDialog, setStlDialog] = useState<null | { quality: number }>(null);
+  // در حال رندوم/ایمپورت SVG (برای دکمه‌ها)
+  const [profileBusy, setProfileBusy] = useState(false);
 
   // ---------------- واگرد/ازنو (نسخهٔ ۱.۲) ----------------
   const historyRef = useRef<DesignerProject[]>([]);
@@ -429,6 +512,90 @@ export function SpiralDesignerPage(props: {
       },
     });
 
+  /** پروفایل تصادفی چاپ‌پسند — نسخهٔ ۱.۵ (هستهٔ Rust: قواعد چاپ خوب) */
+  const doRandomProfile = async () => {
+    if (!coreAvailable()) {
+      setNote("تولید پروفایل تصادفی فقط در برنامهٔ دسکتاپ/سرور توسعه کار می‌کند.");
+      return;
+    }
+    setProfileBusy(true);
+    try {
+      const seed = Date.now() % 1_000_000;
+      const pts = await designerRandomProfile(seed);
+      setP({ profile: pts });
+      setNote(`${fa.randomProfile} (seed=${seed}) — ${fa.randomProfileHint}`);
+    } catch (e) {
+      setNote(`خطا در پروفایل تصادفی: ${e}`);
+    }
+    setProfileBusy(false);
+  };
+
+  /** ایمپورت پروفایل از SVG — نسخهٔ ۱.۵ */
+  const doImportSvg = async () => {
+    const path = await openSvgDialog();
+    if (!path) return;
+    setProfileBusy(true);
+    try {
+      const text = await readTextFile(path);
+      const res = importProfileFromSvg(text, project.form_height_mm, 45);
+      setP({ profile: res.points });
+      setNote(
+        `${fa.importSvgDone}: ${res.points.length} نقطه از ${res.path_count} مسیر ` +
+        `(ارتفاع خام ${res.raw_height.toFixed(0)} واحد SVG → ${project.form_height_mm}mm)`
+      );
+    } catch (e) {
+      setNote(`ایمپورت SVG ناموفق: ${e}`);
+    }
+    setProfileBusy(false);
+  };
+
+  /** ذخیرهٔ مستقیم G-code — نسخهٔ ۱.۵ (بدون گذر از ویرایشگر) */
+  const doSaveDirectGcode = async () => {
+    setBusy(true);
+    try {
+      const gcode = await designerExportGcode(project);
+      const path = await saveFileDialog("spiral-form.gcode", "gcode");
+      if (path) {
+        await writeTextFile(path, gcode);
+        setNote(`${fa.saveDirectDone}: ${path} (${gcode.length.toLocaleString("fa-IR")} بایت)`);
+      } else {
+        setNote("ذخیرهٔ مستقیم لغو شد.");
+      }
+    } catch (e) {
+      setNote(`خطا در ذخیرهٔ مستقیم: ${e}`);
+    }
+    setBusy(false);
+  };
+
+  /** خروجی STL با کیفیت انتخابی — نسخهٔ ۱.۵ (دیالوگ کیفیت) */
+  const exportStlWithQuality = async (quality: number) => {
+    const path = await saveFileDialog("spiral-form.stl", "stl");
+    if (!path) {
+      setStlDialog(null);
+      return;
+    }
+    const hasCritical = output?.diagnostics.some(
+      (d) => d.severity === "Error" || d.code.startsWith("W-DESIGN")
+    );
+    const doExport = async () => {
+      setConfirmExport(null);
+      setStlDialog(null);
+      setBusy(true);
+      try {
+        const r = await designerExportStl(project, path, quality);
+        setNote(`STL ذخیره شد: ${r.path} (${r.triangle_count.toLocaleString("fa-IR")} مثلث)`);
+      } catch (e) {
+        setNote(`خطا: ${e}`);
+      }
+      setBusy(false);
+    };
+    if (hasCritical) {
+      setConfirmExport(() => doExport);
+    } else {
+      await doExport();
+    }
+  };
+
   const patternName = useMemo(() => {
     const m: Record<string, string> = {};
     PATTERNS.forEach((p) => (m[p.kind] = p.name));
@@ -456,31 +623,6 @@ export function SpiralDesignerPage(props: {
       setNote(`خطا در خروجی: ${e}`);
     }
     setBusy(false);
-  };
-
-  const exportStl = async () => {
-    const path = await saveFileDialog("spiral-form.stl", "stl");
-    if (!path) return;
-    // الزام §8: تأیید اگر هشدار بحرانی
-    const hasCritical = output?.diagnostics.some(
-      (d) => d.severity === "Error" || d.code.startsWith("W-DESIGN")
-    );
-    const doExport = async () => {
-      setConfirmExport(null);
-      setBusy(true);
-      try {
-        const r = await designerExportStl(project, path);
-        setNote(`STL ذخیره شد: ${r.path} (${r.triangle_count} مثلث)`);
-      } catch (e) {
-        setNote(`خطا: ${e}`);
-      }
-      setBusy(false);
-    };
-    if (hasCritical) {
-      setConfirmExport(() => doExport);
-    } else {
-      await doExport();
-    }
   };
 
   const doSaveProject = async () => {
@@ -709,30 +851,44 @@ export function SpiralDesignerPage(props: {
               points={project.profile}
               height={project.form_height_mm}
               maxR={maxR}
+              interpolation={project.profile_interpolation ?? "Spline"}
               onChange={(pts: ProfilePoint[]) => setP({ profile: pts })}
             />
-            <div className="field">
-              <label>{fa.presets}:</label>
-              <div className="preset-row">
-                <button className="btn preset-btn" onClick={() => setP({ profile: [
-                  { r: 22, h: 0 }, { r: 28, h: 10 }, { r: 30, h: 35 },
-                  { r: 26, h: 60 }, { r: 18, h: 80 }, { r: 17, h: 88 }, { r: 21, h: 100 },
-                ] })}>
-                  <ProfileMiniThumb points={[{ r: 22, h: 0 }, { r: 28, h: 10 }, { r: 30, h: 35 }, { r: 26, h: 60 }, { r: 18, h: 80 }, { r: 17, h: 88 }, { r: 21, h: 100 }]} width={44} height={56} />
-                  <span>{fa.presetVase}</span>
-                </button>
-                <button className="btn preset-btn" onClick={() => setP({ profile: [
-                  { r: 8, h: 0 }, { r: 15, h: 15 }, { r: 35, h: 90 }, { r: 40, h: 100 },
-                ] })}>
-                  <ProfileMiniThumb points={[{ r: 8, h: 0 }, { r: 15, h: 15 }, { r: 35, h: 90 }, { r: 40, h: 100 }]} width={44} height={56} />
-                  <span>{fa.presetLamp}</span>
-                </button>
-                <button className="btn preset-btn" onClick={() => setP({ profile: [
-                  { r: 15, h: 0 }, { r: 18, h: 5 }, { r: 30, h: 60 }, { r: 32, h: 65 },
-                ] })}>
-                  <ProfileMiniThumb points={[{ r: 15, h: 0 }, { r: 18, h: 5 }, { r: 30, h: 60 }, { r: 32, h: 65 }]} width={44} height={56} />
-                  <span>{fa.presetPlanter}</span>
-                </button>
+            {/* ---- ابزارهای پروفایل — نسخهٔ ۱.۵ (رندوم/ایمپورت SVG) ---- */}
+            <div className="profile-tools">
+              <button
+                className="btn small"
+                disabled={profileBusy}
+                onClick={doRandomProfile}
+                title={fa.randomProfileHint}
+              >
+                🎲 {fa.randomProfile}
+              </button>
+              <button
+                className="btn small"
+                disabled={profileBusy}
+                onClick={doImportSvg}
+                title={fa.importSvgHint}
+              >
+                📥 {fa.importSvg}
+              </button>
+            </div>
+            <span className="hint-text">{fa.importSvgHint}</span>
+            {/* ---- کتابخانهٔ ۱۸ پروفایل — نسخهٔ ۱.۵ ---- */}
+            <div className="field" style={{ marginTop: 8 }}>
+              <label>{fa.moreProfiles} ({PROFILE_LIBRARY.length}):</label>
+              <div className="profile-library">
+                {PROFILE_LIBRARY.map((p) => (
+                  <button
+                    key={p.key}
+                    className="profile-lib-btn"
+                    onClick={() => setP({ profile: p.profile.map((q) => ({ ...q })) })}
+                    title={p.name}
+                  >
+                    <ProfileMiniThumb points={p.profile} width={52} height={62} />
+                    <span className="name">{p.name}</span>
+                  </button>
+                ))}
               </div>
             </div>
             {/* درون‌یابی: اسپلاین مونوتون (نسخهٔ ۱.۲) */}
@@ -1222,6 +1378,10 @@ export function SpiralDesignerPage(props: {
           emptyMessage={busy ? "در حال محاسبه…" : fa.openHint}
           webglMessage={fa.webglMissing}
           extrusionColor={props.extrusionColor}
+          surfaceSamples={output?.radius_samples}
+          floorDisk={project.floor.enabled
+            ? { holeDiameter: project.floor.center_hole_diameter_mm }
+            : null}
         />
 
         {/* خلاصه + هشدارها + خروجی */}
@@ -1241,12 +1401,74 @@ export function SpiralDesignerPage(props: {
             <button className="btn primary" disabled={busy || !output} onClick={exportGcode}>
               {fa.sendToEditor} / {fa.exportGcode}
             </button>
-            <button className="btn" disabled={busy || !output} onClick={exportStl}>
-              {fa.exportStl}
+            {/* ذخیرهٔ مستقیم بدون ویرایشگر — نسخهٔ ۱.۵ (درخواست کاربر) */}
+            <button className="btn" disabled={busy || !output} onClick={doSaveDirectGcode}
+              title="ذخیرهٔ فایل G-code مستقیماً روی دیسک — بدون رفتن به ویرایشگر">
+              💾 {fa.saveDirectGcode}
+            </button>
+            {/* STL → ابتدا دیالوگ کیفیت — نسخهٔ ۱.۵ (درخواست کاربر) */}
+            <button className="btn" disabled={busy || !output} onClick={() => setStlDialog({ quality: 1 })}>
+              {fa.exportStl}…
             </button>
           </div>
+          <div className="note" style={{ marginTop: 6 }}>{fa.solidViewHint}</div>
         </div>
       </div>
+
+      {/* ---------- دیالوگ کیفیت خروجی STL — نسخهٔ ۱.۵ ---------- */}
+      {stlDialog && (
+        <div className="modal-back" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h3>{fa.stlQualityTitle}</h3>
+            <p style={{ color: "var(--fg-2)", fontSize: 12.5, marginTop: 4 }}>
+              {fa.stlQualityHint}
+            </p>
+            <div className="stl-quality-grid">
+              {([
+                [0.5, fa.stlQualityDraft, "سریع‌ترین رندر؛ برای پیش‌نمایش سریع شکل"],
+                [1, fa.stlQualityStandard, "تعادل ریزباشد/حجم — مناسب چاپ معمول"],
+                [2, fa.stlQualityFine, "سطح نرم‌تر؛ فایل بزرگ‌تر — چاپ نمایشی"],
+                [3, fa.stlQualityUltra, "بالاترین ریزباشد؛ فایل بسیار بزرگ"],
+              ] as [number, string, string][]).map(([q, name, desc]) => (
+                <button
+                  key={q}
+                  className={`stl-q-card ${stlDialog.quality === q ? "selected" : ""}`}
+                  onClick={() => setStlDialog({ quality: q })}
+                >
+                  <span className="t">{name}</span>
+                  <span className="d">{desc}</span>
+                  <span className="n ltr">
+                    ≈ {estimateTriangles(
+                      output?.radius_samples,
+                      project.form_height_mm,
+                      project.printer.layer_height_mm,
+                      q
+                    ).toLocaleString("en-US")} مثلث
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="actions">
+              <button
+                className="btn primary"
+                disabled={busy}
+                onClick={() => exportStlWithQuality(stlDialog.quality)}
+              >
+                {fa.stlQualityExport} — {fa.stlQualityTriangles}:{" "}
+                <span className="ltr">
+                  {estimateTriangles(
+                    output?.radius_samples,
+                    project.form_height_mm,
+                    project.printer.layer_height_mm,
+                    stlDialog.quality
+                  ).toLocaleString("en-US")}
+                </span>
+              </button>
+              <button className="btn" onClick={() => setStlDialog(null)}>انصراف</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ---------- تأیید خروجی با هشدار بحرانی ---------- */}
       {confirmExport && (
