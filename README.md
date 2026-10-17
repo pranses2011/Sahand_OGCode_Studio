@@ -11,8 +11,8 @@
 [![نسخهٔ رلیس](https://img.shields.io/github/v/release/pranses2011/Sahand_OGCode_Studio?style=flat-square&label=%D8%B1%D9%84%DB%8C%D8%B3&color=ff7a28)](https://github.com/pranses2011/Sahand_OGCode_Studio/releases)
 [![windows-build](https://github.com/pranses2011/Sahand_OGCode_Studio/actions/workflows/windows-build.yml/badge.svg?branch=main)](https://github.com/pranses2011/Sahand_OGCode_Studio/actions/workflows/windows-build.yml)
 [![پلتفرم](https://img.shields.io/badge/%D9%BE%D9%84%D8%AA%D9%81%D8%B1%D9%85-Windows%2010%2F11%20x64-blue?style=flat-square)](https://github.com/pranses2011/Sahand_OGCode_Studio/releases)
-[![آزمون هسته](https://img.shields.io/badge/cargo%20test-163%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src-tauri/core)
-[![آزمون UI](https://img.shields.io/badge/Vitest-30%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src/lib/tauri.test.ts)
+[![آزمون هسته](https://img.shields.io/badge/cargo%20test-186%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src-tauri/core)
+[![آزمون UI](https://img.shields.io/badge/Vitest-66%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src/lib/tauri.test.ts)
 [![آفلاین](https://img.shields.io/badge/%D8%B4%D8%A8%DA%A9%D9%87-%D8%AF%D8%B1%20%D8%B2%D9%85%D8%A7%D9%86%20%D8%A7%D8%AC%D8%B1%D8%A7%20%D9%86%D8%AF%D8%A7%D8%B1%D8%AF-e05252?style=flat-square)](Docs/SAFETY.md)
 [![مجوز](https://img.shields.io/badge/%D9%85%D8%AC%D9%88%D8%B2-%D9%85%D8%B7%D8%A7%D8%A8%D9%82%20LICENSE-7d8392?style=flat-square)](LICENSE)
 
@@ -30,6 +30,18 @@
 ## 📸 محیط واقعی برنامه
 
 > این تصاویر **اسکرین‌شات واقعی از خود برنامه** هستند — محاسبات پیش‌نمایش (مارپیچ، الگوها، تفسیر خطوط) توسط همان هستهٔ Rust انجام شده و از طریق پل توسعه به رابط کاربری رسیده است. هیچ عنصری شبیه‌سازی یا رتوش نشده است.
+
+| 🆕 اسپلاین با فلش‌های مماس دوطرفه (۱.۵) | 🆕 کتابخانهٔ ۱۸ پروفایل آماده + 🎲 رندوم + 📥 SVG (۱.۵) |
+|:---:|:---:|
+| <img src="Docs/screenshots/designer-v15-tangent-arrows.png" width="480" alt="انتخاب نقطه → دو فلش زرد مماس دو سمت نقطه برای تنظیم دقیق انحنای اسپلاین + برچسب m"/> | <img src="Docs/screenshots/designer-v15-step1-spline.png" width="480" alt="ادیتور پروفایل اسپلاینی + کتابخانهٔ ۱۸ پروفایل + دکمه‌های پروفایل تصادفی و ایمپورت SVG"/> |
+
+| 🆕 نمای جامد سایه‌دار — طرح کامل دیده می‌شود (۱.۵) | 🆕 دیالوگ کیفیت خروجی STL (۱.۵) |
+|:---:|:---:|
+| <img src="Docs/screenshots/designer-v15-solid-view.png" width="480" alt="نمای جامد فرم با الگوی گلبرگ و نورپردازی سه‌بعدی — مثل اپ مرجع"/> | <img src="Docs/screenshots/designer-v15-stl-quality.png" width="480" alt="دیالوگ ۴ سطح کیفیت STL با تخمین زندهٔ تعداد مثلث"/> |
+
+| 🆕 پروفایل تصادفی چاپ‌پسند (۱.۵) | 🆕 اسپات الگو روی فرم در مود جامد+مسیر (۱.۵) |
+|:---:|:---:|
+| <img src="Docs/screenshots/designer-v15-random.png" width="480" alt="نتیجهٔ دکمهٔ 🎲 — پروفایل تصادفی با قواعد چاپ خوب"/> | <img src="Docs/screenshots/designer-v15-spot-pattern.png" width="480" alt="دستهٔ اسپات الگو روی سطح فرم + کتابخانهٔ ۱۸ پروفایل"/> |
 
 | ویرایشگر G-code با تفسیر فارسی | طراح مارپیچی — گام ۱: پروفایل |
 |:---:|:---:|
@@ -54,6 +66,21 @@
 | گام ۵: ۲۰ پریست پرینتر واقعی | ۸ تم رنگی + ۱۰ رنگ رشتهٔ چاپ |
 |:---:|:---:|
 | <img src="Docs/screenshots/designer-step5-printer.png" width="480" alt="انتخاب پرینتر Bambu Lab P1S از فهرست ۲۰ مدل"/> | <img src="Docs/screenshots/theme-colors.png" width="480" alt="تم رنگی سایان با رشتهٔ چاپ فیروزه‌ای"/> |
+
+## 🆕 نسخهٔ ۱.۵.۰ — اسپلاین مماس‌دار + کتابخانهٔ پروفایل + نمای جامد
+
+| قابلیت | توضیح |
+|---|---|
+| **🪢 اسپلاین پروفایل با فلش‌های مماس** | با انتخاب هر نقطه، دو فلش زرد «در دو سمت آن» ظاهر می‌شود؛ کشیدن فلش = تنظیم دقیق شیب مماس (m = dr/dh) و انحنای اسپلاین در همان نقطه — مثل اپ‌های ویرایش منحنی. دابل‌کلیک روی فلش = بازگشت به مماس خودکار. منحنی نمایش «همان ریاضی هستهٔ Rust» است (Fritsch–Carlson + هرمیت مکعبی) — چه می‌بینید همان چاپ می‌شود. سقف ۶δ فراجهش شدید را مهار می‌کند |
+| **📚 کتابخانهٔ ۱۸ پروفایل آماده** | گلدان/سایه‌روشن/گلدان‌کشت + ۱۵ شکل جدید: لیوان، بطری، کاسه، ساعت شنی، جام، فانوس، آمفورا، قلم‌خانه، گلدان دوطبقه، تخم‌مرغی، بشکه، مخروط، شمع‌دان، دلو، سلادون — همه با thumbnail زنده و کاملاً قابل‌ویرایش |
+| **🎲 دکمهٔ پروفایل تصادفی چاپ‌پسند** | تولید پروفایل تصادفی در هستهٔ Rust با قواعد چاپ خوب: شیب دیواره ≤ ۵۰° (tan)، شعاع ۸..۳۴mm، شعاع کف ≥ ۱۰mm (چسبندگی)، ۴..۷ گره، ارتفاع ۶۰..۱۴۰mm — seed مبنای زمان؛ همان seed همان پروفایل (قطعی و قابل‌بازتولید) |
+| **📥 ایمپورت پروفایل از SVG** | پارسر کامل مسیر SVG (M/L/H/V/C/S/Q/T/A/Z آبشاری+مطلق، polyline/polygon/rect/circle/ellipse، transformهای translate/scale/matrix ساده) → نیم‌رخ راست کانتور → پروفایل (r,h) با مقیاس ارتفاع مقصد + ساده‌سازی Douglas–Peucker تطبیقی تا ≤۳۰ نقطه |
+| **🎚️ دیالوگ کیفیت خروجی STL** | ۴ سطح: سریع (۰٫۵×) / استاندارد (۱×) / ریز (۲×) / بسیار ریز (۳×) با تخمین زندهٔ تعداد مثلث در هر کارت — کیفیت فقط ریزباشدِ سطح STL است؛ مسیر G-code و چاپ مستقل می‌مانند (آزمون‌شده) |
+| **🗿 نمای جامد سایه‌دار در پیش‌نمایش 3D** | سطح انقلاب فرم از نمونه‌های شعاع هسته (۱۲۹ نمونه × ۴۸ ستون) با MeshStandardMaterial و نورپردازی Hemisphere+Directional+Rim — **طرح کامل با سایه‌روشن دیده می‌شود** مثل اپ مرجع، نه فقط خطوط مسیر. سه حالت نما: جامد / جامد+مسیر / فقط مسیر + دیسک کف با سوراخ مرکزی |
+| **🐌 مدولاسیون سرعت بافت** | مثل ویدئوهای مرجع: نازل روی قله/درهٔ بافت آرام‌تر می‌رود — F = F_دیواره × (۱ − ۰٫۴×شدت) با کف ۶۰٪. دامنهٔ بافت به ۰٫۹×قطر نازل محدود می‌شود (شیار عمیق‌تر از نازل = برخورد/لایهٔ معلق) با هشدار W-TEX-NOZZLE |
+| **💾 ذخیرهٔ مستقیم G-code از طراح** | دکمهٔ «ذخیرهٔ مستقیم» — فایل G-code بدون گذر از ویرایشگر، مستقیم روی دیسک ذخیره می‌شود |
+| **🏷️ نسخهٔ برنامه در عنوان** | شمارهٔ نسخه در عنوان پنجره و نوار بالای برنامه — منبع واحد package.json |
+| **🖱️ بهبودهای درگ** | کپچر پوینتر در ادیتور پروفایل — درگ سریع بیرون از ناحیهٔ SVG هم ادامه می‌یابد (رفع گم‌شدن درگ) |
 
 ## 🆕 نسخهٔ ۱.۴.۰ — کف چندلایه + سرعت‌ها + G-code استاندارد + نمایشگر سریع
 
@@ -229,17 +256,17 @@ src/                     # رابط React فارسی RTL
 
 | مجموعه | تعداد | وضعیت | محیط |
 |---|---|---|---|
-| `cargo test -p gcode-core` | ۱۷۶ | ✅ همه پاس | Linux (هسته خالص پلتفرم‌مستقل) |
-| `npm test` (Vitest) | ۳۹ | ✅ همه پاس | Node 24 |
+| `cargo test -p gcode-core` | ۱۸۶ | ✅ همه پاس | Linux (هسته خالص پلتفرم‌مستقل) |
+| `npm test` (Vitest) | ۶۶ | ✅ همه پاس | Node 24 |
 | `tsc --noEmit` + `vite build` | — | ✅ بدون خطا | Linux |
 | build ویندوز NSIS (کامل + سبک) | — | ✅ از طریق CI | GitHub Actions Windows runner |
 | **نصب/اجرا روی ویندوز با اینترنت قطع (full) / روشن (light)** | — | ❌ **اجرا‌نشده** | نیاز به سیستم ویندوز واقعی |
 
-پوشش آزمون‌های هسته: lexer (فشرده/N/checksum/کامنت/M117/NaN)، مفسر modal (هر ۵ fixture سند + قوس R و IJ + bounds + spiral + macro)، قوس‌ها (سه صفحه/مارپیچ/خطاها)، doc (BOM/CRLF/roundtrip)، طراح (mesh/STL/۱۷ الگو/۱۲ بافت/۵ الگوی کف/اسپلاین مونوتون/مرکز‌گذاری/چرخش فاز θ/**کف چندلایه و ترتیب کف-قبل-از-دیواره ۶ آزمون ۱.۴**/سرعت‌های mm/s/۲۰ پریست پرینتر/اعتبارسنجی)، خروجی (E مطلق-نسبی/STL binary/سیاست checksum/دما و فن/**ساختار استاندارد G-code ۴ آزمون ۱.۴**)، IPC (payload/Save As/preview_data/**پیلود سریع viewport ۱.۴**).
+پوشش آزمون‌های هسته: **مماس صریح اسپلاین/۱۸ پریست/پروفایل تصادفی ۲۰۰ seed/کیفیت mesh (نسبت مجذوری + استقلال مسیر)/مدولاسیون سرعت (کف ۶۰٪)/کلمپ نازل W-TEX-NOZZLE — ۱۰ آزمون ۱.۵**، lexer (فشرده/N/checksum/کامنت/M117/NaN)، مفسر modal (هر ۵ fixture سند + قوس R و IJ + bounds + spiral + macro)، قوس‌ها (سه صفحه/مارپیچ/خطاها)، doc (BOM/CRLF/roundtrip)، طراح (mesh/STL/۱۷ الگو/۱۲ بافت/۵ الگوی کف/اسپلاین مونوتون/مرکز‌گذاری/چرخش فاز θ/**کف چندلایه و ترتیب کف-قبل-از-دیواره ۶ آزمون ۱.۴**/سرعت‌های mm/s/۲۰ پریست پرینتر/اعتبارسنجی)، خروجی (E مطلق-نسبی/STL binary/سیاست checksum/دما و فن/**ساختار استاندارد G-code ۴ آزمون ۱.۴**)، IPC (payload/Save As/preview_data/**پیلود سریع viewport ۱.۴**).
 
 ## 🔒 امنیت و حریم خصوصی
 
-- فقط ۱۳ دستور IPC دامنه‌ای؛ **هیچ shell/eval/شبکه‌ای وجود ندارد**.
+- فقط ۱۵ دستور IPC دامنه‌ای؛ **هیچ shell/eval/شبکه‌ای وجود ندارد**.
 - دسترسی فایل فقط از دیالوگ native (capability فقط `core:default` + `dialog:default`).
 - CSP بدون هیچ remote source؛ همهٔ assetها داخل باندل.
 - بدون telemetry/log محتوا؛ تنظیمات فقط در AppData.
