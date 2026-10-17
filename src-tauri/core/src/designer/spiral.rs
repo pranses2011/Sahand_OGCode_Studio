@@ -49,6 +49,11 @@ pub struct DesignerInput {
     /// ۰٫۵ = سریع/پیش‌نویس؛ ۲ = ریز؛ ۳ = بسیار ریز).
     /// فقط mesh/STL را ریز می‌کند؛ مسیر G-code مستقل است.
     pub mesh_quality: f64,
+    /// کیفیت خروجی G-code — نسخهٔ ۱٫۶ (درخواست کاربر ۶).
+    /// ۰٫۵ = پیش‌نمایشی/زبر (گام قوس ۴mm و اعشار ۲)؛
+    /// ۱ = استاندارد (۲mm، اعشار ۳)؛ ۲ = ریز (۱mm)؛ ۳ = بسیار ریز (۰٫۶۷mm، اعشار ۴).
+    /// تراکم نقاط مسیر (steps_per_rev) را مقیاس می‌کند؛ mesh/STL مستقل است.
+    pub gcode_quality: f64,
 }
 
 /// خروجی کامل موتور طراح
@@ -283,8 +288,9 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         .map(|i| radius_fn(i as f64 * height / 100.0))
         .fold(0.0f64, f64::max)
         .max(1.0);
-    // گام زاویه‌ای از طول قوس هدف
-    let arc_target_mm = 2.0;
+    // گام زاویه‌ای از طول قوس هدف — نسخهٔ ۱٫۶: کیفیت G-code گام را مقیاس می‌کند
+    // (۰٫۵→۴mm زبر/فایل کوچک؛ ۱→۲mm استاندارد؛ ۲→۱mm ریز؛ ۳→۰٫۶۷mm بسیار ریز)
+    let arc_target_mm = (2.0 / input.gcode_quality.clamp(0.25, 4.0)).clamp(0.6, 5.0);
     let circumference_max = 2.0 * std::f64::consts::PI * r_max;
     let steps_per_rev =
         ((circumference_max / arc_target_mm).ceil() as usize).clamp(24, 720);
@@ -1009,6 +1015,7 @@ mod tests {
             phase_start_deg: 0.0,
             printer: PrinterProfile::default(),
             mesh_quality: 1.0,
+            gcode_quality: 1.0,
         }
     }
 

@@ -398,13 +398,18 @@ pub fn designer_compute(project: DesignerProject) -> DesignerOutput {
         phase_start_deg: project.phase_start_deg,
         printer: project.printer.clone(),
         mesh_quality: 1.0, // پیش‌نمایش: کیفیت استاندارد (سریع)
+        gcode_quality: 1.0, // پیش‌نمایش مسیر = استاندارد
     };
     compute(&input)
 }
 
 /// محاسبهٔ طراح با کیفیت mesh دلخواه — فقط برای خروجی STL (نسخهٔ ۱.۵).
 /// کیفیت فقط تراکم mesh را مقیاس می‌کند؛ مسیر G-code مستقل است.
-fn designer_compute_with_quality(project: &DesignerProject, mesh_quality: f64) -> DesignerOutput {
+fn designer_compute_with_quality(
+    project: &DesignerProject,
+    mesh_quality: f64,
+    gcode_quality: f64,
+) -> DesignerOutput {
     let input = DesignerInput {
         profile: project.profile.clone(),
         form: crate::designer::profile::FormAdjust {
@@ -422,6 +427,7 @@ fn designer_compute_with_quality(project: &DesignerProject, mesh_quality: f64) -
         phase_start_deg: project.phase_start_deg,
         printer: project.printer.clone(),
         mesh_quality,
+        gcode_quality,
     };
     compute(&input)
 }
@@ -621,12 +627,19 @@ pub fn designer_preview_data() -> PreviewData {
 // ============================================================================
 // دستور ۶: خروجی G-code از طراح
 // ============================================================================
-pub fn designer_export_gcode(project: DesignerProject) -> Result<String, String> {
+pub fn designer_export_gcode(
+    project: DesignerProject,
+    quality: Option<f64>,
+) -> Result<String, String> {
     // اعتبارسنجی پروژه پیش از تولید
     let proj_json = serde_json::to_string(&project).map_err(|e| e.to_string())?;
     let validated = validate_project(&proj_json)?;
 
-    let output = designer_compute(validated.clone());
+    // کیفیت G-code — نسخهٔ ۱٫۶ (درخواست کاربر ۶ — دیالوگ کیفیت خروجی):
+    //   None|۱ = استاندارد؛ ۰٫۵ = زبر/فایل کوچک؛ ۲ = ریز؛ ۳ = بسیار ریز
+    let q = quality.unwrap_or(1.0).clamp(0.25, 4.0);
+
+    let output = designer_compute_with_quality(&validated, 1.0, q);
     Ok(serialize_gcode(
         &DesignerInput {
             profile: validated.profile,
@@ -645,6 +658,7 @@ pub fn designer_export_gcode(project: DesignerProject) -> Result<String, String>
             phase_start_deg: validated.phase_start_deg,
             printer: validated.printer,
             mesh_quality: 1.0, // G-code از mesh مستقل است
+            gcode_quality: q,
         },
         &output,
     ))
@@ -675,7 +689,7 @@ pub fn designer_export_stl(
     // کیفیت mesh — نسخهٔ ۱.۵ (دیالوگ کیفیت خروجی STL):
     //   None|1.0 = استاندارد؛ 0.5 = سریع/پیش‌نویس؛ 2 = ریز؛ 3 = بسیار ریز
     let q = quality.unwrap_or(1.0).clamp(0.25, 4.0);
-    let output = designer_compute_with_quality(&validated, q);
+    let output = designer_compute_with_quality(&validated, q, 1.0);
     let stl = serialize_stl(&output.mesh);
     std::fs::write(&path, &stl).map_err(|e| format!("نوشتن STL ناموفق بود: {e}"))?;
     Ok(StlExportResult {
@@ -862,9 +876,45 @@ mod tests {
     #[test]
     fn test_designer_export_gcode() {
         let proj = DesignerProject::default();
-        let g = designer_export_gcode(proj).unwrap();
+        let g = designer_export_gcode(proj, None).unwrap();
         assert!(g.contains("G21"));
         assert!(g.contains("EXPERIMENTAL"));
         assert!(g.contains("G1 X"));
+    }
+
+    #[test]
+    fn test_designer_export_gcode_quality_levels() {
+        // کیفیت G-code — نسخهٔ ۱٫۶: تراکم نقاط + اعشار مختصات
+        let mut proj = DesignerProject::default();
+        proj.form_height_mm = 40.0; // سریع‌تر برای تست
+        let g_draft = designer_export_gcode(proj.clone(), Some(0.5)).unwrap();
+        let g_std = designer_export_gcode(proj.clone(), Some(1.0)).unwrap();
+        let g_ultra = designer_export_gcode(proj.clone(), Some(3.0)).unwrap();
+        // هدر کیفیت
+        assert!(g_std.contains("gcode_quality=1.00"), "هدر کیفیت استاندارد");
+        assert!(g_draft.contains("gcode_quality=0.50"));
+        assert!(g_ultra.contains("gcode_quality=3.00"));
+        // تراکم: پیش‌نمایشی کمترین خط حرکتی، بسیار ریز بیشترین
+        let moves = |g: &str| g.lines().filter(|l| l.starts_with("G0") || l.starts_with("G1 ")).count();
+        let m_draft = moves(&g_draft);
+        let m_std = moves(&g_std);
+        let m_ultra = moves(&g_ultra);
+        assert!(m_draft < m_std, "زبر: {m_draft} باید کمتر از استاندارد {m_std} باشد");
+        assert!(m_std < m_ultra, "استاندارد: {m_std} باید کمتر از بسیار ریز {m_ultra} باشد");
+        // اعشار: زبر ۲ رقم؛ استاندارد ۳؛ بسیار ریز ۴
+        let sample_dec = |g: &str| {
+            g.lines()
+                .find(|l| l.starts_with("G1 ") && l.contains(" X"))
+                .and_then(|l| l.split_whitespace().find(|w| w.starts_with("X")))
+                .map(|w| w.len() - 1 - w.find('.').unwrap_or(w.len() - 1))
+                .unwrap_or(0)
+        };
+        assert_eq!(sample_dec(&g_draft), 2, "اعشار زبر");
+        assert_eq!(sample_dec(&g_std), 3, "اعشار استاندارد");
+        assert_eq!(sample_dec(&g_ultra), 4, "اعشار بسیار ریز");
+        // None = استاندارد (سازگاری)
+        let g_none = designer_export_gcode(proj, None).unwrap();
+        assert!(g_none.contains("gcode_quality=1.00"));
+        assert_eq!(sample_dec(&g_none), 3);
     }
 }

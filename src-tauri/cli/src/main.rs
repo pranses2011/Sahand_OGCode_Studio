@@ -104,7 +104,9 @@ fn dispatch(cmd: &str, args: &serde_json::Value) -> serde_json::Value {
                 Ok(p) => p,
                 Err(e) => return err_json(format!("پروژهٔ نامعتبر: {e}")),
             };
-            match ipc::designer_export_gcode(project) {
+            // کیفیت G-code — نسخهٔ ۱٫۶ (None = استاندارد)
+            let quality = args.get("quality").and_then(|v| v.as_f64());
+            match ipc::designer_export_gcode(project, quality) {
                 Ok(s) => serde_json::Value::String(s),
                 Err(e) => err_json(e),
             }
