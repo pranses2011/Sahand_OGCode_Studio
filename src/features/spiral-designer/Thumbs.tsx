@@ -133,7 +133,10 @@ export function SurfaceThumb(props: SurfaceThumbProps) {
 // ============================================================================
 
 export interface FloorThumbProps {
-  kind: "Rings" | "Spiral" | "Grid" | "Radial" | "ZigZag";
+  kind:
+    | "Rings" | "Spiral" | "Grid" | "Radial" | "ZigZag"
+    // ---- نسخهٔ ۱٫۶: ۵ الگوی جدید ----
+    | "Honeycomb" | "Wave" | "Star" | "Snowflake" | "Octagram";
   /** قطر سوراخ مرکزی نسبی (0..1 از شعاع) */
   hole?: number;
   size?: number;
@@ -232,6 +235,136 @@ export function FloorThumb(props: FloorThumbProps) {
       );
     }
     body = spokes;
+  } else if (kind === "Honeycomb") {
+    // شانه‌زنبوری — شش‌ضلعی‌های داخل دایره
+    const hexes: JSX.Element[] = [];
+    const s = R / 3.4;
+    const dy = s * 0.866;
+    const nRows = Math.ceil(R / dy);
+    for (let row = -nRows; row <= nRows; row++) {
+      const yv = row * dy;
+      if (Math.abs(yv) > R) continue;
+      const xoff = Math.abs(row % 2) === 1 ? s * 0.5 : 0;
+      const nCols = Math.ceil((R + s) / s);
+      for (let col = -nCols; col <= nCols; col++) {
+        const hx = col * s + xoff;
+        if (Math.hypot(hx, yv) + s > R + 1) continue;
+        const pts: string[] = [];
+        for (let vi = 0; vi < 6; vi++) {
+          const va = ((30 + 60 * vi) * Math.PI) / 180;
+          pts.push(
+            `${(cx + hx + s * Math.cos(va)).toFixed(1)},${(cy + yv + s * Math.sin(va)).toFixed(1)}`
+          );
+        }
+        hexes.push(
+          <polygon
+            key={`${row}:${col}`}
+            points={pts.join(" ")}
+            fill="none"
+            stroke={stroke}
+            strokeWidth={thin}
+            opacity={0.9}
+          />
+        );
+      }
+    }
+    body = hexes;
+  } else if (kind === "Wave") {
+    // موج دایره‌ای — مارپیچ با موج شعاعی
+    let d = "";
+    const b = (R - rh) / (5 * 2 * Math.PI);
+    const amp = Math.min(R * 0.12, 7);
+    for (let th = 0; th <= 5 * 2 * Math.PI; th += 0.1) {
+      const r = rh + b * th + amp * Math.sin(6 * th);
+      const x = cx + r * Math.cos(th - Math.PI / 2);
+      const y = cy + r * Math.sin(th - Math.PI / 2);
+      d += (d === "" ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1);
+    }
+    body = <path d={d} fill="none" stroke={stroke} strokeWidth={thin} />;
+  } else if (kind === "Star") {
+    // ستاره ۶پر + حلقهٔ مرکزی
+    const n = 12;
+    const rIn = Math.max(rh, R * 0.45);
+    const pts: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const th = (i / n) * 2 * Math.PI - Math.PI / 2;
+      const r = i % 2 === 0 ? R : rIn;
+      pts.push(`${(cx + r * Math.cos(th)).toFixed(1)},${(cy + r * Math.sin(th)).toFixed(1)}`);
+    }
+    body = (
+      <>
+        <polygon points={pts.join(" ")} fill="none" stroke={stroke} strokeWidth={thin} />
+        <circle cx={cx} cy={cy} r={rIn * 0.55} fill="none" stroke={stroke} strokeWidth={thin} opacity={0.7} />
+      </>
+    );
+  } else if (kind === "Snowflake") {
+    // دانه‌برفی — ۶ شاخه + شاخه‌های ۴۵°
+    const els: JSX.Element[] = [];
+    for (let bIdx = 0; bIdx < 6; bIdx++) {
+      const a = (bIdx / 6) * 2 * Math.PI;
+      els.push(
+        <line
+          key={"m" + bIdx}
+          x1={cx + rh * Math.cos(a)}
+          y1={cy + rh * Math.sin(a)}
+          x2={cx + R * Math.cos(a)}
+          y2={cy + R * Math.sin(a)}
+          stroke={stroke}
+          strokeWidth={thin}
+        />
+      );
+      for (const fr of [0.45, 0.7]) {
+        const rAt = rh + (R - rh) * fr;
+        const px = cx + rAt * Math.cos(a);
+        const py = cy + rAt * Math.sin(a);
+        const side = (R - rh) * 0.22;
+        for (const sgn of [-1, 1]) {
+          const sa = a + sgn * Math.PI / 4;
+          els.push(
+            <line
+              key={`${bIdx}:${fr}:${sgn}`}
+              x1={px}
+              y1={py}
+              x2={px + side * Math.cos(sa)}
+              y2={py + side * Math.sin(sa)}
+              stroke={stroke}
+              strokeWidth={thin}
+              opacity={0.9}
+            />
+          );
+        }
+      }
+    }
+    els.push(
+      <circle key="c" cx={cx} cy={cy} r={rh} fill="none" stroke={stroke} strokeWidth={thin} opacity={0.8} />
+    );
+    body = els;
+  } else if (kind === "Octagram") {
+    // گره هشت‌پر — دو مربع چرخیده + هشت‌ضلعی داخلی
+    const els: JSX.Element[] = [];
+    for (let sq = 0; sq < 2; sq++) {
+      const a0 = (sq * Math.PI) / 4;
+      const pts: string[] = [];
+      for (let vi = 0; vi < 4; vi++) {
+        const va = a0 + (vi * Math.PI) / 2;
+        pts.push(`${(cx + R * Math.cos(va)).toFixed(1)},${(cy + R * Math.sin(va)).toFixed(1)}`);
+      }
+      els.push(
+        <polygon key={"sq" + sq} points={pts.join(" ")} fill="none" stroke={stroke} strokeWidth={thin} />
+      );
+    }
+    const rMid = R * 0.414;
+    if (rMid > rh + 2) {
+      const pts: string[] = [];
+      for (let i = 0; i < 8; i++) {
+        const th = (i / 8) * 2 * Math.PI + Math.PI / 8;
+        pts.push(`${(cx + rMid * Math.cos(th)).toFixed(1)},${(cy + rMid * Math.sin(th)).toFixed(1)}`);
+      }
+      els.push(
+        <polygon key="oct" points={pts.join(" ")} fill="none" stroke={stroke} strokeWidth={thin} opacity={0.9} />
+      );
+    }
+    body = els;
   } else {
     // ZigZag — رفت‌وبرگشتی
     let d = "";

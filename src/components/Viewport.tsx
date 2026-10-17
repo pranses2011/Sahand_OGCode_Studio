@@ -47,7 +47,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import type { SegmentsPayload } from "../lib/tauri";
+import type { SegmentsPayload, WallMeshLite } from "../lib/tauri";
 
 /** رنگ‌های نوع segment — معادل CSS vars؛ رنگ اکستروژن از props (رشتهٔ چاپ) */
 const BASE_COLORS = {
@@ -85,6 +85,16 @@ export interface SpotHandle {
    * دسته روی سطح فرم در همین زاویه می‌نشیند و درگ افقی آن می‌چرخاند.
    */
   phaseDeg?: number;
+  /**
+   * اسپات زاویه‌ای — نسخهٔ ۱٫۶ (درخواست کاربر ۵):
+   * الگو/بافت فقط روی قوس [center−span/2, center+span/2] اعمال می‌شود.
+   * دسته‌های لبه با فلش جهت‌دار روی 3D: کشیدن لبه = پهن‌کردن قوس؛
+   * کشیدن دستهٔ مرکزی = چرخاندن قوس حول فرم.
+   */
+  spot?: {
+    centerDeg: number;
+    spanDeg: number;
+  };
 }
 
 /** رویداد تغییر اسپات با درگ */
@@ -94,6 +104,10 @@ export interface SpotChange {
   holeDiameter?: number;
   /** چرخش فاز (درجه ۰..۳۶۰) — ۱.۳: کل فرم؛ ۱.۴: الگو/بافت فعال */
   phaseDeg?: number;
+  /** مرکز اسپات زاویه‌ای (درجه) — نسخهٔ ۱٫۶ */
+  spotCenterDeg?: number;
+  /** گسترهٔ اسپات زاویه‌ای (درجه ۱۰..۳۶۰) — نسخهٔ ۱٫۶ */
+  spotSpanDeg?: number;
 }
 
 export interface ViewportProps extends ViewportCallbacks {
@@ -120,6 +134,10 @@ export interface ViewportProps extends ViewportCallbacks {
    *  «طرح» مثل اپ مرجع کاملاً قابل‌ مشاهده باشد (نه فقط خطوط مسیر).
    *  null = بدون سطح جامد (ویرایشگر G-code). */
   surfaceSamples?: number[][] | null;
+  /** mesh دیوارهٔ چاپی (نوار مارپیچی از نقاط واقعی مسیر) — نسخهٔ ۱٫۶
+   *  (درخواست کاربر ۱): نمای جامد «دقیق» با الگو و بافت — همان چیزی که
+   *  چاپ می‌شود. اگر موجود بود جایگزین سطح نمونه‌ای می‌شود. */
+  wallMesh?: WallMeshLite | null;
   /** دیسک کف — نسخهٔ ۱.۵: نمایش کف در نمای جامد.
    *  null = بدون کف؛ { holeDiameter } = دیسک با سوراخ مرکزی. */
   floorDisk?: { holeDiameter: number } | null;
@@ -159,7 +177,7 @@ export function snapDeg(deg: number, step: number): number {
 
 /** وضعیت درگ اسپات — ۱.۴: قفل جهت ژست (z یا θ) پس از ۸px حرکت */
 type SpotDrag = {
-  which: "start" | "end" | "hole" | "phase";
+  which: "start" | "end" | "hole" | "phase" | "spotCenter" | "spotEdgeA" | "spotEdgeB";
   lastX: number;
   lastY: number;
   startX: number;
@@ -251,6 +269,9 @@ export function Viewport(props: ViewportProps) {
     }
     renderer.setClearColor(0x14161c, 1);
     // ۱.۴: سقف DPR=۲ — کیفیت HiDPI بدون رندر ۳× سنگین
+    // ۱٫۶ (درخواست کاربر ۱: «تیره است»): نگاشت تُن ACES + نورپردازی قوی‌تر
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.25;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     holder.appendChild(renderer.domElement);
     rendererRef.current = renderer;
@@ -265,15 +286,20 @@ export function Viewport(props: ViewportProps) {
     // ---- نورپردازی (نسخهٔ ۱.۵: غنی‌تر برای نمای جامد سایه‌دار) ----
     // Ambient ملایم + Hemisphere (آسمان/زمین) + Directional اصلی + rim
     // نتیجه: سطح فرم با سایه‌روشن خوانا می‌شود — «طرح دیده شود».
-    scene.add(new THREE.AmbientLight(0xffffff, 0.42));
-    const hemi = new THREE.HemisphereLight(0xdfe8ff, 0x2a2f3a, 0.55);
+    // ۱٫۶: نورپردازی روشن‌تر — رفع «تیرگی» نمای جامد (درخواست کاربر ۱)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+    const hemi = new THREE.HemisphereLight(0xeaf1ff, 0x3a4150, 0.85);
     scene.add(hemi);
-    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.2);
     dir.position.set(200, 300, 100);
     scene.add(dir);
-    const rim = new THREE.DirectionalLight(0x88aaff, 0.35);
+    const rim = new THREE.DirectionalLight(0x9db8ff, 0.5);
     rim.position.set(-250, 120, -180);
     scene.add(rim);
+    // نور پُرکننده از سمت دید دوربین — سمت تاریک فرم هم خوانا می‌ماند
+    const fill = new THREE.DirectionalLight(0xffffff, 0.45);
+    fill.position.set(0, 150, 400);
+    scene.add(fill);
 
     // ---- grid و محورها (جابه‌جایی به مرکز صفحه در افکت buildVolume) ----
     const grid = new THREE.GridHelper(400, 40, 0x343945, 0x22262f);
@@ -347,19 +373,30 @@ export function Viewport(props: ViewportProps) {
       const hitObj = spotHit(e);
       if (hitObj && e.button === 0) {
         const name = hitObj.name || "";
-        if (name === "spot-start" || name === "spot-end" || name === "spot-hole" || name === "spot-phase") {
+        const SPOT_NAMES = [
+          "spot-start", "spot-end", "spot-hole", "spot-phase",
+          // ۱٫۶: اسپات زاویه‌ای — مرکز و دو لبه با فلش جهت‌دار
+          "spot-center", "spot-edge-a", "spot-edge-b",
+        ];
+        if (SPOT_NAMES.includes(name) && e.button === 0) {
           const which: SpotDrag["which"] =
             name === "spot-start" ? "start"
               : name === "spot-end" ? "end"
                 : name === "spot-hole" ? "hole"
-                  : "phase";
+                  : name === "spot-phase" ? "phase"
+                    : name === "spot-center" ? "spotCenter"
+                      : name === "spot-edge-a" ? "spotEdgeA"
+                        : "spotEdgeB";
           const spot = stateRef.current.spot;
           // z صفحهٔ درگ زاویه‌ای: z دسته (یا دیال) در آغاز ژست
           const planeZ = which === "phase"
             ? Math.max(spot?.zStart ?? 1.2, 1.2)
-            : which === "start" ? Math.max(spot?.zStart ?? 1, 1)
+            : which === "start" || which === "spotCenter"
+              ? Math.max(spot?.zStart ?? 1, 1)
               : which === "end" ? Math.max(spot?.zEnd ?? spot?.zStart ?? 1, 1)
-                : 1.0;
+                : which === "spotEdgeA" || which === "spotEdgeB"
+                  ? Math.max(spot?.zStart ?? 1, 1)
+                  : 1.0;
           spotDragRef.current = {
             which,
             lastX: e.clientX,
@@ -412,6 +449,46 @@ export function Viewport(props: ViewportProps) {
                 let deg = dialAngleDeg(relX, relZ);
                 if (e.shiftKey) deg = snapDeg(deg, 15); // چفت ۱۵°
                 cb({ phaseDeg: deg });
+              }
+            }
+          } else if (drag.which === "spotCenter") {
+            // ---- ۱٫۶: دستهٔ مرکز اسپات زاویه‌ای ----
+            // افقی = چرخش مرکز قوس حول محور؛ عمودی = جابه‌جایی ارتفاع
+            if (drag.mode === "theta") {
+              const hit = planeHit(e, drag.planeZ);
+              const [axc, ayc] = spot.bedOffset;
+              if (hit) {
+                const relX = hit.x - axc;
+                const relZ = hit.z + ayc; // Three z = −y_gc
+                if (Math.hypot(relX, relZ) > 2.0) {
+                  let deg = dialAngleDeg(relX, relZ);
+                  if (e.shiftKey) deg = snapDeg(deg, 15);
+                  cb({ spotCenterDeg: deg });
+                }
+              }
+            } else if (drag.mode === "z") {
+              const dy = e.clientY - drag.lastY;
+              const dz = -dy * k;
+              const nz = Math.min(
+                Math.max(0, spot.zStart + dz),
+                spot.zEnd !== null ? spot.zEnd - 1 : spot.height - 1
+              );
+              cb({ zStart: nz });
+            }
+          } else if (drag.which === "spotEdgeA" || drag.which === "spotEdgeB") {
+            // ---- ۱٫۶: لبهٔ اسپات — کشیدن افقی = پهن/باریک‌کردن قوس ----
+            const hit = planeHit(e, drag.planeZ);
+            const [axc, ayc] = spot.bedOffset;
+            if (hit) {
+              const relX = hit.x - axc;
+              const relZ = hit.z + ayc;
+              if (Math.hypot(relX, relZ) > 2.0) {
+                const deg = dialAngleDeg(relX, relZ);
+                const center = spot.spot?.centerDeg ?? 0;
+                // فاصلهٔ زاویه‌ای با wrap → دهانه = ۲×|فاصله|
+                let d = ((deg - center + 180) % 360 + 360) % 360 - 180;
+                const span = Math.min(360, Math.max(10, Math.abs(d) * 2));
+                cb({ spotSpanDeg: Math.round(span) });
               }
             }
           } else if (drag.mode === "theta") {
@@ -817,9 +894,8 @@ export function Viewport(props: ViewportProps) {
         ref.current = null;
       }
     }
-    const samples = props.surfaceSamples;
-    if (!samples || samples.length < 2) return;
 
+    // ---------- مقادیر مشترک (هر دو مسیر) ----------
     // z پایه: کمینهٔ z اکستروژن‌ها (شروع واقعی فرم روی صفحه)
     const segs = props.segments;
     let zBase = 0;
@@ -833,6 +909,109 @@ export function Viewport(props: ViewportProps) {
       }
       if (Number.isFinite(minZ)) zBase = minZ;
     }
+    // مرکز فرم روی صفحه (bedOffset اسپات — پیش‌فرض مرکز صفحهٔ چاپ)
+    const [ax, ay] = props.spot?.bedOffset ?? [110, 110];
+    const center3x = ax;
+    const center3z = -ay;
+
+    /** دیسک کف (اگر فعال) — شعاع بیرونی از نمونه‌ها یا ردیف اول wall mesh */
+    const buildFloorDisk = () => {
+      const fd = props.floorDisk;
+      if (!fd) return;
+      const samples = props.surfaceSamples;
+      let rOuter = samples && samples.length > 0 ? Math.max(samples[0][1], 1) : 0;
+      if (rOuter < 1) {
+        const wm2 = props.wallMesh;
+        if (wm2 && wm2.positions.length >= 3) {
+          // میانگین شعاع رأس‌های ردیف اول (مختصات G-code حول مرکز)
+          let sum = 0;
+          let cnt = 0;
+          for (let j = 0; j < wm2.cols; j++) {
+            const dx = wm2.positions[j * 3] - ax;
+            const dy = wm2.positions[j * 3 + 1] - ay;
+            sum += Math.hypot(dx, dy);
+            cnt++;
+          }
+          if (cnt > 0) rOuter = Math.max(sum / cnt, 1);
+        }
+      }
+      if (rOuter < 1) return;
+      const rHole = Math.max(fd.holeDiameter / 2, 0);
+      const diskGeo = rHole > 0.4
+        ? new THREE.RingGeometry(rHole, rOuter, 64)
+        : new THREE.CircleGeometry(rOuter, 64);
+      const diskMat = new THREE.MeshStandardMaterial({
+        color: extrusionColor,
+        side: THREE.DoubleSide,
+        roughness: 0.7,
+        metalness: 0.02,
+      });
+      const disk = new THREE.Mesh(diskGeo, diskMat);
+      disk.rotation.x = -Math.PI / 2;
+      disk.position.set(center3x, Math.max(zBase - 0.4, 0.05), center3z);
+      disk.name = "solid-floor";
+      disk.renderOrder = 1;
+      scene.add(disk);
+      floorDiskRef.current = disk;
+    };
+
+    // =====================================================================
+    // نسخهٔ ۱٫۶ (درخواست کاربر ۱): مش «نوار مارپیچی» از نقاط واقعی مسیر —
+    // الگو و بافت دقیقاً همان‌طور که چاپ می‌شوند دیده می‌شوند (رفع باگ
+    // «سطح صاف»). ایندکس‌ها اینجا ساخته می‌شوند (شبکهٔ منظم، پیلود سبک).
+    // =====================================================================
+    const wm = props.wallMesh;
+    if (wm && wm.rows > 0 && wm.cols >= 4 && wm.positions.length >= (wm.rows + 1) * (wm.cols + 1) * 3) {
+      const rows = wm.rows;
+      const cols = wm.cols;
+      const stride = cols + 1;
+      const positions = new Float32Array(wm.positions.length);
+      // G-code (x,y,z) → Three (x, z, −y)
+      for (let i = 0; i < wm.positions.length; i += 3) {
+        positions[i] = wm.positions[i];
+        positions[i + 1] = wm.positions[i + 2];
+        positions[i + 2] = -wm.positions[i + 1];
+      }
+      // ایندکس مثلث‌ها — هر سلول بین دو انقلاب متوالی (ستون cols = بسته‌شدن)
+      const indices: number[] = [];
+      for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+          const a = i * stride + j;
+          const b = a + 1;
+          const c = (i + 1) * stride + j;
+          const d = c + 1;
+          indices.push(a, c, d, a, d, b);
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geo.setIndex(indices);
+      // نرمال‌ها از خود هندسه — تغییرات شعاعی الگو/بافت را سایه‌روشن می‌کنند
+      geo.computeVertexNormals();
+      const mat = new THREE.MeshStandardMaterial({
+        color: extrusionColor,
+        side: THREE.DoubleSide,
+        roughness: 0.42,
+        metalness: 0.1,
+        emissive: new THREE.Color(extrusionColor).multiplyScalar(0.1),
+      });
+      const surface = new THREE.Mesh(geo, mat);
+      surface.name = "solid-surface";
+      surface.renderOrder = 1;
+      scene.add(surface);
+      surfaceRef.current = surface;
+      buildFloorDisk();
+      markDirty();
+      return;
+    }
+
+    // ---- fallback ۱٫۵: سطح انقلاب از نمونه‌های شعاع (بدون wall mesh) ----
+    const samples = props.surfaceSamples;
+    if (!samples || samples.length < 2) {
+      buildFloorDisk();
+      markDirty();
+      return;
+    }
 
     // ---- سطح انقلاب ----
     const rows = samples.length;
@@ -840,10 +1019,6 @@ export function Viewport(props: ViewportProps) {
     const positions = new Float32Array(rows * (cols + 1) * 3);
     const normals = new Float32Array(rows * (cols + 1) * 3);
     const indices: number[] = [];
-    // مرکز فرم روی صفحه (bedOffset اسپات — پیش‌فرض مرکز صفحهٔ چاپ)
-    const [ax, ay] = props.spot?.bedOffset ?? [110, 110];
-    const center3x = ax;
-    const center3z = -ay;
     for (let i = 0; i < rows; i++) {
       const z = zBase + samples[i][0];
       const r = Math.max(samples[i][1], 0.05);
@@ -902,33 +1077,12 @@ export function Viewport(props: ViewportProps) {
     surfaceRef.current = surface;
 
     // ---- دیسک کف (اگر کف فعال است) ----
-    const fd = props.floorDisk;
-    if (fd) {
-      const rOuter = Math.max(samples[0][1], 1);
-      const rHole = Math.max(fd.holeDiameter / 2, 0);
-      const diskGeo = rHole > 0.4
-        ? new THREE.RingGeometry(rHole, rOuter, 64)
-        : new THREE.CircleGeometry(rOuter, 64);
-      // RingGeometry در صفحهٔ XY → چرخش به افقی
-      const diskMat = new THREE.MeshStandardMaterial({
-        color: extrusionColor,
-        side: THREE.DoubleSide,
-        roughness: 0.7,
-        metalness: 0.02,
-      });
-      const disk = new THREE.Mesh(diskGeo, diskMat);
-      disk.rotation.x = -Math.PI / 2;
-      disk.position.set(center3x, Math.max(zBase - 0.4, 0.05), center3z);
-      disk.name = "solid-floor";
-      disk.renderOrder = 1;
-      scene.add(disk);
-      floorDiskRef.current = disk;
-    }
+    buildFloorDisk();
 
     // bounding دستی برای fit اولیهٔ سطح (وقتی مسیر هنوز خالی است)
     markDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.surfaceSamples, props.floorDisk, extrusionColor]);
+  }, [props.surfaceSamples, props.wallMesh, props.floorDisk, extrusionColor, props.segments]);
 
   // ------------------------------------------------------------------------
   // تغییر حالت نما (جامد/هر دو/مسیر) — فقط visible سوییچ می‌شود
@@ -1123,6 +1277,133 @@ export function Viewport(props: ViewportProps) {
           makeSurfaceHandle(spot.zEnd, spot.radius, phase, 0x5a87d6, "spot-end")
         );
       }
+
+      // ---- ۱٫۶: پنجرهٔ اسپات زاویه‌ای (درخواست کاربر ۵) ----
+      // قوس طلایی روی سطح + دو لبه با فلش جهت «پهن‌کردن» + دستهٔ مرکز
+      // با فلش‌های دوطرفه «چرخش». کشیدن لبه = تغییر گستره؛ مرکز = جابه‌جایی.
+      const ang = spot.spot;
+      if (ang && ang.spanDeg < 359 && spot.radius > 3) {
+        const centerDeg = ang.centerDeg;
+        const span = ang.spanDeg;
+        const halfSpan = span / 2;
+        // قوس پنجره — TubeGeometry روی مسیر قوسی zStart
+        const arcPts: THREE.Vector3[] = [];
+        const arcSteps = Math.max(12, Math.ceil(span / 6));
+        for (let s = 0; s <= arcSteps; s++) {
+          const deg = centerDeg - halfSpan + (span * s) / arcSteps;
+          const th = (deg * Math.PI) / 180;
+          arcPts.push(
+            new THREE.Vector3(
+              center[0] + spot.radius * Math.cos(th),
+              spot.zStart,
+              center[2] - spot.radius * Math.sin(th)
+            )
+          );
+        }
+        const tubeMesh = new THREE.Mesh(
+          new THREE.TubeGeometry(
+            new THREE.CatmullRomCurve3(arcPts),
+            arcSteps * 2,
+            tube * 0.55,
+            6,
+            false
+          ),
+          new THREE.MeshBasicMaterial({
+            color: 0xffd166,
+            transparent: true,
+            opacity: 0.9,
+            depthTest: false,
+          })
+        );
+        tubeMesh.renderOrder = 902;
+        tubeMesh.raycast = () => {}; // فقط بصری — درگ‌شدنی نیست
+        group.add(tubeMesh);
+
+        /** لبهٔ قوس + فلش جهت پهن‌شدن */
+        const makeEdgeHandle = (deg: number, name: string) => {
+          const th = (deg * Math.PI) / 180;
+          const ex = center[0] + spot.radius * Math.cos(th);
+          const ez = center[2] - spot.radius * Math.sin(th);
+          // جهت پهن‌شدن: edge-b = افزایش θ؛ edge-a = کاهش θ
+          const sign = name === "spot-edge-b" ? 1 : -1;
+          const tx = -Math.sin(th) * sign;
+          const tz = -Math.cos(th) * sign;
+          const tlen = Math.hypot(tx, tz) || 1;
+          const tangent = new THREE.Vector3(tx / tlen, 0, tz / tlen);
+          const cone = new THREE.Mesh(
+            new THREE.ConeGeometry(tube * 1.15, tube * 3.2, 10),
+            new THREE.MeshBasicMaterial({ color: 0xffd166, depthTest: false })
+          );
+          cone.renderOrder = 1000;
+          cone.position.set(
+            ex + tangent.x * tube * 3.4,
+            spot.zStart,
+            ez + tangent.z * tube * 3.4
+          );
+          cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
+          cone.name = name;
+          group.add(cone);
+          const dot = new THREE.Mesh(
+            new THREE.SphereGeometry(Math.max(2.8, tube * 2.0), 12, 12),
+            new THREE.MeshBasicMaterial({ color: 0xffd166, depthTest: false })
+          );
+          dot.renderOrder = 1000;
+          dot.position.set(ex, spot.zStart, ez);
+          dot.name = name;
+          return dot;
+        };
+        group.add(makeEdgeHandle(centerDeg - halfSpan, "spot-edge-a"));
+        group.add(makeEdgeHandle(centerDeg + halfSpan, "spot-edge-b"));
+
+        /** دستهٔ مرکز قوس + فلش‌های دوطرفه چرخش */
+        const thC = (centerDeg * Math.PI) / 180;
+        const mx = center[0] + spot.radius * Math.cos(thC);
+        const mz = center[2] - spot.radius * Math.sin(thC);
+        const cDot = new THREE.Mesh(
+          new THREE.SphereGeometry(Math.max(3.4, tube * 2.4), 14, 14),
+          new THREE.MeshBasicMaterial({ color: 0x4dd0a5, depthTest: false })
+        );
+        cDot.renderOrder = 1000;
+        cDot.position.set(mx, spot.zStart, mz);
+        cDot.name = "spot-center";
+        // هالهٔ مرکز
+        const cHalo = new THREE.Mesh(
+          new THREE.TorusGeometry(Math.max(5.0, tube * 3.4), tube * 0.42, 8, 24),
+          new THREE.MeshBasicMaterial({
+            color: 0xd9fff1,
+            transparent: true,
+            opacity: 0.85,
+            depthTest: false,
+          })
+        );
+        cHalo.renderOrder = 1001;
+        cHalo.rotation.x = Math.PI / 2;
+        cHalo.position.set(mx, spot.zStart, mz);
+        cHalo.raycast = () => {};
+        group.add(cHalo);
+        // فلش‌های مماسی دوطرفه — جهت چرخش قوس
+        for (const sgn of [-1, 1]) {
+          const tangent = new THREE.Vector3(
+            -Math.sin(thC) * sgn,
+            0,
+            -Math.cos(thC) * sgn
+          ).normalize();
+          const cone = new THREE.Mesh(
+            new THREE.ConeGeometry(tube * 1.0, tube * 2.8, 10),
+            new THREE.MeshBasicMaterial({ color: 0x4dd0a5, depthTest: false })
+          );
+          cone.renderOrder = 1000;
+          cone.position.set(
+            mx + tangent.x * tube * 4.2,
+            spot.zStart,
+            mz + tangent.z * tube * 4.2
+          );
+          cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
+          cone.raycast = () => {};
+          group.add(cone);
+        }
+        group.add(cDot);
+      }
     }
     scene.add(group);
     spotGroupRef.current = group;
@@ -1148,7 +1429,8 @@ export function Viewport(props: ViewportProps) {
       {segCount === 0 && (
         <div className="overlay-msg">{props.emptyMessage}</div>
       )}
-      {props.surfaceSamples && props.surfaceSamples.length > 1 && (
+      {((props.wallMesh && props.wallMesh.rows > 0) ||
+        (props.surfaceSamples && props.surfaceSamples.length > 1)) && (
         <div className="viewmode-toggle" role="radiogroup" aria-label="حالت نمای سه‌بعدی">
           {([
             ["solid", "جامد"],
@@ -1180,7 +1462,9 @@ export function Viewport(props: ViewportProps) {
               ? "اسپات θ: نشانگر بنفش را حول محور بچرخانید (Shift = ۱۵°)"
               : props.spot.kind === "floorHole"
                 ? "اسپات: حلقه را بکشید تا قطر سوراخ کف تغییر کند"
-                : "اسپات: دسته را عمودی بکشید (ارتفاع) یا افقی (چرخش زاویه — Shift = ۱۵°)"}
+                : props.spot.spot && props.spot.spot.spanDeg < 359
+                  ? "اسپات زاویه‌ای: لبهٔ طلایی = پهن‌کردن قوس · دستهٔ سبز = چرخش قوس (Shift = ۱۵°)"
+                  : "اسپات: دسته را عمودی بکشید (ارتفاع) یا افقی (چرخش زاویه — Shift = ۱۵°)"}
           </span>
         )}
       </div>
