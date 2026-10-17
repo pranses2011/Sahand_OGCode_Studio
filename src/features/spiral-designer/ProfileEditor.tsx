@@ -299,13 +299,14 @@ export function ProfileEditor(props: ProfileEditorProps) {
           setSelected(newIdx);
           onChange(sorted);
         }}
-        onPointerUp={() => {
+        onPointerUp={(e) => {
           draggingIdx.current = null;
           draggingHandle.current = null;
+          try { svgRef.current?.releasePointerCapture(e.pointerId); } catch { /* بدون کپچر */ }
         }}
         onPointerLeave={() => {
-          draggingIdx.current = null;
-          draggingHandle.current = null;
+          // با کپچر پوینتر، leave دیگر درگ را نمی‌شکند — فقط وقتی درگ نیست
+          if (draggingIdx.current === null && draggingHandle.current === null) return;
         }}
       >
         {/* خط محور و پایه */}
@@ -356,6 +357,8 @@ export function ProfileEditor(props: ProfileEditorProps) {
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   draggingHandle.current = selected;
+                  // کپچر: درگ بیرون از SVG هم پیگیری می‌شود (رفع گم‌شدن درگ)
+                  svgRef.current?.setPointerCapture(e.pointerId);
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
@@ -369,6 +372,7 @@ export function ProfileEditor(props: ProfileEditorProps) {
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   draggingHandle.current = selected;
+                  svgRef.current?.setPointerCapture(e.pointerId);
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
@@ -407,6 +411,7 @@ export function ProfileEditor(props: ProfileEditorProps) {
                   e.stopPropagation();
                   draggingIdx.current = i;
                   setSelected(i);
+                  svgRef.current?.setPointerCapture(e.pointerId);
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
