@@ -188,6 +188,22 @@ pub fn apply_texture(
     z_norm: f64,
     textures: &[TextureParams],
 ) -> ([f64; 3], bool) {
+    let (p, c, _) = apply_texture_ex(point, s, r_base, z_norm, textures);
+    (p, c)
+}
+
+/// نسخهٔ ۱.۵ — با «شدت» بافت (۰..۱) برای مدولاسیون سرعت مسیر:
+/// شدت = بیشینهٔ |آفست اعمالی| / دامنهٔ مؤثر بین همهٔ بافتهای فعال.
+/// ۰ = بدون انحراف (سرعت کامل)؛ ۱ = حداکثر انحراف (حداقل ~۶۰٪ سرعت).
+/// مصرف‌کننده: spiral.rs (feedrate هر گام) — مثل ویدئوهای مرجع که
+/// سرعت نازل روی فرورفتگی‌های بافت کاهش می‌یابد.
+pub fn apply_texture_ex(
+    point: [f64; 3],
+    s: f64,
+    r_base: f64,
+    z_norm: f64,
+    textures: &[TextureParams],
+) -> ([f64; 3], bool, f64) {
     let [x, y, z] = point;
     let mut new_r_offset = 0.0; // آفست شعاعی جمع‌شده
     let mut new_z_offset = 0.0; // آفست عمودی جمع‌شده
@@ -317,7 +333,10 @@ pub fn apply_texture(
         out[0] = clamped_r * theta.cos();
         out[1] = clamped_r * theta.sin();
     }
-    (out, collided)
+    // شدت مؤثر — نسبت انحراف کل به دامنهٔ مؤثر (برای مدولاسیون سرعت)
+    let amp_sum: f64 = textures.iter().map(|t| t.amplitude_mm).sum::<f64>().max(1e-9);
+    let intensity = ((new_r_offset.abs() + new_z_offset.abs()) / amp_sum).clamp(0.0, 1.0);
+    (out, collided, intensity)
 }
 
 /// بررسی «سلامت مسیر» پس از بافت: فاصلهٔ نقاط مجاور نباید از حدی بیشتر شود

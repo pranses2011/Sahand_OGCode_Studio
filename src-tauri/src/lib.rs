@@ -35,13 +35,21 @@ pub fn run() {
             commands::load_project,
             // ---- فایل ----
             commands::read_text_file,
+            commands::write_text_file,
             // ---- پریست‌های پرینتر (گام ۵) ----
             commands::printer_presets,
+            // ---- نسخهٔ ۱.۵ ----
+            commands::designer_random_profile,
         ])
         .setup(|app| {
-            // تنظیم عنوان پنجره برای اطمینان از هویت مستقل برنامه
+            // عنوان پنجره با شمارهٔ نسخه (درخواست کاربر: «نسخه در عنوان»)
+            // نسخه از package_info می‌آید — همان tauri.conf.json؛ منبع واحد.
             if let Some(win) = app.get_webview_window("main") {
-                let _ = win.set_title("G-code Studio — استودیوی ویرایش و طراحی G-code");
+                let v = app.package_info().version.clone();
+                let _ = win.set_title(&format!(
+                    "G-code Studio v{}.{}.{} — استودیوی ویرایش و طراحی G-code",
+                    v.major, v.minor, v.patch
+                ));
             }
             Ok(())
         })

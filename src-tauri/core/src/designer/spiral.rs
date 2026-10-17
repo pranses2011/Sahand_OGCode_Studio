@@ -45,6 +45,16 @@ pub struct DesignerInput {
     pub phase_start_deg: f64,
     /// پرینتر
     pub printer: PrinterProfile,
+    /// ضریب کیفیت mesh خروجی STL — نسخهٔ ۱.۵ (۱ = استاندارد؛
+    /// ۰٫۵ = سریع/پیش‌نویس؛ ۲ = ریز؛ ۳ = بسیار ریز).
+    /// فقط mesh/STL را ریز می‌کند؛ مسیر G-code مستقل است.
+    #[serde(default = "default_mesh_quality")]
+    pub mesh_quality: f64,
+}
+
+/// مقدار پیش‌فرض کیفیت mesh
+fn default_mesh_quality() -> f64 {
+    1.0
 }
 
 /// خروجی کامل موتور طراح
@@ -162,6 +172,37 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         };
     }
 
+    // ---------- بافتهای مؤثر — کلمپ دامنه بر پایهٔ نازل (نسخهٔ ۱.۵) ----------
+    // انحراف شعاعی بزرگ‌تر از قطر نازل ⇒ لایهٔ بعدی روی هوا می‌نشیند
+    // (برخورد نازل با دیوارهٔ موج‌دار و افت چسبندگی). دامنهٔ مؤثر به
+    // ۰٫۹×قطر نازل محدود می‌شود و هشدار W-TEX-NOZZLE صادر می‌شود.
+    let nozzle_amp_limit = (printer.nozzle_diameter_mm * 0.9).max(0.15);
+    let mut nozzle_clamped = 0usize;
+    let textures_eff: Vec<crate::designer::texture::TextureParams> = input
+        .textures
+        .iter()
+        .map(|t| {
+            if t.amplitude_mm > nozzle_amp_limit {
+                nozzle_clamped += 1;
+                let mut t2 = t.clone();
+                t2.amplitude_mm = nozzle_amp_limit;
+                t2
+            } else {
+                t.clone()
+            }
+        })
+        .collect();
+    if nozzle_clamped > 0 {
+        diagnostics.push(Diagnostic::warning(
+            "W-TEX-NOZZLE",
+            format!(
+                "دامنهٔ {nozzle_clamped} بافت به {nozzle_amp_limit:.2}mm محدود شد (۰٫۹×قطر نازل {0:.2}mm) — شیار عمیق‌تر از نازل باعث برخورد/لایهٔ معلق می‌شود",
+                printer.nozzle_diameter_mm
+            ),
+            0,
+        ));
+    }
+
     // ---------- شعاع پایه ----------
     let radius_fn = build_radius_fn(&input.profile, &input.form);
 
@@ -184,7 +225,14 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     let dz_per_step = layer_h / steps_per_rev as f64;
 
     // ---------- mesh پایه (برای STL) ----------
-    let mesh = build_mesh(input, &radius_fn, steps_per_rev, phase0, &mut diagnostics);
+    let mesh = build_mesh(
+        input,
+        &radius_fn,
+        steps_per_rev,
+        phase0,
+        &mut diagnostics,
+        input.mesh_quality.clamp(0.25, 4.0),
+    );
 
     // ---------- مسیر مارپیچی + بافت‌ها → IR ----------
     let mut segments: Vec<ToolpathSegment> = Vec::new();
@@ -225,8 +273,8 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     let first_point_model = [r0 * theta_start.cos(), r0 * theta_start.sin(), z_start];
 
     // بافت روی نقطهٔ اول (در فضای مدل — نسبت به محور)؛ zn=0 = انتهای کف
-    let (first_point_model, c1) =
-        apply_texture(first_point_model, 0.0, r0, 0.0, &input.textures);
+    let (first_point_model, c1, _int0) =
+        apply_texture_ex(first_point_model, 0.0, r0, 0.0, &textures_eff);
     collided_any |= c1;
     // انتقال به مختصات صفحه (مرکز‌گذاری)
     let first_point = [
@@ -261,6 +309,8 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     let total_steps = (total_revolutions * steps_per_rev as f64).ceil() as usize;
     let mut path_length = 0.0f64;
     let mut clamped_radius_events = 0usize;
+    // بیشینهٔ شدت بافت دیده‌شده (۰..۱) — نسخهٔ ۱.۵: مدولاسیون سرعت
+    let mut tex_intensity_max: f64 = 0.0;
 
     for step in 1..=total_steps {
         // θ پیوسته بالا می‌رود (از فاز شروع)؛ z خطی با گام
@@ -286,10 +336,18 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         // نقطهٔ خام قبل از بافت (فضای مدل — نسبت به محور مرکزی)
         let raw_point = [r * theta.cos(), r * theta.sin(), z];
         path_length += (d_theta * r).abs(); // طول قوس تقریبی این گام
-        // بافت روی طول پیموده‌شده
-        let (point_model, collided) =
-            apply_texture(raw_point, path_length, r, z_for_profile / height.max(1e-9), &input.textures);
+        // بافت روی طول پیموده‌شده — نسخهٔ ۱.۵: با دامنهٔ کلمپ‌شدهٔ نازل
+        // + شدت (intensity) برای مدولاسیون سرعت (مثل ویدئوهای مرجع:
+        // نازل روی فرورفتگی‌های بافت آرام‌تر می‌رود)
+        let (point_model, collided, tex_intensity) = apply_texture_ex(
+            raw_point,
+            path_length,
+            r,
+            z_for_profile / height.max(1e-9),
+            &textures_eff,
+        );
         collided_any |= collided;
+        tex_intensity_max = tex_intensity_max.max(tex_intensity);
         // انتقال به مختصات صفحه
         let point = [
             point_model[0] + bed_offset[0],
@@ -318,6 +376,12 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         // segment چاپی — ΔE مثبت؛ feedrate چاپ
         let e_val = if printer.absolute_e { e_counter } else { e_delta };
         let _ = e_val; // E نهایی در خروجی‌ساز G-code ساخته می‌شود؛ IR فقط delta
+        // ---------- مدولاسیون سرعت بافت — نسخهٔ ۱.۵ ----------
+        // مثل ویدئوهای مرجع: نازل روی قله/درهٔ بافت آرام می‌رود تا
+        // bead یکنواخت بماند و نازل به موج قبلی نکوبد:
+        //   F = F_wall × (۱ − ۰٫۴×شدت) — حداقل ۶۰٪ سرعت دیواره
+        let wall_f = printer.effective_wall_mm_min();
+        let tex_f = wall_f * (1.0 - 0.4 * tex_intensity.clamp(0.0, 1.0));
         let seg = ToolpathSegment {
             id: next_id,
             source_line_index: segments.len(),
@@ -325,7 +389,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
             start_mm: Some(prev_point),
             end_mm: Some(point),
             e_delta_mm: Some(e_delta),
-            feedrate_mm_min: Some(printer.effective_wall_mm_min()),
+            feedrate_mm_min: Some(tex_f.max(wall_f * 0.6)),
             layer_index: None, // مارپیچ: لایهٔ گسسته نه (الزام)
             certainty: Certainty::Known,
         };
@@ -381,6 +445,15 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
 
     // ---------- خلاصهٔ فارسی ----------
     let est_time_min = estimate_time_min(&segments);
+    // یادداشت مدولاسیون سرعت — فقط وقتی بافت فعال و اثرگذار بوده
+    let tex_note = if !input.textures.is_empty() && tex_intensity_max > 0.05 {
+        format!(
+            "؛ بافت: سرعت تا {:.0}٪ دیواره در نقاط برجسته کاهش یافت",
+            40.0 * tex_intensity_max
+        )
+    } else {
+        String::new()
+    };
     let summary_fa = format!(
         "فرم مارپیچی: ارتفاع {} mm، {} دور، {} قطعه مسیر{}؛ طول چاپ ≈ {} m؛ فیلامنت ≈ {} m؛ زمان تخمینی ≈ {} دقیقه؛ فاز θ = {}°؛ دمای نازل/بستر = {}/{} °C",
         format_num(height),
@@ -398,6 +471,7 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         format_num(printer.nozzle_temp_c),
         format_num(printer.bed_temp_c),
     );
+    let summary_fa = format!("{summary_fa}{tex_note}");
 
     DesignerOutput {
         segments,
@@ -418,11 +492,17 @@ fn build_mesh(
     steps_per_rev: usize,
     phase0: f64,
     diagnostics: &mut Vec<Diagnostic>,
+    mesh_quality: f64,
 ) -> MeshData {
     let height = input.form.height_mm;
     // تراکم عمودی mesh: هر نیم‌لایه یک ردیف (سازگار با کیفیت مسیر)
-    let rows = ((height / input.printer.layer_height_mm).ceil() as usize).clamp(8, 400) * 2;
-    let cols = steps_per_rev.clamp(32, 360);
+    // نسخهٔ ۱.۵: ضریب کیفیت (دیالوگ خروجی STL) تراکم را مقیاس می‌کند؛
+    // سقف‌ها برای جلوگیری از انفجار حافظه (حداکثر ~۱٫۷م مثلث)
+    let rows_base = ((height / input.printer.layer_height_mm).ceil() as usize).clamp(8, 400) * 2;
+    let rows = ((rows_base as f64) * mesh_quality.max(0.25)).round() as usize;
+    let rows = rows.clamp(8, 1600);
+    let cols = ((steps_per_rev as f64) * mesh_quality).round() as usize;
+    let cols = cols.clamp(24, 1080);
 
     let mut vertices: Vec<[f64; 3]> = Vec::with_capacity((rows + 1) * (cols + 1));
     let mut triangles: Vec<[u32; 3]> = Vec::with_capacity(rows * cols * 2);
@@ -846,6 +926,7 @@ mod tests {
             center_on_bed: true,
             phase_start_deg: 0.0,
             printer: PrinterProfile::default(),
+            mesh_quality: 1.0,
         }
     }
 
@@ -1202,7 +1283,7 @@ mod tests {
     fn test_invalid_profile_returns_error() {
         // پروفایل خراب → diagnostic خطا بدون panic
         let mut inp = base_input();
-        inp.profile = vec![crate::designer::profile::ProfilePoint { r: 10.0, h: 0.0 }];
+        inp.profile = vec![crate::designer::profile::ProfilePoint { r: 10.0, h: 0.0, m: None }];
         let out = compute(&inp);
         assert!(out.diagnostics.iter().any(|d| d.code == "E-PROFILE"));
         assert!(out.segments.is_empty());

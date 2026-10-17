@@ -397,6 +397,31 @@ pub fn designer_compute(project: DesignerProject) -> DesignerOutput {
         center_on_bed: project.center_on_bed,
         phase_start_deg: project.phase_start_deg,
         printer: project.printer.clone(),
+        mesh_quality: 1.0, // پیش‌نمایش: کیفیت استاندارد (سریع)
+    };
+    compute(&input)
+}
+
+/// محاسبهٔ طراح با کیفیت mesh دلخواه — فقط برای خروجی STL (نسخهٔ ۱.۵).
+/// کیفیت فقط تراکم mesh را مقیاس می‌کند؛ مسیر G-code مستقل است.
+fn designer_compute_with_quality(project: &DesignerProject, mesh_quality: f64) -> DesignerOutput {
+    let input = DesignerInput {
+        profile: project.profile.clone(),
+        form: crate::designer::profile::FormAdjust {
+            height_mm: project.form_height_mm,
+            bottom_diameter_mm: project.form_bottom_diameter_mm,
+            top_diameter_mm: project.form_top_diameter_mm,
+            taper_percent: project.taper_percent,
+            smoothing_passes: 0,
+            interpolation: project.profile_interpolation,
+        },
+        patterns: project.patterns.clone(),
+        textures: project.textures.clone(),
+        floor: project.floor.clone(),
+        center_on_bed: project.center_on_bed,
+        phase_start_deg: project.phase_start_deg,
+        printer: project.printer.clone(),
+        mesh_quality,
     };
     compute(&input)
 }
@@ -613,6 +638,7 @@ pub fn designer_export_gcode(project: DesignerProject) -> Result<String, String>
             center_on_bed: validated.center_on_bed,
             phase_start_deg: validated.phase_start_deg,
             printer: validated.printer,
+            mesh_quality: 1.0, // G-code از mesh مستقل است
         },
         &output,
     ))
@@ -632,11 +658,18 @@ pub struct StlExportResult {
     pub triangle_count: usize,
 }
 
-pub fn designer_export_stl(project: DesignerProject, path: String) -> Result<StlExportResult, String> {
+pub fn designer_export_stl(
+    project: DesignerProject,
+    path: String,
+    quality: Option<f64>,
+) -> Result<StlExportResult, String> {
     let proj_json = serde_json::to_string(&project).map_err(|e| e.to_string())?;
     let validated = validate_project(&proj_json)?;
 
-    let output = designer_compute(validated);
+    // کیفیت mesh — نسخهٔ ۱.۵ (دیالوگ کیفیت خروجی STL):
+    //   None|1.0 = استاندارد؛ 0.5 = سریع/پیش‌نویس؛ 2 = ریز؛ 3 = بسیار ریز
+    let q = quality.unwrap_or(1.0).clamp(0.25, 4.0);
+    let output = designer_compute_with_quality(&validated, q);
     let stl = serialize_stl(&output.mesh);
     std::fs::write(&path, &stl).map_err(|e| format!("نوشتن STL ناموفق بود: {e}"))?;
     Ok(StlExportResult {
@@ -675,6 +708,28 @@ pub fn read_text_file(path: String) -> Result<String, String> {
         return Err("فایل بزرگ‌تر از ۲۵۶ مگابایت است؛ در این نسخه پشتیبانی نمی‌شود".into());
     }
     std::fs::read_to_string(&path).map_err(|e| format!("خواندن فایل ناموفق بود: {e}"))
+}
+
+// ============================================================================
+// دستور ۱۰-الف: پروفایل تصادفی چاپ‌پسند — نسخهٔ ۱.۵ (دکمهٔ رندوم UI)
+// ============================================================================
+pub fn designer_random_profile(seed: u64) -> Vec<crate::designer::profile::ProfilePoint> {
+    crate::designer::profile::random_profile(seed)
+}
+
+// ============================================================================
+// دستور ۱۰-ب: نوشتن فایل متنی (ذخیرهٔ مستقیم G-code از طراح — نسخهٔ ۱.۵)
+// ============================================================================
+// طراح بدون گذر از ویرایشگر بتواند G-code را مستقیم ذخیره کند.
+// سقف ۲۵۶MB مثل read_text_file (گارد OOM)؛ مسیر فقط از دیالوگ ذخیرهٔ
+// native می‌آید (بدون دسترسی دلخواه filesystem).
+pub fn write_text_file(path: String, content: String) -> Result<usize, String> {
+    if content.len() > 256 * 1024 * 1024 {
+        return Err("محتوای بزرگ‌تر از ۲۵۶ مگابایت است؛ در این نسخه پشتیبانی نمی‌شود".into());
+    }
+    std::fs::write(&path, content.as_bytes())
+        .map_err(|e| format!("نوشتن فایل ناموفق بود: {e}"))?;
+    Ok(content.len())
 }
 
 // ============================================================================

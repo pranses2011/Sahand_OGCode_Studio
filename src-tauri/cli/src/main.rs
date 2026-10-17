@@ -113,6 +113,20 @@ fn dispatch(cmd: &str, args: &serde_json::Value) -> serde_json::Value {
         "printer_presets" => to_json(ipc::printer_presets()),
         // ---- دادهٔ پیش‌نمایش الگو/بافت برای کارت‌های تصویری UI ----
         "designer_preview_data" => to_json(ipc::designer_preview_data()),
+        // ---- پروفایل تصادفی چاپ‌پسند — نسخهٔ ۱.۵ ----
+        "designer_random_profile" => {
+            let seed = args.get("seed").and_then(|v| v.as_u64()).unwrap_or(0);
+            to_json(ipc::designer_random_profile(seed))
+        }
+        // ---- نوشتن فایل متنی (ذخیرهٔ مستقیم از طراح) — نسخهٔ ۱.۵ ----
+        "write_text_file" => {
+            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            match ipc::write_text_file(path, content) {
+                Ok(n) => to_json(n),
+                Err(e) => err_json(e),
+            }
+        }
         _ => err_json(format!("دستور ناشناخته: {cmd}")),
     }
 }

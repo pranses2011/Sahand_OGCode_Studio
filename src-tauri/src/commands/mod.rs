@@ -15,12 +15,12 @@ use gcode_core::export::SaveValidation;
 use gcode_core::ipc::{
     designer_compute as core_designer_compute, designer_export_gcode as core_designer_export_gcode,
     designer_export_stl as core_designer_export_stl, designer_preview_data as core_designer_preview_data,
-    designer_viewport as core_designer_viewport, explain_line as core_explain_line,
-    load_project as core_load_project, parse_gcode as core_parse_gcode,
+    designer_random_profile as core_designer_random_profile, designer_viewport as core_designer_viewport,
+    explain_line as core_explain_line, load_project as core_load_project, parse_gcode as core_parse_gcode,
     printer_presets as core_printer_presets, read_text_file as core_read_text_file,
     save_as as core_save_as, save_project as core_save_project, validate_gcode as core_validate_gcode,
-    DesignerOutput, FastViewport, LineDetail, ParseResult, PreviewData, SaveAsRequest, SaveAsResult,
-    StlExportResult,
+    write_text_file as core_write_text_file, DesignerOutput, FastViewport, LineDetail, ParseResult,
+    PreviewData, SaveAsRequest, SaveAsResult, StlExportResult,
 };
 use gcode_core::designer::PrinterProfile;
 
@@ -74,10 +74,15 @@ pub fn designer_export_gcode(project: DesignerProject) -> Result<String, String>
     core_designer_export_gcode(project)
 }
 
-/// تولید فایل STL باینری از پروژهٔ طراح در مسیر انتخابی
+/// تولید فایل STL باینری از پروژهٔ طراح در مسیر انتخابی —
+/// quality: None|۱=استاندارد، ۰٫۵=سریع، ۲=ریز، ۳=بسیار ریز (نسخهٔ ۱.۵)
 #[tauri::command]
-pub fn designer_export_stl(project: DesignerProject, path: String) -> Result<StlExportResult, String> {
-    core_designer_export_stl(project, path)
+pub fn designer_export_stl(
+    project: DesignerProject,
+    path: String,
+    quality: Option<f64>,
+) -> Result<StlExportResult, String> {
+    core_designer_export_stl(project, path, quality)
 }
 
 /// دادهٔ پیش‌نمایش الگو/بافت برای کارت‌های تصویری UI (از ریاضی واقعی هسته)
@@ -106,6 +111,22 @@ pub fn load_project(path: String) -> Result<DesignerProject, String> {
 #[tauri::command]
 pub fn read_text_file(path: String) -> Result<String, String> {
     core_read_text_file(path)
+}
+
+// ============================================================================
+// دستورهای نسخهٔ ۱.۵
+// ============================================================================
+
+/// پروفایل تصادفی چاپ‌پسند — دکمهٔ 🎲 در گام ۱ (seed = زمان UI)
+#[tauri::command]
+pub fn designer_random_profile(seed: u64) -> Vec<gcode_core::designer::ProfilePoint> {
+    core_designer_random_profile(seed)
+}
+
+/// نوشتن فایل متنی — ذخیرهٔ مستقیم G-code از طراح بدون گذر از ویرایشگر
+#[tauri::command]
+pub fn write_text_file(path: String, content: String) -> Result<usize, String> {
+    core_write_text_file(path, content)
 }
 
 // ============================================================================

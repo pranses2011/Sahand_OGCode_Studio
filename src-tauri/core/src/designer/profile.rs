@@ -90,209 +90,209 @@ impl ProfilePreset {
     /// گلدان کلاسیک: پایه باریک، شکم پهن، گردن تنگ، لب باز
     pub fn vase_default() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 22.0, h: 0.0 },
-            ProfilePoint { r: 28.0, h: 10.0 },
-            ProfilePoint { r: 30.0, h: 35.0 },
-            ProfilePoint { r: 26.0, h: 60.0 },
-            ProfilePoint { r: 18.0, h: 80.0 },
-            ProfilePoint { r: 17.0, h: 88.0 },
-            ProfilePoint { r: 21.0, h: 100.0 },
+            ProfilePoint { r: 22.0, h: 0.0, m: None },
+            ProfilePoint { r: 28.0, h: 10.0, m: None },
+            ProfilePoint { r: 30.0, h: 35.0, m: None },
+            ProfilePoint { r: 26.0, h: 60.0, m: None },
+            ProfilePoint { r: 18.0, h: 80.0, m: None },
+            ProfilePoint { r: 17.0, h: 88.0, m: None },
+            ProfilePoint { r: 21.0, h: 100.0, m: None },
         ]
     }
 
     /// سایه‌روشن (lampshade): مخروط نرم با لب کمی برگشته
     pub fn lampshade() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 8.0, h: 0.0 },
-            ProfilePoint { r: 15.0, h: 15.0 },
-            ProfilePoint { r: 35.0, h: 90.0 },
-            ProfilePoint { r: 40.0, h: 100.0 },
+            ProfilePoint { r: 8.0, h: 0.0, m: None },
+            ProfilePoint { r: 15.0, h: 15.0, m: None },
+            ProfilePoint { r: 35.0, h: 90.0, m: None },
+            ProfilePoint { r: 40.0, h: 100.0, m: None },
         ]
     }
 
     /// گلدان کشت (planter): دیوارهٔ شیب‌دار ساده با لبه
     pub fn planter() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 15.0, h: 0.0 },
-            ProfilePoint { r: 18.0, h: 5.0 },
-            ProfilePoint { r: 30.0, h: 60.0 },
-            ProfilePoint { r: 32.0, h: 65.0 },
+            ProfilePoint { r: 15.0, h: 0.0, m: None },
+            ProfilePoint { r: 18.0, h: 5.0, m: None },
+            ProfilePoint { r: 30.0, h: 60.0, m: None },
+            ProfilePoint { r: 32.0, h: 65.0, m: None },
         ]
     }
 
     /// لیوان (cup): دیوارهٔ تقریباً مستقیم با لبهٔ کوچک
     pub fn cup() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 20.0, h: 0.0 },
-            ProfilePoint { r: 21.0, h: 8.0 },
-            ProfilePoint { r: 24.0, h: 80.0 },
-            ProfilePoint { r: 25.0, h: 90.0 },
+            ProfilePoint { r: 20.0, h: 0.0, m: None },
+            ProfilePoint { r: 21.0, h: 8.0, m: None },
+            ProfilePoint { r: 24.0, h: 80.0, m: None },
+            ProfilePoint { r: 25.0, h: 90.0, m: None },
         ]
     }
 
     /// بطری (bottle): بدنهٔ پهن + گردن باریک
     pub fn bottle() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 18.0, h: 0.0 },
-            ProfilePoint { r: 24.0, h: 15.0 },
-            ProfilePoint { r: 25.0, h: 45.0 },
-            ProfilePoint { r: 18.0, h: 75.0 },
-            ProfilePoint { r: 8.0, h: 90.0 },
-            ProfilePoint { r: 8.0, h: 110.0 },
-            ProfilePoint { r: 9.5, h: 115.0 },
+            ProfilePoint { r: 18.0, h: 0.0, m: None },
+            ProfilePoint { r: 24.0, h: 15.0, m: None },
+            ProfilePoint { r: 25.0, h: 45.0, m: None },
+            ProfilePoint { r: 18.0, h: 75.0, m: None },
+            ProfilePoint { r: 8.0, h: 90.0, m: None },
+            ProfilePoint { r: 8.0, h: 110.0, m: None },
+            ProfilePoint { r: 9.5, h: 115.0, m: None },
         ]
     }
 
     /// کاسه (bowl): نیم‌کرهٔ پهن با کف کوچک
     pub fn bowl() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 12.0, h: 0.0 },
-            ProfilePoint { r: 16.0, h: 4.0 },
-            ProfilePoint { r: 24.0, h: 16.0 },
-            ProfilePoint { r: 29.0, h: 34.0 },
-            ProfilePoint { r: 31.0, h: 55.0 },
+            ProfilePoint { r: 12.0, h: 0.0, m: None },
+            ProfilePoint { r: 16.0, h: 4.0, m: None },
+            ProfilePoint { r: 24.0, h: 16.0, m: None },
+            ProfilePoint { r: 29.0, h: 34.0, m: None },
+            ProfilePoint { r: 31.0, h: 55.0, m: None },
         ]
     }
 
     /// ساعت شنی (hourglass): دو مخروط با گلو باریک
     pub fn hourglass() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 22.0, h: 0.0 },
-            ProfilePoint { r: 20.0, h: 10.0 },
-            ProfilePoint { r: 12.0, h: 35.0 },
-            ProfilePoint { r: 7.0, h: 50.0 },
-            ProfilePoint { r: 12.0, h: 65.0 },
-            ProfilePoint { r: 20.0, h: 90.0 },
-            ProfilePoint { r: 22.0, h: 100.0 },
+            ProfilePoint { r: 22.0, h: 0.0, m: None },
+            ProfilePoint { r: 20.0, h: 10.0, m: None },
+            ProfilePoint { r: 12.0, h: 35.0, m: None },
+            ProfilePoint { r: 7.0, h: 50.0, m: None },
+            ProfilePoint { r: 12.0, h: 65.0, m: None },
+            ProfilePoint { r: 20.0, h: 90.0, m: None },
+            ProfilePoint { r: 22.0, h: 100.0, m: None },
         ]
     }
 
     /// جام (goblet): ساقهٔ باریک + کاسهٔ مخروطی
     pub fn goblet() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 16.0, h: 0.0 },
-            ProfilePoint { r: 14.0, h: 5.0 },
-            ProfilePoint { r: 5.0, h: 20.0 },
-            ProfilePoint { r: 4.5, h: 55.0 },
-            ProfilePoint { r: 6.0, h: 62.0 },
-            ProfilePoint { r: 16.0, h: 80.0 },
-            ProfilePoint { r: 20.0, h: 95.0 },
+            ProfilePoint { r: 16.0, h: 0.0, m: None },
+            ProfilePoint { r: 14.0, h: 5.0, m: None },
+            ProfilePoint { r: 5.0, h: 20.0, m: None },
+            ProfilePoint { r: 4.5, h: 55.0, m: None },
+            ProfilePoint { r: 6.0, h: 62.0, m: None },
+            ProfilePoint { r: 16.0, h: 80.0, m: None },
+            ProfilePoint { r: 20.0, h: 95.0, m: None },
         ]
     }
 
     /// فانوس (lantern): بدنهٔ کشیده با کمربند
     pub fn lantern() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 14.0, h: 0.0 },
-            ProfilePoint { r: 17.0, h: 10.0 },
-            ProfilePoint { r: 18.5, h: 40.0 },
-            ProfilePoint { r: 16.5, h: 55.0 },
-            ProfilePoint { r: 18.0, h: 75.0 },
-            ProfilePoint { r: 15.0, h: 90.0 },
-            ProfilePoint { r: 16.5, h: 100.0 },
+            ProfilePoint { r: 14.0, h: 0.0, m: None },
+            ProfilePoint { r: 17.0, h: 10.0, m: None },
+            ProfilePoint { r: 18.5, h: 40.0, m: None },
+            ProfilePoint { r: 16.5, h: 55.0, m: None },
+            ProfilePoint { r: 18.0, h: 75.0, m: None },
+            ProfilePoint { r: 15.0, h: 90.0, m: None },
+            ProfilePoint { r: 16.5, h: 100.0, m: None },
         ]
     }
 
     /// رکاب سفید (amphora): کوزهٔ یونانی با دو برجستگی
     pub fn amphora() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 10.0, h: 0.0 },
-            ProfilePoint { r: 15.0, h: 6.0 },
-            ProfilePoint { r: 24.0, h: 30.0 },
-            ProfilePoint { r: 25.5, h: 55.0 },
-            ProfilePoint { r: 20.0, h: 80.0 },
-            ProfilePoint { r: 11.0, h: 95.0 },
-            ProfilePoint { r: 12.5, h: 105.0 },
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 15.0, h: 6.0, m: None },
+            ProfilePoint { r: 24.0, h: 30.0, m: None },
+            ProfilePoint { r: 25.5, h: 55.0, m: None },
+            ProfilePoint { r: 20.0, h: 80.0, m: None },
+            ProfilePoint { r: 11.0, h: 95.0, m: None },
+            ProfilePoint { r: 12.5, h: 105.0, m: None },
         ]
     }
 
     /// قلم‌خانه (pencil holder): استوانهٔ ساده با شیار پایین
     pub fn pencil_holder() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 19.0, h: 0.0 },
-            ProfilePoint { r: 17.5, h: 5.0 },
-            ProfilePoint { r: 19.5, h: 12.0 },
-            ProfilePoint { r: 20.0, h: 95.0 },
+            ProfilePoint { r: 19.0, h: 0.0, m: None },
+            ProfilePoint { r: 17.5, h: 5.0, m: None },
+            ProfilePoint { r: 19.5, h: 12.0, m: None },
+            ProfilePoint { r: 20.0, h: 95.0, m: None },
         ]
     }
 
     /// گلدان دوطبقه (stacked planter)
     pub fn stacked_planter() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 14.0, h: 0.0 },
-            ProfilePoint { r: 18.0, h: 6.0 },
-            ProfilePoint { r: 17.0, h: 40.0 },
-            ProfilePoint { r: 20.0, h: 45.0 },
-            ProfilePoint { r: 23.0, h: 48.0 },
-            ProfilePoint { r: 22.0, h: 80.0 },
-            ProfilePoint { r: 24.0, h: 85.0 },
+            ProfilePoint { r: 14.0, h: 0.0, m: None },
+            ProfilePoint { r: 18.0, h: 6.0, m: None },
+            ProfilePoint { r: 17.0, h: 40.0, m: None },
+            ProfilePoint { r: 20.0, h: 45.0, m: None },
+            ProfilePoint { r: 23.0, h: 48.0, m: None },
+            ProfilePoint { r: 22.0, h: 80.0, m: None },
+            ProfilePoint { r: 24.0, h: 85.0, m: None },
         ]
     }
 
     /// تخم‌مرغی (egg cup): پایهٔ کوچک + کاسهٔ تخم‌مرغی
     pub fn egg_cup() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 12.0, h: 0.0 },
-            ProfilePoint { r: 10.0, h: 4.0 },
-            ProfilePoint { r: 5.0, h: 15.0 },
-            ProfilePoint { r: 7.0, h: 22.0 },
-            ProfilePoint { r: 15.0, h: 30.0 },
-            ProfilePoint { r: 16.5, h: 40.0 },
+            ProfilePoint { r: 12.0, h: 0.0, m: None },
+            ProfilePoint { r: 10.0, h: 4.0, m: None },
+            ProfilePoint { r: 5.0, h: 15.0, m: None },
+            ProfilePoint { r: 7.0, h: 22.0, m: None },
+            ProfilePoint { r: 15.0, h: 30.0, m: None },
+            ProfilePoint { r: 16.5, h: 40.0, m: None },
         ]
     }
 
     /// بشکه (barrel): کمربند میانی پهن
     pub fn barrel() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 18.0, h: 0.0 },
-            ProfilePoint { r: 22.0, h: 15.0 },
-            ProfilePoint { r: 24.0, h: 30.0 },
-            ProfilePoint { r: 24.0, h: 45.0 },
-            ProfilePoint { r: 22.0, h: 60.0 },
-            ProfilePoint { r: 18.0, h: 75.0 },
+            ProfilePoint { r: 18.0, h: 0.0, m: None },
+            ProfilePoint { r: 22.0, h: 15.0, m: None },
+            ProfilePoint { r: 24.0, h: 30.0, m: None },
+            ProfilePoint { r: 24.0, h: 45.0, m: None },
+            ProfilePoint { r: 22.0, h: 60.0, m: None },
+            ProfilePoint { r: 18.0, h: 75.0, m: None },
         ]
     }
 
     /// مخروط ساده (cone)
     pub fn cone() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 25.0, h: 0.0 },
-            ProfilePoint { r: 24.0, h: 30.0 },
-            ProfilePoint { r: 16.0, h: 70.0 },
-            ProfilePoint { r: 5.0, h: 95.0 },
+            ProfilePoint { r: 25.0, h: 0.0, m: None },
+            ProfilePoint { r: 24.0, h: 30.0, m: None },
+            ProfilePoint { r: 16.0, h: 70.0, m: None },
+            ProfilePoint { r: 5.0, h: 95.0, m: None },
         ]
     }
 
     /// شمع‌دان دیواری (wall sconce): نیم‌استوانهٔ کشیده
     pub fn sconce() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 9.0, h: 0.0 },
-            ProfilePoint { r: 13.0, h: 8.0 },
-            ProfilePoint { r: 22.0, h: 70.0 },
-            ProfilePoint { r: 24.0, h: 85.0 },
+            ProfilePoint { r: 9.0, h: 0.0, m: None },
+            ProfilePoint { r: 13.0, h: 8.0, m: None },
+            ProfilePoint { r: 22.0, h: 70.0, m: None },
+            ProfilePoint { r: 24.0, h: 85.0, m: None },
         ]
     }
 
     /// دلو (bucket): مخروط معکوس با لبهٔ غلتان
     pub fn bucket() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 14.0, h: 0.0 },
-            ProfilePoint { r: 15.0, h: 6.0 },
-            ProfilePoint { r: 22.0, h: 70.0 },
-            ProfilePoint { r: 23.5, h: 85.0 },
+            ProfilePoint { r: 14.0, h: 0.0, m: None },
+            ProfilePoint { r: 15.0, h: 6.0, m: None },
+            ProfilePoint { r: 22.0, h: 70.0, m: None },
+            ProfilePoint { r: 23.5, h: 85.0, m: None },
         ]
     }
 
     /// گلدان بلند چینی (celadon): گردن باریک و شکم گِرد
     pub fn celadon() -> Vec<ProfilePoint> {
         vec![
-            ProfilePoint { r: 13.0, h: 0.0 },
-            ProfilePoint { r: 16.0, h: 8.0 },
-            ProfilePoint { r: 23.0, h: 30.0 },
-            ProfilePoint { r: 24.0, h: 48.0 },
-            ProfilePoint { r: 17.0, h: 72.0 },
-            ProfilePoint { r: 10.5, h: 88.0 },
-            ProfilePoint { r: 11.0, h: 98.0 },
+            ProfilePoint { r: 13.0, h: 0.0, m: None },
+            ProfilePoint { r: 16.0, h: 8.0, m: None },
+            ProfilePoint { r: 23.0, h: 30.0, m: None },
+            ProfilePoint { r: 24.0, h: 48.0, m: None },
+            ProfilePoint { r: 17.0, h: 72.0, m: None },
+            ProfilePoint { r: 10.5, h: 88.0, m: None },
+            ProfilePoint { r: 11.0, h: 98.0, m: None },
         ]
     }
 }
@@ -703,8 +703,8 @@ mod tests {
     #[test]
     fn test_validate_negative_radius() {
         let pts = vec![
-            ProfilePoint { r: 10.0, h: 0.0 },
-            ProfilePoint { r: -5.0, h: 10.0 },
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: -5.0, h: 10.0, m: None },
         ];
         assert!(validate_profile(&pts).is_err());
     }
@@ -730,8 +730,8 @@ mod tests {
     fn test_radius_fn_height_rescale() {
         // ارتفاع نهایی باید مقیاس شود
         let pts = vec![
-            ProfilePoint { r: 10.0, h: 0.0 },
-            ProfilePoint { r: 10.0, h: 50.0 },
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 10.0, h: 50.0, m: None },
         ];
         let adj = FormAdjust {
             height_mm: 200.0,
@@ -750,8 +750,8 @@ mod tests {
     fn test_taper_narrows_top() {
         // taper باید بالا را باریک‌تر کند
         let pts = vec![
-            ProfilePoint { r: 20.0, h: 0.0 },
-            ProfilePoint { r: 20.0, h: 100.0 },
+            ProfilePoint { r: 20.0, h: 0.0, m: None },
+            ProfilePoint { r: 20.0, h: 100.0, m: None },
         ];
         let no_taper = FormAdjust {
             taper_percent: 0.0,
@@ -771,9 +771,9 @@ mod tests {
     fn test_smoothing_softens_corners() {
         // smoothing باید گوشهٔ تیز را نرم کند
         let pts = vec![
-            ProfilePoint { r: 10.0, h: 0.0 },
-            ProfilePoint { r: 30.0, h: 50.0 }, // قلهٔ تیز
-            ProfilePoint { r: 10.0, h: 100.0 },
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 30.0, h: 50.0, m: None }, // قلهٔ تیز
+            ProfilePoint { r: 10.0, h: 100.0, m: None },
         ];
         let no_smooth = FormAdjust {
             smoothing_passes: 0,
@@ -795,8 +795,8 @@ mod tests {
     fn test_monotone_interpolation() {
         // بین دو نقطه، درون‌یابی خطی است
         let pts = vec![
-            ProfilePoint { r: 10.0, h: 0.0 },
-            ProfilePoint { r: 30.0, h: 100.0 },
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 30.0, h: 100.0, m: None },
         ];
         let adj = FormAdjust {
             bottom_diameter_mm: 20.0,
@@ -815,10 +815,10 @@ mod tests {
         // اسپلاین باید از تمام گره‌ها دقیقاً بگذرد
         // (قطرها = ۲×شعاع انتهایی‌ها تا مقیاس یک‌به‌یک باشد)
         let pts = vec![
-            ProfilePoint { r: 10.0, h: 0.0 },
-            ProfilePoint { r: 30.0, h: 25.0 },
-            ProfilePoint { r: 18.0, h: 60.0 },
-            ProfilePoint { r: 22.0, h: 100.0 },
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 30.0, h: 25.0, m: None },
+            ProfilePoint { r: 18.0, h: 60.0, m: None },
+            ProfilePoint { r: 22.0, h: 100.0, m: None },
         ];
         let adj = FormAdjust {
             bottom_diameter_mm: 20.0,
@@ -836,9 +836,9 @@ mod tests {
         // گوشهٔ تیز: خطی وسط بازهٔ اول = 20؛ اسپلاین نرم‌تر (≠ خطی)
         // ولی بدون فراجهش از بازهٔ [10, 30]
         let pts = vec![
-            ProfilePoint { r: 10.0, h: 0.0 },
-            ProfilePoint { r: 30.0, h: 50.0 },
-            ProfilePoint { r: 10.0, h: 100.0 },
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 30.0, h: 50.0, m: None },
+            ProfilePoint { r: 10.0, h: 100.0, m: None },
         ];
         let adj_spline = FormAdjust {
             bottom_diameter_mm: 20.0,
@@ -871,11 +871,11 @@ mod tests {
     fn test_spline_monotone_data_no_overshoot() {
         // دادهٔ یکنوا: نتیجه باید یکنوا و در بازهٔ انتهایی‌ها بماند
         let pts = vec![
-            ProfilePoint { r: 5.0, h: 0.0 },
-            ProfilePoint { r: 12.0, h: 20.0 },
-            ProfilePoint { r: 19.0, h: 45.0 },
-            ProfilePoint { r: 25.0, h: 80.0 },
-            ProfilePoint { r: 28.0, h: 100.0 },
+            ProfilePoint { r: 5.0, h: 0.0, m: None },
+            ProfilePoint { r: 12.0, h: 20.0, m: None },
+            ProfilePoint { r: 19.0, h: 45.0, m: None },
+            ProfilePoint { r: 25.0, h: 80.0, m: None },
+            ProfilePoint { r: 28.0, h: 100.0, m: None },
         ];
         let adj = FormAdjust {
             bottom_diameter_mm: 10.0,
@@ -897,9 +897,9 @@ mod tests {
     fn test_linear_mode_matches_legacy() {
         // حالت Linear دقیقاً رفتار ۱.۰/۱.۱: میان‌پاره‌خطی
         let pts = vec![
-            ProfilePoint { r: 10.0, h: 0.0 },
-            ProfilePoint { r: 30.0, h: 50.0 },
-            ProfilePoint { r: 10.0, h: 100.0 },
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 30.0, h: 50.0, m: None },
+            ProfilePoint { r: 10.0, h: 100.0, m: None },
         ];
         let adj = FormAdjust {
             bottom_diameter_mm: 20.0,

@@ -517,6 +517,7 @@ mod tests {
             center_on_bed: true,
             phase_start_deg: 0.0,
             printer: PrinterProfile::default(),
+            mesh_quality: 1.0,
         }
     }
 
