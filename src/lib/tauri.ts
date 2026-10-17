@@ -194,6 +194,9 @@ export interface TextureParams {
 export interface ProfilePoint {
   r: number;
   h: number;
+  /** شیب مماس صریح dr/dh — نسخهٔ ۱.۵ (فلش‌های دوطرف ادیتور پروفایل).
+   *  undefined = مماس خودکار Fritsch-Carlson؛ ۰ = مماس افقی (قله/دره). */
+  m?: number;
 }
 
 /** روش درون‌یابی پروفایل — نسخهٔ ۱.۲ (معادل Rust Interpolation) */
@@ -433,13 +436,15 @@ export async function designerPreviewData(): Promise<PreviewData> {
   return callCore<PreviewData>("designer_preview_data", {});
 }
 
-/** خروجی STL در مسیر انتخابی */
+/** خروجی STL در مسیر انتخابی — quality: نسخهٔ ۱.۵ (دیالوگ کیفیت)
+ *  ۰٫۵=سریع/پیش‌نویس؛ ۱=استاندارد؛ ۲=ریز؛ ۳=بسیار ریز */
 export async function designerExportStl(
   project: DesignerProject,
-  path: string
+  path: string,
+  quality: number
 ): Promise<StlExportResult> {
   if (!isTauri) notInDesktop();
-  return invoke("designer_export_stl", { project, path });
+  return invoke("designer_export_stl", { project, path, quality });
 }
 
 /** ذخیرهٔ پروژهٔ طراح */
@@ -461,6 +466,21 @@ export async function loadProject(path: string): Promise<DesignerProject> {
 export async function readTextFile(path: string): Promise<string> {
   if (!isTauri) notInDesktop();
   return invoke("read_text_file", { path });
+}
+
+// ============================================================================
+// دستورهای نسخهٔ ۱.۵
+// ============================================================================
+
+/** پروفایل تصادفی چاپ‌پسند — دکمهٔ 🎲 گام ۱ (هستهٔ Rust: قواعد چاپ خوب) */
+export async function designerRandomProfile(seed: number): Promise<ProfilePoint[]> {
+  return callCore<ProfilePoint[]>("designer_random_profile", { seed });
+}
+
+/** نوشتن فایل متنی — ذخیرهٔ مستقیم G-code از طراح بدون ویرایشگر (۱.۵) */
+export async function writeTextFile(path: string, content: string): Promise<number> {
+  if (!isTauri) notInDesktop();
+  return invoke("write_text_file", { path, content });
 }
 
 // ============================================================================
@@ -497,6 +517,22 @@ export async function saveFileDialog(
     defaultPath: defaultName,
     filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
   });
+}
+
+/** دیالوگ بازکردن فایل SVG — ایمپورت پروفایل (نسخهٔ ۱.۵) */
+export async function openSvgDialog(): Promise<string | null> {
+  if (!isTauri) notInDesktop();
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    title: "ایمپورت پروفایل از SVG",
+    filters: [
+      { name: "SVG", extensions: ["svg"] },
+      { name: "همهٔ فایل‌ها", extensions: ["*"] },
+    ],
+    multiple: false,
+    directory: false,
+  });
+  return typeof selected === "string" ? selected : null;
 }
 
 /** آیا در پوستهٔ دسکتاپ اجرا می‌شویم؟ (برای نمایش وضعیت صادقانه) */
