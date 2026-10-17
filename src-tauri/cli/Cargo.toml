@@ -1,6 +1,6 @@
 [package]
 name = "gcode-cli"
-version = "1.4.0"
+version = "1.5.0"
 description = "CLI توسعهٔ G-code Studio — همان هستهٔ gcode-core از stdin/stdout برای پل dev مرورگر"
 edition = "2021"
 publish = false
