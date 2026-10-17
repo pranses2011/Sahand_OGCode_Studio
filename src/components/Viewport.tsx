@@ -840,9 +840,8 @@ export function Viewport(props: ViewportProps) {
     const positions = new Float32Array(rows * (cols + 1) * 3);
     const normals = new Float32Array(rows * (cols + 1) * 3);
     const indices: number[] = [];
-    const cx = 0, cz = 0; // مرکز محور در فضای Three (جابه‌جایی با bedOffset زیر)
-    // bedOffset: مرکز فرم روی صفحه — مثل اسپات
-    const [ax, ay] = props.spot?.bedOffset ?? [0, 0];
+    // مرکز فرم روی صفحه (bedOffset اسپات — پیش‌فرض مرکز صفحهٔ چاپ)
+    const [ax, ay] = props.spot?.bedOffset ?? [110, 110];
     const center3x = ax;
     const center3z = -ay;
     for (let i = 0; i < rows; i++) {

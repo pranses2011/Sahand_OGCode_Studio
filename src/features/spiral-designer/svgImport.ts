@@ -56,7 +56,7 @@ function samplePathD(d: string, step = 6): Pt[] {
     const a: number[] = [];
     NUM.lastIndex = 0;
     let n: RegExpExecArray | null;
-    while ((n = NUM.exec(s))) a.push(parseFloat(n[1]));
+    while ((n = NUM.exec(s))) a.push(parseFloat(n[0]));
     return a;
   };
   const push = (x: number, y: number) => {

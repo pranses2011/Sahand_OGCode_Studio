@@ -71,3 +71,31 @@ describe("منطق نمایش سرعت‌های mm/s (۱.۴)", () => {
     expect(printer.print_speed_mm_min).toBe(2700);
   });
 });
+
+// ============================================================================
+// نسخهٔ ۱.۵ — estimateTriangles (آینهٔ TS از build_mesh)
+// ============================================================================
+import { estimateTriangles } from "./SpiralDesignerPage";
+
+describe("estimateTriangles — دیالوگ کیفیت STL (۱.۵)", () => {
+  const samples = Array.from({ length: 129 }, (_, i) => [i, 25] as unknown as number[]);
+  // شعاع ثابت ۲۵ → circumference ≈ ۱۵۷ → steps ≈ ۷۹
+  it("کیفیت بالاتر → مثلث بیشتر (تقریباً مجذور ضریب)", () => {
+    const t05 = estimateTriangles(samples, 100, 0.25, 0.5);
+    const t1 = estimateTriangles(samples, 100, 0.25, 1);
+    const t2 = estimateTriangles(samples, 100, 0.25, 2);
+    expect(t1).toBeGreaterThan(t05);
+    expect(t2).toBeGreaterThan(t1);
+    // نسبت ≈ ۴× — rows و cols هر دو با کیفیت مقیاس می‌شوند (مجذور ضریب)
+    expect(t1 / t05).toBeGreaterThan(3);
+    expect(t1 / t05).toBeLessThan(5);
+  });
+  it("بدون نمونه → مقدار معقول پیش‌فرض", () => {
+    const t = estimateTriangles(undefined, 100, 0.25, 1);
+    expect(t).toBeGreaterThan(1000);
+  });
+  it("کیفیت سقف‌دار (۴× کلمپ نمی‌شود بی‌نهایت)", () => {
+    const t = estimateTriangles(samples, 100, 0.25, 99);
+    expect(t).toBeLessThan(4_000_000);
+  });
+});

@@ -60,7 +60,7 @@ describe("پل IPC در محیط غیر-دسکتاپ (صداقت بدون داد
     } satisfies DesignerProject;
     await expect(designerCompute(project)).rejects.toThrow();
     await expect(designerExportGcode(project)).rejects.toThrow();
-    await expect(designerExportStl(project, "x.stl")).rejects.toThrow();
+    await expect(designerExportStl(project, "x.stl", 1)).rejects.toThrow();
     await expect(saveProject(project, "x.json")).rejects.toThrow();
     await expect(loadProject("x.json")).rejects.toThrow();
   });
