@@ -1,6 +1,6 @@
 [package]
 name = "gcode-mail"
-version = "1.7.0"
+version = "1.7.1"
 description = "ارسال ایمیل SMTP مستقیم — بازخورد و گزارش خطای Sahand GCode Studio"
 edition = "2021"
 publish = false

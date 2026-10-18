@@ -1,7 +1,7 @@
 {
   "name": "sahand-gcode-studio",
   "private": true,
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Sahand GCode Studio — استودیوی ویرایش و طراحی G-code — نرم‌افزار دسکتاپ ویندوز",
   "type": "module",
   "scripts": {
