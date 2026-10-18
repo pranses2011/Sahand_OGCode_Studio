@@ -965,14 +965,78 @@ export function Viewport(props: ViewportProps) {
       const rows = wm.rows;
       const cols = wm.cols;
       const stride = cols + 1;
-      const positions = new Float32Array(wm.positions.length);
       // G-code (x,y,z) → Three (x, z, −y)
+      const cvt = (i: number): [number, number, number] => [
+        wm.positions[i * 3],
+        wm.positions[i * 3 + 2],
+        -wm.positions[i * 3 + 1],
+      ];
+      const maskAt = (idx: number): boolean =>
+        !wm.mask || wm.mask.length <= idx || wm.mask[idx] === 1;
+
+      if ((wm.mode ?? 0) === 1) {
+        // ============ حالت توری — نسخهٔ ۱٫۷ (درخواست ۳) ============
+        // نوارهای «تار» در همان انقلاب: هر گام (i,j)→(i,j+1) یک نوار باریک
+        // در جهت مسیر با نیم‌عرض ~۰٫۶mm (شبیه رشتهٔ چاپی واقعی)؛ تارهای
+        // زیگزاگ توری دقیقاً همان چیزی است که چاپ می‌شود.
+        const halfW = 0.6;
+        const verts: number[] = [];
+        const indices2: number[] = [];
+        let vi = 0;
+        for (let i = 0; i <= rows; i++) {
+          for (let j = 0; j < cols; j++) {
+            const i0 = i * stride + j;
+            const i1 = i * stride + j + 1;
+            if (!maskAt(i0) || !maskAt(i1)) continue; // دهانهٔ سوراخ
+            const p0 = cvt(i0);
+            const p1 = cvt(i1);
+            // جهت‌های نرمال شعاعی (عمود بر محور Z در فضای Three)
+            const n0 = [p0[0] - center3x, p0[2] - center3z];
+            const l0 = Math.hypot(n0[0], n0[1]) || 1;
+            const n1 = [p1[0] - center3x, p1[2] - center3z];
+            const l1 = Math.hypot(n1[0], n1[1]) || 1;
+            verts.push(
+              p0[0] + (n0[0] / l0) * halfW, p0[1], p0[2] + (n0[1] / l0) * halfW,
+              p0[0] - (n0[0] / l0) * halfW, p0[1], p0[2] - (n0[1] / l0) * halfW,
+              p1[0] + (n1[0] / l1) * halfW, p1[1], p1[2] + (n1[1] / l1) * halfW,
+              p1[0] - (n1[0] / l1) * halfW, p1[1], p1[2] - (n1[1] / l1) * halfW,
+            );
+            indices2.push(vi, vi + 2, vi + 3, vi, vi + 3, vi + 1);
+            vi += 4;
+          }
+        }
+        if (vi > 0) {
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(verts), 3));
+          geo.setIndex(indices2);
+          geo.computeVertexNormals();
+          const mat = new THREE.MeshStandardMaterial({
+            color: extrusionColor,
+            side: THREE.DoubleSide,
+            roughness: 0.42,
+            metalness: 0.1,
+            emissive: new THREE.Color(extrusionColor).multiplyScalar(0.12),
+          });
+          const surface = new THREE.Mesh(geo, mat);
+          surface.name = "solid-surface";
+          surface.renderOrder = 1;
+          scene.add(surface);
+          surfaceRef.current = surface;
+        }
+        buildFloorDisk();
+        markDirty();
+        return;
+      }
+
+      // ============ حالت جامد — ۱٫۶ + ماسک سوراخ‌های ۱٫۷ (درخواست ۹) ============
+      const positions = new Float32Array(wm.positions.length);
       for (let i = 0; i < wm.positions.length; i += 3) {
         positions[i] = wm.positions[i];
         positions[i + 1] = wm.positions[i + 2];
         positions[i + 2] = -wm.positions[i + 1];
       }
-      // ایندکس مثلث‌ها — هر سلول بین دو انقلاب متوالی (ستون cols = بسته‌شدن)
+      // ایندکس مثلث‌ها — هر سلول بین دو انقلاب متوالی (ستون cols = بسته‌شدن)؛
+      // سلول‌هایی که گوشه‌شان ماسک ۰ دارد رها می‌شوند ⇒ دهانهٔ سوراخ باز دیده می‌شود
       const indices: number[] = [];
       for (let i = 0; i < rows; i++) {
         for (let j = 0; j < cols; j++) {
@@ -980,6 +1044,7 @@ export function Viewport(props: ViewportProps) {
           const b = a + 1;
           const c = (i + 1) * stride + j;
           const d = c + 1;
+          if (!maskAt(a) || !maskAt(b) || !maskAt(c) || !maskAt(d)) continue;
           indices.push(a, c, d, a, d, b);
         }
       }

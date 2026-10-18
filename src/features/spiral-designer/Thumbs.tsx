@@ -136,7 +136,9 @@ export interface FloorThumbProps {
   kind:
     | "Rings" | "Spiral" | "Grid" | "Radial" | "ZigZag"
     // ---- نسخهٔ ۱٫۶: ۵ الگوی جدید ----
-    | "Honeycomb" | "Wave" | "Star" | "Snowflake" | "Octagram";
+    | "Honeycomb" | "Wave" | "Star" | "Snowflake" | "Octagram"
+    // ---- نسخهٔ ۱٫۷: الگوهای کف لامپ ----
+    | "LampWeb" | "Sunburst";
   /** قطر سوراخ مرکزی نسبی (0..1 از شعاع) */
   hole?: number;
   size?: number;
@@ -365,6 +367,62 @@ export function FloorThumb(props: FloorThumbProps) {
       );
     }
     body = els;
+  } else if (kind === "LampWeb") {
+    // وب لامپ — حلقه‌های درشت + پره‌های شعاعی (شبکهٔ نور)
+    const els: JSX.Element[] = [];
+    for (let r = R; r > rh; r -= R / 3.5) {
+      els.push(
+        <circle key={"lw" + r} cx={cx} cy={cy} r={r} fill="none" stroke={stroke} strokeWidth={thin} opacity={0.85} />
+      );
+    }
+    for (let k = 0; k < 6; k++) {
+      const a = (k * Math.PI) / 3;
+      els.push(
+        <line
+          key={"lws" + k}
+          x1={cx + rh * Math.cos(a)}
+          y1={cy + rh * Math.sin(a)}
+          x2={cx + R * Math.cos(a)}
+          y2={cy + R * Math.sin(a)}
+          stroke={stroke}
+          strokeWidth={thin * 1.4}
+          opacity={0.9}
+        />
+      );
+    }
+    body = <>{els}</>;
+  } else if (kind === "Sunburst") {
+    // خورشیدشکاف — پرتوهای پهن واگرا از سوکت تا لبه
+    const els: JSX.Element[] = [];
+    for (let k = 0; k < 8; k++) {
+      const a = (k * Math.PI) / 4;
+      const h0 = thin * 1.2;
+      const h1 = (Math.PI * R) / 8 * 0.42;
+      const ux = Math.cos(a);
+      const uy = Math.sin(a);
+      const px = -uy;
+      const py = ux;
+      els.push(
+        <g key={"sb" + k}>
+          <line
+            x1={cx + rh * ux - h0 * px} y1={cy + rh * uy - h0 * py}
+            x2={cx + R * ux - h1 * px} y2={cy + R * uy - h1 * py}
+            stroke={stroke} strokeWidth={thin} opacity={0.9}
+          />
+          <line
+            x1={cx + rh * ux + h0 * px} y1={cy + rh * uy + h0 * py}
+            x2={cx + R * ux + h1 * px} y2={cy + R * uy + h1 * py}
+            stroke={stroke} strokeWidth={thin} opacity={0.9}
+          />
+          <line
+            x1={cx + rh * ux} y1={cy + rh * uy}
+            x2={cx + R * ux} y2={cy + R * uy}
+            stroke={stroke} strokeWidth={thin} opacity={0.6}
+          />
+        </g>
+      );
+    }
+    body = <>{els}</>;
   } else {
     // ZigZag — رفت‌وبرگشتی
     let d = "";

@@ -169,7 +169,10 @@ export interface PatternParams {
     | "Diamond" | "Chevron" | "Rings" | "Scale" | "Facet"
     // ---- نسخهٔ ۱.۲: ۸ الگوی جدید ----
     | "Braid" | "Pineapple" | "Lotus" | "TwistedFlute"
-    | "Pearl" | "Meander" | "Brick" | "Spikes";
+    | "Pearl" | "Meander" | "Brick" | "Spikes"
+    /** ---- نسخهٔ ۱٫۷: ۸ الگوی جدید ---- */
+    | "Gothic" | "Moorish" | "Bamboo" | "Colosseum"
+    | "RopeSpiral" | "Checker" | "Sunray" | "Cartouche";
   amplitude_mm: number;
   count: number;
   frequency: number;
@@ -186,7 +189,10 @@ export interface TextureParams {
   kind:
     | "Ripple" | "Weave" | "Stitch" | "SpiralGroove" | "Hammered" | "Basket"
     // ---- نسخهٔ ۱.۲: ۶ بافت جدید ----
-    | "WoodGrain" | "Leather" | "Knurl" | "Ocean" | "Bubbles" | "Rows";
+    | "WoodGrain" | "Leather" | "Knurl" | "Ocean" | "Bubbles" | "Rows"
+    /** ---- نسخهٔ ۱٫۷: ۸ بافت جدید ---- */
+    | "Carbon" | "Herringbone" | "Cobblestone" | "Crackle"
+    | "FishScale" | "Sand" | "Ridges" | "Pores";
   amplitude_mm: number;
   period_mm: number;
   radial: boolean;
@@ -214,7 +220,9 @@ export type ProfileInterpolation = "Linear" | "Spline";
 export type FloorPatternKind =
   | "Rings" | "Spiral" | "Grid" | "Radial" | "ZigZag"
   // ---- نسخهٔ ۱٫۶: ۵ الگوی جدید (درخواست ۷) ----
-  | "Honeycomb" | "Wave" | "Star" | "Snowflake" | "Octagram";
+  | "Honeycomb" | "Wave" | "Star" | "Snowflake" | "Octagram"
+  /** ---- نسخهٔ ۱٫۷: الگوهای کف لامپ ---- */
+  | "LampWeb" | "Sunburst";
 
 export interface FloorSettings {
   enabled: boolean;
@@ -234,6 +242,98 @@ export interface FloorSettings {
   reinforce_rings?: number;
 }
 
+// ============================================================================
+// انواع نسخهٔ ۱٫۷ — دیواره (توری/سوراخ)، آویز، لامپ (درخواست ۳، ۷، ۸، ۹)
+// ============================================================================
+
+export type WallModeKind = "Solid" | "Lattice";
+export type LatticeStyleKind = "Diamond" | "Square" | "Chevron" | "Twisted";
+export type HoleShapeKind = "Circle" | "RoundedRect" | "Diamond" | "Hexagon" | "Star";
+export type HangingStyleKind = "None" | "RimHoles" | "TopHoles" | "Both";
+export type SpokesStyleKind = "Parallel" | "Single" | "Web";
+
+/** تنظیمات توری — درخواست کاربر ۳ (چاپ توری مانند مرجع) */
+export interface LatticeSettings {
+  style?: LatticeStyleKind;
+  /** عرض خانه در طول محیط (mm) */
+  cell_width_mm?: number;
+  /** ارتفاع خانه (mm) */
+  cell_height_mm?: number;
+  /** نسبت صعود هر انقلاب (۰٫۵ = الماس متقارن) */
+  rise_ratio?: number;
+  /** سرعت تارها نسبت به دیواره (۰٫۳..۱) */
+  speed_scale?: number;
+  /** ضریب جریان تارها */
+  flow_scale?: number;
+  /** چرخش شبکهٔ توری (درجه) */
+  phase_deg?: number;
+  /** شروع ناحیهٔ توری (mm) — پایین جامد می‌ماند */
+  z_start_mm?: number;
+  /** پایان ناحیهٔ توری (null = تا بالا) */
+  z_end_mm?: number | null;
+}
+
+/** سوراخ‌های دیواره — درخواست کاربر ۹ (سوراخ واقعی با قاب تقویتی) */
+export interface WallHoleSettings {
+  enabled?: boolean;
+  shape?: HoleShapeKind;
+  /** تعداد سوراخ دور محیط */
+  count_around?: number;
+  /** ردیف‌های عمودی */
+  rows?: number;
+  /** عرض سوراخ (mm در طول محیط) */
+  width_mm?: number;
+  /** ارتفاع سوراخ (mm) */
+  height_mm?: number;
+  /** فاصلهٔ مرکز ردیف‌ها (mm؛ ۰ = خودکار) */
+  row_pitch_mm?: number;
+  margin_bottom_mm?: number;
+  margin_top_mm?: number;
+  /** دورهای قاب تقویتی (۰..۳) */
+  frame_passes?: number;
+  phase_deg?: number;
+  /** آجرچین: ردیف‌های زوج نیم‌گام جابه‌جا */
+  stagger?: boolean;
+}
+
+/** تنظیمات کامل دیواره — نسخهٔ ۱٫۷ */
+export interface WallSettings {
+  mode?: WallModeKind;
+  lattice?: LatticeSettings;
+  holes?: WallHoleSettings;
+}
+
+/** آویز حرفه‌ای — درخواست کاربر ۷ */
+export interface PendantSettings {
+  style?: HangingStyleKind;
+  rim_holes_count?: number;
+  rim_hole_diameter_mm?: number;
+  /** موقعیت سوراخ‌های کف (٪ شعاع) */
+  rim_hole_radius_percent?: number;
+  rim_phase_deg?: number;
+  top_holes_count?: number;
+  top_hole_diameter_mm?: number;
+  /** فاصلهٔ سوراخ‌های بالا از لبه (mm) */
+  top_hole_from_rim_mm?: number;
+  /** حلقه‌های تقویت لبهٔ بالا */
+  rim_reinforce_rings?: number;
+  top_hole_frames?: boolean;
+}
+
+/** لامپ حرفه‌ای — درخواست کاربر ۸ */
+export interface LampSettings {
+  enabled?: boolean;
+  /** قطر سوراخ سوکت (mm) — ۱۶/۲۸/۴۰ = سوکت‌های استاندارد */
+  center_hole_diameter_mm?: number;
+  socket_rings?: number;
+  spokes_count?: number;
+  spokes_width_mm?: number;
+  spokes_style?: SpokesStyleKind;
+  /** ضریب فاصلهٔ کف (بیشتر = نور بیشتر) */
+  floor_gap_multiplier?: number;
+  recessed_socket?: boolean;
+}
+
 export interface DesignerProject {
   schema_version: number;
   profile: ProfilePoint[];
@@ -250,6 +350,12 @@ export interface DesignerProject {
   patterns: PatternParams[];
   textures: TextureParams[];
   floor: FloorSettings;
+  /** ---- نسخهٔ ۱٫۷: دیواره (جامد/توری + سوراخ‌ها) — درخواست ۳ و ۹ ---- */
+  wall?: WallSettings;
+  /** ---- نسخهٔ ۱٫۷: آویز حرفه‌ای — درخواست ۷ ---- */
+  pendant?: PendantSettings;
+  /** ---- نسخهٔ ۱٫۷: لامپ حرفه‌ای — درخواست ۸ ---- */
+  lamp?: LampSettings;
   printer: PrinterProfile;
   created_at_unix: number;
   note: string;
@@ -306,6 +412,11 @@ export interface WallMeshLite {
   cols: number;
   /** رأس‌ها تخت (x,y,z)×۳ ردیف‌محور — گردشده به ۰٫۰۱mm */
   positions: number[];
+  /** ماسک هر رأس — نسخهٔ ۱٫۷: ۱ = سطح چاپی، ۰ = دهانهٔ سوراخ
+   *  (مثلث با گوشهٔ ماسک‌صفر رندر نمی‌شود) */
+  mask?: number[];
+  /** حالت دیواره — ۱٫۷: ۰ = جامد (نوار بین انقلاب‌ها)، ۱ = توری (تارها) */
+  mode?: number;
 }
 
 export interface FastViewport {
@@ -586,6 +697,109 @@ export async function openSvgDialog(): Promise<string | null> {
 }
 
 /** آیا در پوستهٔ دسکتاپ اجرا می‌شویم؟ (برای نمایش وضعیت صادقانه) */
+// ============================================================================
+// SMTP — نسخهٔ ۱٫۷ (رفع باگ «ایمیل نمی‌رسد» — درخواست کاربر ۱۰)
+// ============================================================================
+
+export interface SmtpConfigView {
+  host: string;
+  port: number;
+  username: string;
+  from_name: string;
+  to_email: string;
+  has_password: boolean;
+  ready: boolean;
+}
+
+export interface MailSendReport {
+  ok: boolean;
+  channel: string;
+  message: string;
+}
+
+export async function smtpGetConfig(): Promise<SmtpConfigView> {
+  return invoke("smtp_get_config", {});
+}
+
+export async function smtpSaveConfig(cfg: {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  from_name?: string;
+  to_email?: string;
+}): Promise<SmtpConfigView> {
+  return invoke("smtp_save_config", cfg);
+}
+
+export async function smtpClearConfig(): Promise<void> {
+  return invoke("smtp_clear_config", {});
+}
+
+export async function smtpTest(): Promise<MailSendReport> {
+  return invoke("smtp_test", {});
+}
+
+export async function smtpSendFeedback(payload: {
+  kind: string;
+  message: string;
+  from_name?: string;
+  reply_email?: string;
+  context?: string;
+  detail?: string;
+  app_version?: string;
+}): Promise<MailSendReport> {
+  return invoke("smtp_send_feedback", payload);
+}
+
+// ============================================================================
+// متن به گلدان — نسخهٔ ۱٫۷ (درخواست کاربر ۱۱)
+// ============================================================================
+
+/** کانتور بستهٔ متن (mm — فضای مدل) */
+export interface TextContour {
+  points: [number, number][];
+  is_hole?: boolean;
+}
+
+/** پارامترهای کامل متن‌به‌گلدان */
+export interface TextVaseParams {
+  contours: TextContour[];
+  height_mm: number;
+  floor_layers?: number;
+  floor_spacing_mm?: number;
+  quality_step_mm?: number;
+  center_on_bed?: boolean;
+  speed_scale?: number;
+  printer: PrinterProfile;
+}
+
+/** پیلود viewport متن‌به‌گلدان */
+export interface TextVaseViewport {
+  revision: number;
+  count: number;
+  positions: number[];
+  kinds: number[];
+  feedrates: number[];
+  bbox: [number, number, number, number];
+  summary_fa: string;
+  stats: StatsPayload;
+  diagnostics: DiagPayload[];
+}
+
+export async function text2vaseCompute(
+  params: TextVaseParams
+): Promise<TextVaseViewport> {
+  return invoke("text2vase_compute", { params });
+}
+
+export async function text2vaseExportGcode(
+  params: TextVaseParams,
+  quality?: number
+): Promise<string> {
+  return invoke("text2vase_export_gcode", { params, quality });
+}
+
 export function runningInDesktop(): boolean {
   return isTauri;
 }

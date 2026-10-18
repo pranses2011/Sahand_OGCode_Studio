@@ -79,8 +79,51 @@ export interface FaStrings {
   step1Profile: string;
   step2Pattern: string;
   step3Texture: string;
-  step4Floor: string;
-  step5Printer: string;
+  step4Wall: string;
+  step5Floor: string;
+  step6Printer: string;
+  // ---------- نسخهٔ ۱٫۷: دیواره/توری/سوراخ/آویز/لامپ ----------
+  wallModeTitle: string;
+  wallSolid: string;
+  wallLattice: string;
+  latticeStyle: string;
+  latticeCellW: string;
+  latticeCellH: string;
+  latticeRise: string;
+  latticeSpeed: string;
+  latticeFlow: string;
+  latticePhase: string;
+  latticeZStart: string;
+  latticeZEnd: string;
+  holesTitle: string;
+  holesShape: string;
+  holesAround: string;
+  holesRows: string;
+  holesWidth: string;
+  holesHeight: string;
+  holesPitch: string;
+  holesMarginBottom: string;
+  holesMarginTop: string;
+  holesFrames: string;
+  holesPhase: string;
+  holesStagger: string;
+  pendantTitle: string;
+  pendantStyle: string;
+  pendantRimCount: string;
+  pendantRimD: string;
+  pendantRimPos: string;
+  pendantTopCount: string;
+  pendantTopD: string;
+  pendantTopFrom: string;
+  pendantRings: string;
+  lampTitle: string;
+  lampHole: string;
+  lampRings: string;
+  lampSpokes: string;
+  lampSpokeW: string;
+  lampSpokeStyle: string;
+  lampGap: string;
+  lampRecessed: string;
   height: string;
   bottomDiameter: string;
   topDiameter: string;
@@ -127,6 +170,22 @@ export interface FaStrings {
   presetSconce: string;
   presetBucket: string;
   presetCeladon: string;
+  // ---------- نسخهٔ ۱٫۷: ۱۴ پریست جدید (درخواست ۴) ----------
+  presetMeiping: string;
+  presetGreekUrn: string;
+  presetTeardrop: string;
+  presetArtDeco: string;
+  presetMushroom: string;
+  presetTulip: string;
+  presetTower: string;
+  presetWaveRim: string;
+  presetHoneyJar: string;
+  presetDoubleBulge: string;
+  presetLowBowl: string;
+  presetGrandVase: string;
+  presetGeometric: string;
+  presetTallCandle: string;
+  presetRippledColumn: string;
   patternAdd: string;
   patternAmplitude: string;
   patternCount: string;
@@ -312,8 +371,51 @@ export const fa: FaStrings = {
   step1Profile: "۱. پروفایل مقطع",
   step2Pattern: "۲. الگوی هندسی",
   step3Texture: "۳. بافت مسیر",
-  step4Floor: "۴. کف",
-  step5Printer: "۵. پرینتر و خروجی",
+  step4Wall: "۴. دیواره (توری/سوراخ)",
+  step5Floor: "۵. کف (لامپ/آویز)",
+  step6Printer: "۶. پرینتر و خروجی",
+  // ---------- نسخهٔ ۱٫۷ ----------
+  wallModeTitle: "حالت دیواره",
+  wallSolid: "جامد پیوسته",
+  wallLattice: "توری (خانه‌های باز)",
+  latticeStyle: "سبک خانه‌ها",
+  latticeCellW: "عرض خانه (mm)",
+  latticeCellH: "ارتفاع خانه (mm)",
+  latticeRise: "نسبت صعود (۰٫۲..۰٫۸)",
+  latticeSpeed: "سرعت تارها (۰٫۳..۱)",
+  latticeFlow: "جریان تارها",
+  latticePhase: "چرخش شبکه (درجه)",
+  latticeZStart: "شروع توری از ارتفاع (mm)",
+  latticeZEnd: "پایان توری (mm — خالی = تا بالا)",
+  holesTitle: "سوراخ‌های دیواره (واقعی + قاب تقویتی)",
+  holesShape: "شکل",
+  holesAround: "تعداد دور محیط",
+  holesRows: "ردیف‌های عمودی",
+  holesWidth: "عرض سوراخ (mm)",
+  holesHeight: "ارتفاع سوراخ (mm)",
+  holesPitch: "فاصلهٔ ردیف‌ها (mm — ۰ = خودکار)",
+  holesMarginBottom: "حاشیهٔ پایین (mm)",
+  holesMarginTop: "حاشیهٔ بالا (mm)",
+  holesFrames: "دورهای قاب تقویتی",
+  holesPhase: "فاز زاویه‌ای (درجه)",
+  holesStagger: "چینش آجری (نیم‌گام)",
+  pendantTitle: "تنظیمات آویز (معلق‌کردن)",
+  pendantStyle: "سبک آویز",
+  pendantRimCount: "تعداد سوراخ کف",
+  pendantRimD: "قطر سوراخ کف (mm)",
+  pendantRimPos: "موقعیت سوراخ کف (٪ شعاع)",
+  pendantTopCount: "تعداد سوراخ بالا",
+  pendantTopD: "قطر سوراخ بالا (mm)",
+  pendantTopFrom: "فاصله از لبهٔ بالا (mm)",
+  pendantRings: "حلقه‌های تقویت لبهٔ بالا",
+  lampTitle: "تنظیمات لامپ (سوکت و پره)",
+  lampHole: "قطر سوراخ سوکت (mm)",
+  lampRings: "حلقه‌های تقویت سوکت",
+  lampSpokes: "تعداد پره‌های متصل‌کننده",
+  lampSpokeW: "عرض هر پره (mm)",
+  lampSpokeStyle: "سبک پره‌ها",
+  lampGap: "ضریب فاصلهٔ کف (نور)",
+  lampRecessed: "حلقهٔ فرورفتهٔ سوکت",
   height: "ارتفاع (mm)",
   bottomDiameter: "قطر پایین (mm)",
   topDiameter: "قطر بالا (mm)",
@@ -360,6 +462,22 @@ export const fa: FaStrings = {
   presetSconce: "شمع‌دان",
   presetBucket: "دلو",
   presetCeladon: "سلادون",
+  // ---- نسخهٔ ۱٫۷ ----
+  presetMeiping: "گلدان چینی می‌پینگ",
+  presetGreekUrn: "جام یونانی",
+  presetTeardrop: "قطره‌ای",
+  presetArtDeco: "آرت‌دکو (پله‌ای)",
+  presetMushroom: "قارچی",
+  presetTulip: "لاله‌ای",
+  presetTower: "برجی",
+  presetWaveRim: "لبهٔ موج‌دار",
+  presetHoneyJar: "شهدستان",
+  presetDoubleBulge: "دوشکمه",
+  presetLowBowl: "کاسهٔ پهن",
+  presetGrandVase: "گلدان سترگ",
+  presetGeometric: "سنگ‌شکسته",
+  presetTallCandle: "شمعدان بلند",
+  presetRippledColumn: "ستون موج‌دار",
   patternAdd: "افزودن الگو",
   patternAmplitude: "دامنه (mm)",
   patternCount: "تعداد",

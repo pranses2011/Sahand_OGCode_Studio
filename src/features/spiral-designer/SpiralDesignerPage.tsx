@@ -69,6 +69,15 @@ const PATTERNS: { kind: PatternParams["kind"]; name: string; hint: string }[] = 
   { kind: "Meander", name: "یونانی", hint: "بلوک‌های مربعی نقش یونانی" },
   { kind: "Brick", name: "آجری", hint: "ردیف‌های نیم‌جابه‌جا دیوار آجری" },
   { kind: "Spikes", name: "خاردار", hint: "خارهای مثلثی تیز" },
+  // ---- نسخهٔ ۱٫۷ (درخواست کاربر ۵: الگوهای بیشتر) ----
+  { kind: "Gothic", name: "گوتیک", hint: "قوس‌های تیزه‌دار عمودی کلیسایی" },
+  { kind: "Moorish", name: "موریسکی", hint: "طاق‌های هلالی نعل‌اسبی اسلامی" },
+  { kind: "Bamboo", name: "بامبو", hint: "گره‌های بامبو با گردن تیز" },
+  { kind: "Colosseum", name: "کولوسئومی", hint: "نوارهای افقی مربعی آمفی‌تئاتر" },
+  { kind: "RopeSpiral", name: "طناب مارپیچ", hint: "تار ضخیم پیچیده دور فرم" },
+  { kind: "Checker", name: "شطرنجی", hint: "بلوک‌های متناوب ریز" },
+  { kind: "Sunray", name: "پرتو خورشید", hint: "اشعه‌های عمودی پهن و نرم" },
+  { kind: "Cartouche", name: "کارتوش", hint: "قرص‌های کشیده نقش ایرانی" },
 ];
 
 const TEXTURES: { kind: TextureParams["kind"]; name: string; hint: string }[] = [
@@ -84,6 +93,15 @@ const TEXTURES: { kind: TextureParams["kind"]; name: string; hint: string }[] = 
   { kind: "Ocean", name: "موج دریا", hint: "موج‌های روان بی‌تکرار" },
   { kind: "Bubbles", name: "حباب", hint: "فرورفتگی‌های گرد پراکنده" },
   { kind: "Rows", name: "تخته‌ای", hint: "شیارهای افقی ردیف تخته‌ها" },
+  // ---- نسخهٔ ۱٫۷ (درخواست کاربر ۶: بافت‌های بیشتر) ----
+  { kind: "Carbon", name: "کربنی (تویل)", hint: "بافت متقاطع ریز پنل کربن" },
+  { kind: "Herringbone", name: "ست‌فقرات ماهی", hint: "ستون‌های زیگزاگ متناوب جهت" },
+  { kind: "Cobblestone", name: "سنگ‌فرش", hint: "سنگ‌های گرد درهم" },
+  { kind: "Crackle", name: "کراکله", hint: "شبکهٔ ترک‌های ریز سرامیکی" },
+  { kind: "FishScale", name: "فلس ماهی", hint: "کاسه‌های هم‌پوشان با آفست" },
+  { kind: "Sand", name: "شنی", hint: "نویز ریز ملایم سطح شن" },
+  { kind: "Ridges", name: "شیار عمودی ریز", hint: "رگه‌های عمودی ظریف پارچه" },
+  { kind: "Pores", name: "منافذ اسفنجی", hint: "گودی‌های ریز پراکنده متخلخل" },
 ];
 
 const FLOORS: { kind: FloorPatternKind; name: string; hint: string }[] = [
@@ -98,6 +116,9 @@ const FLOORS: { kind: FloorPatternKind; name: string; hint: string }[] = [
   { kind: "Star", name: "ستاره‌ای", hint: "ستارهٔ چندپر پیوسته — نمایشی" },
   { kind: "Snowflake", name: "دانه‌برفی", hint: "۶ شاخه با شاخه‌های فرعی ۴۵°" },
   { kind: "Octagram", name: "گره هندسی", hint: "دو مربع چرخیده + هشت‌ضلعی — نقش هندسی" },
+  // ---- نسخهٔ ۱٫۷ (درخواست کاربر ۸: کف لامپ) ----
+  { kind: "LampWeb", name: "وب لامپ", hint: "حلقه + پره = شبکهٔ نور عبوری" },
+  { kind: "Sunburst", name: "خورشیدشکاف", hint: "پرتوهای پهن از سوکت تا لبه" },
 ];
 
 // ============================================================================
@@ -155,6 +176,53 @@ const PROFILE_LIBRARY: {
   { key: "celadon", name: fa.presetCeladon, profile: [
     { r: 13, h: 0 }, { r: 16, h: 8 }, { r: 23, h: 30 }, { r: 24, h: 48 },
     { r: 17, h: 72 }, { r: 10.5, h: 88 }, { r: 11, h: 98 }] },
+  // ---- نسخهٔ ۱٫۷: ۱۴ گلدان جدید (درخواست کاربر ۴) ----
+  { key: "meiping", name: fa.presetMeiping, profile: [
+    { r: 14, h: 0 }, { r: 17, h: 6 }, { r: 22, h: 25 }, { r: 24.5, h: 55 },
+    { r: 22, h: 75 }, { r: 15, h: 92 }, { r: 14.5, h: 100 }] },
+  { key: "greek", name: fa.presetGreekUrn, profile: [
+    { r: 16, h: 0 }, { r: 14, h: 5 }, { r: 22, h: 30 }, { r: 23, h: 55 },
+    { r: 19, h: 75 }, { r: 20, h: 90 }, { r: 26, h: 100 }] },
+  { key: "teardrop", name: fa.presetTeardrop, profile: [
+    { r: 6, h: 0 }, { r: 12, h: 12 }, { r: 22, h: 45 }, { r: 24, h: 65 },
+    { r: 20, h: 85 }, { r: 12, h: 97 }, { r: 8, h: 100 }] },
+  { key: "artdeco", name: fa.presetArtDeco, profile: [
+    { r: 18, h: 0 }, { r: 18, h: 20 }, { r: 20.5, h: 20.5 }, { r: 20.5, h: 45 },
+    { r: 23.5, h: 45.5 }, { r: 23.5, h: 70 }, { r: 26, h: 70.5 },
+    { r: 26, h: 92 }, { r: 27.5, h: 92.5 }, { r: 27.5, h: 100 }] },
+  { key: "mushroom", name: fa.presetMushroom, profile: [
+    { r: 12, h: 0 }, { r: 9, h: 25 }, { r: 8, h: 50 }, { r: 10, h: 62 },
+    { r: 22, h: 78 }, { r: 26, h: 92 }, { r: 24, h: 100 }] },
+  { key: "tulip", name: fa.presetTulip, profile: [
+    { r: 10, h: 0 }, { r: 14, h: 15 }, { r: 21, h: 50 }, { r: 24, h: 75 },
+    { r: 22, h: 92 }, { r: 17, h: 100 }] },
+  { key: "tower", name: fa.presetTower, profile: [
+    { r: 17, h: 0 }, { r: 18.5, h: 40 }, { r: 19.5, h: 80 }, { r: 21, h: 95 },
+    { r: 20, h: 100 }] },
+  { key: "waverim", name: fa.presetWaveRim, profile: [
+    { r: 16, h: 0 }, { r: 20, h: 30 }, { r: 23, h: 65 }, { r: 22.5, h: 80 },
+    { r: 25.5, h: 95 }, { r: 24, h: 100 }] },
+  { key: "honeyjar", name: fa.presetHoneyJar, profile: [
+    { r: 17, h: 0 }, { r: 21, h: 10 }, { r: 24, h: 38 }, { r: 23, h: 62 },
+    { r: 25, h: 82 }, { r: 24, h: 88 }] },
+  { key: "doublebulge", name: fa.presetDoubleBulge, profile: [
+    { r: 12, h: 0 }, { r: 20, h: 22 }, { r: 15, h: 45 }, { r: 22, h: 70 },
+    { r: 20, h: 92 }, { r: 21.5, h: 100 }] },
+  { key: "lowbowl", name: fa.presetLowBowl, profile: [
+    { r: 10, h: 0 }, { r: 14, h: 4 }, { r: 26, h: 28 }, { r: 31, h: 48 },
+    { r: 32, h: 55 }] },
+  { key: "grand", name: fa.presetGrandVase, profile: [
+    { r: 20, h: 0 }, { r: 26, h: 12 }, { r: 33, h: 42 }, { r: 30, h: 70 },
+    { r: 20, h: 92 }, { r: 19, h: 118 }, { r: 23, h: 128 }] },
+  { key: "geometric", name: fa.presetGeometric, profile: [
+    { r: 15, h: 0 }, { r: 19, h: 18 }, { r: 25, h: 45 }, { r: 24, h: 70 },
+    { r: 18, h: 90 }, { r: 22, h: 100 }] },
+  { key: "candle", name: fa.presetTallCandle, profile: [
+    { r: 11, h: 0 }, { r: 12, h: 30 }, { r: 13.5, h: 75 }, { r: 14, h: 105 },
+    { r: 13, h: 110 }] },
+  { key: "rippledcol", name: fa.presetRippledColumn, profile: [
+    { r: 15, h: 0 }, { r: 18, h: 15 }, { r: 16.5, h: 30 }, { r: 18.5, h: 45 },
+    { r: 17, h: 60 }, { r: 18.5, h: 75 }, { r: 17, h: 90 }, { r: 19, h: 100 }] },
 ];
 
 /** تخمین شمار مثلث STL — آینهٔ TS از build_mesh هسته (برای دیالوگ کیفیت) */
@@ -274,6 +342,31 @@ function defaultProject(): DesignerProject {
     phase_start_deg: 0,
     patterns: [],
     textures: [],
+    wall: {
+      mode: "Solid",
+      lattice: {
+        style: "Diamond", cell_width_mm: 12, cell_height_mm: 10,
+        rise_ratio: 0.5, speed_scale: 0.6, flow_scale: 1.1,
+        phase_deg: 0, z_start_mm: 8, z_end_mm: null,
+      },
+      holes: {
+        enabled: false, shape: "Circle", count_around: 4, rows: 3,
+        width_mm: 14, height_mm: 18, row_pitch_mm: 0,
+        margin_bottom_mm: 10, margin_top_mm: 10, frame_passes: 2,
+        phase_deg: 0, stagger: true,
+      },
+    },
+    pendant: {
+      style: "None", rim_holes_count: 3, rim_hole_diameter_mm: 3,
+      rim_hole_radius_percent: 85, rim_phase_deg: 0,
+      top_holes_count: 3, top_hole_diameter_mm: 5, top_hole_from_rim_mm: 8,
+      rim_reinforce_rings: 3, top_hole_frames: true,
+    },
+    lamp: {
+      enabled: false, center_hole_diameter_mm: 16, socket_rings: 3,
+      spokes_count: 4, spokes_width_mm: 2.4, spokes_style: "Parallel",
+      floor_gap_multiplier: 1.6, recessed_socket: true,
+    },
     floor: {
       enabled: false, pattern: "Rings", center_hole_diameter_mm: 0,
       z_start_mm: 0, ring_gap_mm: 0.45, spokes: 12, layers: 2,
@@ -516,6 +609,26 @@ export function SpiralDesignerPage(props: {
     commitProject({ ...project, printer: { ...project.printer, ...patch } });
   const setFloor = (patch: Partial<DesignerProject["floor"]>) =>
     commitProject({ ...project, floor: { ...project.floor, ...patch } });
+  // ---- نسخهٔ ۱٫۷: به‌روزرسانی دیواره/آویز/لامپ ----
+  const wallOf = () => project.wall ?? {};
+  const setWall = (patch: Partial<NonNullable<DesignerProject["wall"]>>) =>
+    commitProject({ ...project, wall: { ...wallOf(), ...patch } });
+  const setLattice = (patch: Partial<NonNullable<DesignerProject["wall"]>["lattice"]>) =>
+    commitProject({
+      ...project,
+      wall: { ...wallOf(), lattice: { ...(wallOf().lattice ?? {}), ...patch } },
+    });
+  const setHoles = (patch: Partial<NonNullable<DesignerProject["wall"]>["holes"]>) =>
+    commitProject({
+      ...project,
+      wall: { ...wallOf(), holes: { ...(wallOf().holes ?? {}), ...patch } },
+    });
+  const pendantOf = () => project.pendant ?? {};
+  const setPendant = (patch: Partial<NonNullable<DesignerProject["pendant"]>>) =>
+    commitProject({ ...project, pendant: { ...pendantOf(), ...patch } });
+  const lampOf = () => project.lamp ?? {};
+  const setLamp = (patch: Partial<NonNullable<DesignerProject["lamp"]>>) =>
+    commitProject({ ...project, lamp: { ...lampOf(), ...patch } });
 
   const addPattern = (kind: PatternParams["kind"]) =>
     commitProject({
@@ -945,14 +1058,15 @@ export function SpiralDesignerPage(props: {
         </div>
 
         <div className="steps">
-          {[1, 2, 3, 4, 5].map((s) => (
+          {[1, 2, 3, 4, 5, 6].map((s) => (
             <button
               key={s}
               className={`step-btn ${step === s ? "active" : ""}`}
               onClick={() => setStep(s)}
             >
               {s === 1 ? fa.step1Profile : s === 2 ? fa.step2Pattern
-                : s === 3 ? fa.step3Texture : s === 4 ? fa.step4Floor : fa.step5Printer}
+                : s === 3 ? fa.step3Texture : s === 4 ? fa.step4Wall
+                : s === 5 ? fa.step5Floor : fa.step6Printer}
             </button>
           ))}
         </div>
@@ -1266,8 +1380,189 @@ export function SpiralDesignerPage(props: {
           </div>
         )}
 
-        {/* ================= گام ۴: کف (۵ الگوی تصویری) ================= */}
+        {/* ================= گام ۴: دیواره — توری/سوراخ (نسخهٔ ۱٫۷) ================= */}
         {step === 4 && (
+          <div>
+            <p className="step-note">
+              حالت دیواره را انتخاب کنید: <strong>جامد</strong> = مارپیچ پیوستهٔ کلاسیک؛
+              <strong> توری</strong> = تارهای متقاطع با خانه‌های باز (مثل مرجع)؛
+              سوراخ‌های دیواره در هر دو حالت کار می‌کنند.
+            </p>
+
+            {/* ---------- کارت‌های حالت دیواره ---------- */}
+            <div className="asset-cards" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              {([
+                { mode: "Solid", name: fa.wallSolid, hint: "مارپیچ پیوسته — سطح بسته", icon: "🧱" },
+                { mode: "Lattice", name: fa.wallLattice, hint: "تارهای متقاطع — خانه‌های باز", icon: "🕸️" },
+              ] as const).map((w) => (
+                <button
+                  key={w.mode}
+                  className={`asset-card ${((project.wall?.mode ?? "Solid") === w.mode) ? "selected" : ""}`}
+                  onClick={() => setWall({ mode: w.mode })}
+                >
+                  <div style={{ fontSize: 30, lineHeight: 1.2 }}>{w.icon}</div>
+                  <span className="asset-name">{w.name}</span>
+                  <span className="hint-text">{w.hint}</span>
+                  {(project.wall?.mode ?? "Solid") === w.mode && (
+                    <span className="asset-badge">{fa.cardActive}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* ---------- تنظیمات توری ---------- */}
+            {(project.wall?.mode ?? "Solid") === "Lattice" && (
+              <>
+                <div className="field" style={{ marginTop: 12 }}>
+                  <label>🕸️ {fa.latticeStyle}</label>
+                  <select
+                    value={project.wall?.lattice?.style ?? "Diamond"}
+                    onChange={(e) => setLattice({ style: e.target.value as never })}
+                  >
+                    <option value="Diamond">الماسی (کلاسیک)</option>
+                    <option value="Square">مربعی (سکودار)</option>
+                    <option value="Chevron">مهری (شخورداده)</option>
+                    <option value="Twisted">پیچان (چرخان)</option>
+                  </select>
+                  <span className="hint-text">
+                    دورهٔ موج طوری انتخاب می‌شود که تارهای انقلاب‌های مجاور در
+                    تقاطع‌ها روی هم بنشینند — خانه‌ها واقعاً باز می‌مانند
+                  </span>
+                </div>
+                <div className="field"><label>{fa.latticeCellW}</label>
+                  <input type="number" step="1" min="6" max="40"
+                    value={project.wall?.lattice?.cell_width_mm ?? 12}
+                    onChange={(e) => setLattice({ cell_width_mm: Math.max(6, +e.target.value || 12) })} />
+                  <span className="hint-text">کوچک‌تر = توری ریزتر و ظریف‌تر (حداقل ~۶mm)</span>
+                </div>
+                <div className="field"><label>{fa.latticeCellH}</label>
+                  <input type="number" step="1" min="4" max="30"
+                    value={project.wall?.lattice?.cell_height_mm ?? 10}
+                    onChange={(e) => setLattice({ cell_height_mm: Math.max(4, +e.target.value || 10) })} />
+                  <span className="hint-text">ارتفاع هر خانهٔ لوزی روی دیواره</span>
+                </div>
+                <div className="field"><label>{fa.latticeRise}</label>
+                  <input type="number" step="0.05" min="0.2" max="0.8"
+                    value={project.wall?.lattice?.rise_ratio ?? 0.5}
+                    onChange={(e) => setLattice({ rise_ratio: Math.min(0.8, Math.max(0.2, +e.target.value || 0.5)) })} />
+                  <span className="hint-text">۰٫۵ = الماس متقارن؛ کمتر = خانه‌های کشیده‌تر عمودی</span>
+                </div>
+                <div className="field"><label>{fa.latticeSpeed}</label>
+                  <input type="number" step="0.05" min="0.3" max="1"
+                    value={project.wall?.lattice?.speed_scale ?? 0.6}
+                    onChange={(e) => setLattice({ speed_scale: Math.min(1, Math.max(0.3, +e.target.value || 0.6)) })} />
+                  <span className="hint-text">تارهای توری روی هوا چاپ می‌شوند — آرام‌تر = پیوند بهتر</span>
+                </div>
+                <div className="field"><label>{fa.latticeFlow}</label>
+                  <input type="number" step="0.05" min="0.5" max="2"
+                    value={project.wall?.lattice?.flow_scale ?? 1.1}
+                    onChange={(e) => setLattice({ flow_scale: Math.min(2, Math.max(0.5, +e.target.value || 1.1)) })} />
+                  <span className="hint-text">۱٫۱ = تار کمی پرتر برای استحکام تقاطع‌ها</span>
+                </div>
+                <div className="field"><label>{fa.latticePhase}</label>
+                  <input type="number" step="5" min="0" max="360"
+                    value={project.wall?.lattice?.phase_deg ?? 0}
+                    onChange={(e) => setLattice({ phase_deg: +e.target.value || 0 })} /></div>
+                <div className="field"><label>{fa.latticeZStart}</label>
+                  <input type="number" step="1" min="0" max="200"
+                    value={project.wall?.lattice?.z_start_mm ?? 8}
+                    onChange={(e) => setLattice({ z_start_mm: Math.max(0, +e.target.value || 0) })} />
+                  <span className="hint-text">پایین دیواره جامد بماند — لبهٔ مقاوم و چسبندگی کف</span>
+                </div>
+                <div className="field"><label>{fa.latticeZEnd}</label>
+                  <input type="number" step="1" min="0" max="400"
+                    value={project.wall?.lattice?.z_end_mm ?? ""}
+                    placeholder="خالی = تا بالای فرم"
+                    onChange={(e) => setLattice({ z_end_mm: e.target.value === "" ? null : Math.max(0, +e.target.value || 0) })} />
+                  <span className="hint-text">مثلاً ۸۰ = فقط تا ۸۰mm توری، بالای فرم دوباره جامد</span>
+                </div>
+              </>
+            )}
+
+            {/* ---------- سوراخ‌های دیواره (درخواست ۹) ---------- */}
+            <div className="field" style={{ marginTop: 14 }}>
+              <label className="check-row" style={{ marginBottom: 0 }}>
+                <input type="checkbox"
+                  checked={project.wall?.holes?.enabled ?? false}
+                  onChange={(e) => setHoles({ enabled: e.target.checked })} />
+                <strong>🕳️ {fa.holesTitle}</strong>
+              </label>
+              <span className="hint-text">
+                سوراخ‌ها در «خود دیواره» ساخته می‌شوند: مارپیچ هنگام عبور از
+                دهانه travel می‌کند (دهانهٔ واقعی باز) و دور هر سوراخ قاب
+                تقویتی بسته چاپ می‌شود — نه فقط پوشش لایهٔ آخر.
+              </span>
+            </div>
+            {(project.wall?.holes?.enabled ?? false) && (
+              <>
+                <div className="field"><label>{fa.holesShape}</label>
+                  <select
+                    value={project.wall?.holes?.shape ?? "Circle"}
+                    onChange={(e) => setHoles({ shape: e.target.value as never })}
+                  >
+                    <option value="Circle">دایره</option>
+                    <option value="RoundedRect">مستطیل گردگوشه</option>
+                    <option value="Diamond">لوزی</option>
+                    <option value="Hexagon">شش‌ضلعی</option>
+                    <option value="Star">ستارهٔ چهارپر</option>
+                  </select>
+                  <span className="hint-text">شکل قاب تقویتی هم به‌تبع شکل سوراخ گرد می‌شود</span>
+                </div>
+                <div className="field"><label>{fa.holesAround}</label>
+                  <input type="number" step="1" min="1" max="12"
+                    value={project.wall?.holes?.count_around ?? 4}
+                    onChange={(e) => setHoles({ count_around: Math.min(12, Math.max(1, Math.round(+e.target.value) || 4)) })} /></div>
+                <div className="field"><label>{fa.holesRows}</label>
+                  <input type="number" step="1" min="1" max="8"
+                    value={project.wall?.holes?.rows ?? 3}
+                    onChange={(e) => setHoles({ rows: Math.min(8, Math.max(1, Math.round(+e.target.value) || 3)) })} /></div>
+                <div className="field"><label>{fa.holesWidth}</label>
+                  <input type="number" step="1" min="4" max="60"
+                    value={project.wall?.holes?.width_mm ?? 14}
+                    onChange={(e) => setHoles({ width_mm: Math.max(4, +e.target.value || 14) })} />
+                  <span className="hint-text">عرض در «طول محیط» فرم (قوس mm)</span>
+                </div>
+                <div className="field"><label>{fa.holesHeight}</label>
+                  <input type="number" step="1" min="4" max="80"
+                    value={project.wall?.holes?.height_mm ?? 18}
+                    onChange={(e) => setHoles({ height_mm: Math.max(4, +e.target.value || 18) })} /></div>
+                <div className="field"><label>{fa.holesPitch}</label>
+                  <input type="number" step="1" min="0" max="100"
+                    value={project.wall?.holes?.row_pitch_mm ?? 0}
+                    placeholder="۰ = خودکار"
+                    onChange={(e) => setHoles({ row_pitch_mm: Math.max(0, +e.target.value || 0) })} /></div>
+                <div className="field"><label>{fa.holesMarginBottom}</label>
+                  <input type="number" step="1" min="2" max="100"
+                    value={project.wall?.holes?.margin_bottom_mm ?? 10}
+                    onChange={(e) => setHoles({ margin_bottom_mm: Math.max(2, +e.target.value || 10) })} /></div>
+                <div className="field"><label>{fa.holesMarginTop}</label>
+                  <input type="number" step="1" min="0" max="100"
+                    value={project.wall?.holes?.margin_top_mm ?? 10}
+                    onChange={(e) => setHoles({ margin_top_mm: Math.max(0, +e.target.value || 10) })} /></div>
+                <div className="field"><label>{fa.holesFrames}</label>
+                  <input type="number" step="1" min="0" max="3"
+                    value={project.wall?.holes?.frame_passes ?? 2}
+                    onChange={(e) => setHoles({ frame_passes: Math.min(3, Math.max(0, Math.round(+e.target.value) || 0)) })} />
+                  <span className="hint-text">۲ = لبهٔ مسلح دور سوراخ (هر پاس یک دور اضافه)</span>
+                </div>
+                <div className="field"><label>{fa.holesPhase}</label>
+                  <input type="number" step="5" min="0" max="360"
+                    value={project.wall?.holes?.phase_deg ?? 0}
+                    onChange={(e) => setHoles({ phase_deg: +e.target.value || 0 })} /></div>
+                <label className="check-row">
+                  <input type="checkbox"
+                    checked={project.wall?.holes?.stagger ?? true}
+                    onChange={(e) => setHoles({ stagger: e.target.checked })} />
+                  {fa.holesStagger}
+                </label>
+                <span className="hint-text">ردیف‌های زوج نیم‌فاصله می‌لغزند — چینش آجری زیباتر</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ================= گام ۵: کف (لامپ/آویز) (۵ الگوی تصویری) ================= */}
+        {step === 5 && (
           <div>
             <p className="step-note">
               پنج الگوی چاپ کف — همه مسیر واقعی تولید می‌کنند. نمای بالا هر الگو را نشان می‌دهد.
@@ -1345,40 +1640,171 @@ export function SpiralDesignerPage(props: {
                   value={project.floor.spokes ?? 12}
                   onChange={(e) => setFloor({ spokes: Math.round(+e.target.value) || 12 })} /></div>
             )}
-            {/* ---- تنظیمات حرفه‌ای: لامپ/آویز — نسخهٔ ۱٫۶ (درخواست کاربر ۷) ---- */}
-            <div className="field" style={{ marginTop: 10 }}>
-              <label>⚙️ تنظیمات حرفه‌ای کف (لامپ / آویز)</label>
+            {/* ============ آویز حرفه‌ای — نسخهٔ ۱٫۷ (درخواست کاربر ۷) ============ */}
+            <div className="field" style={{ marginTop: 14 }}>
+              <label>🪝 {fa.pendantTitle}</label>
+              <select
+                value={project.pendant?.style ?? "None"}
+                onChange={(e) => setPendant({ style: e.target.value as never })}
+              >
+                <option value="None">بدون آویز</option>
+                <option value="RimHoles">سوراخ لبهٔ کف (نخ از زیر)</option>
+                <option value="TopHoles">سوراخ بالای دیواره (زنجیر از بالا)</option>
+                <option value="Both">ترکیبی (کف + بالا)</option>
+              </select>
               <span className="hint-text">
-                برای آویزان‌کردن با نخ/سیم، سوکت لامپ یا عبور کابل — سوراخ‌ها در
-                الگوها خالی می‌مانند و حلقهٔ تقویت دورشان چاپ می‌شود.
+                سوراخ‌های کف در الگوهای کف خالی می‌مانند؛ سوراخ‌های بالا با قاب
+                تقویتی در خود دیواره ساخته می‌شوند و لبهٔ فرم با حلقه‌های
+                تقویت ضخیم می‌شود — آویز سنگین ایمن است
               </span>
             </div>
-            <div className="field"><label>سوراخ‌های لبه (تعداد ۰..۱۲)</label>
-              <input type="number" step="1" min="0" max="12" disabled={!project.floor.enabled}
-                value={project.floor.rim_holes ?? 0}
-                onChange={(e) => setFloor({ rim_holes: Math.min(12, Math.max(0, Math.round(+e.target.value) || 0)) })} />
-              <span className="hint-text">۳ یا ۴ سوراخ = آویز متقارن با نخ؛ ۱ سوراخ = عبور کابل لامپ</span>
+            {["RimHoles", "Both"].includes(project.pendant?.style ?? "None") && (
+              <>
+                <div className="field"><label>{fa.pendantRimCount}</label>
+                  <input type="number" step="1" min="3" max="12"
+                    value={project.pendant?.rim_holes_count ?? 3}
+                    onChange={(e) => setPendant({ rim_holes_count: Math.min(12, Math.max(3, Math.round(+e.target.value) || 3)) })} />
+                  <span className="hint-text">۳ = تعادل مثلثی؛ ۴ = مربعی؛ بیشتر برای سبد</span>
+                </div>
+                <div className="field"><label>{fa.pendantRimD}</label>
+                  <input type="number" step="0.5" min="1" max="20"
+                    value={project.pendant?.rim_hole_diameter_mm ?? 3}
+                    onChange={(e) => setPendant({ rim_hole_diameter_mm: Math.max(1, +e.target.value || 3) })} />
+                  <span className="hint-text">۳mm نخ؛ ۵mm سیم پارچه؛ ۸mm زنجیر ظریف</span>
+                </div>
+                <div className="field"><label>{fa.pendantRimPos}</label>
+                  <input type="number" step="5" min="40" max="95"
+                    value={project.pendant?.rim_hole_radius_percent ?? 85}
+                    onChange={(e) => setPendant({ rim_hole_radius_percent: Math.min(95, Math.max(40, +e.target.value || 85)) })} />
+                  <span className="hint-text">نزدیک لبه (۸۵-۹۰٪) = گشتاور کمتر و تعادل بهتر</span>
+                </div>
+              </>
+            )}
+            {["TopHoles", "Both"].includes(project.pendant?.style ?? "None") && (
+              <>
+                <div className="field"><label>{fa.pendantTopCount}</label>
+                  <input type="number" step="1" min="2" max="6"
+                    value={project.pendant?.top_holes_count ?? 3}
+                    onChange={(e) => setPendant({ top_holes_count: Math.min(6, Math.max(2, Math.round(+e.target.value) || 3)) })} /></div>
+                <div className="field"><label>{fa.pendantTopD}</label>
+                  <input type="number" step="0.5" min="2" max="15"
+                    value={project.pendant?.top_hole_diameter_mm ?? 5}
+                    onChange={(e) => setPendant({ top_hole_diameter_mm: Math.max(2, +e.target.value || 5) })} /></div>
+                <div className="field"><label>{fa.pendantTopFrom}</label>
+                  <input type="number" step="1" min="3" max="30"
+                    value={project.pendant?.top_hole_from_rim_mm ?? 8}
+                    onChange={(e) => setPendant({ top_hole_from_rim_mm: Math.max(3, +e.target.value || 8) })} />
+                  <span className="hint-text">فاصلهٔ مرکز سوراخ از لبهٔ بالای فرم</span>
+                </div>
+              </>
+            )}
+            {(project.pendant?.style ?? "None") !== "None" && (
+              <>
+                <div className="field"><label>{fa.pendantRings}</label>
+                  <input type="number" step="1" min="0" max="6"
+                    value={project.pendant?.rim_reinforce_rings ?? 3}
+                    onChange={(e) => setPendant({ rim_reinforce_rings: Math.min(6, Math.max(0, Math.round(+e.target.value) || 0)) })} />
+                  <span className="hint-text">حلقه‌های بسته در بالای دیواره — لبهٔ تحت کشش ضخیم می‌شود</span>
+                </div>
+                <label className="check-row">
+                  <input type="checkbox"
+                    checked={project.pendant?.top_hole_frames ?? true}
+                    onChange={(e) => setPendant({ top_hole_frames: e.target.checked })} />
+                  قاب تقویتی دور سوراخ‌های بالا
+                </label>
+              </>
+            )}
+
+            {/* ============ لامپ حرفه‌ای — نسخهٔ ۱٫۷ (درخواست کاربر ۸) ============ */}
+            <div className="field" style={{ marginTop: 14 }}>
+              <label className="check-row" style={{ marginBottom: 0 }}>
+                <input type="checkbox"
+                  checked={project.lamp?.enabled ?? false}
+                  onChange={(e) => setLamp({ enabled: e.target.checked })} />
+                <strong>💡 {fa.lampTitle}</strong>
+              </label>
+              <span className="hint-text">
+                سوکت مرکزی + پره‌های متصل‌کنندهٔ سوراخ به بدنه + کف نورپذیر؛
+                قطر سوکت بر سوراخ مرکزی معمولی کف تقدم دارد
+              </span>
             </div>
-            <div className="field"><label>قطر سوراخ لبه (mm)</label>
-              <input type="number" step="0.5" min="1" max="20" disabled={!project.floor.enabled || !(project.floor.rim_holes ?? 0)}
-                value={project.floor.rim_hole_diameter_mm ?? 3}
-                onChange={(e) => setFloor({ rim_hole_diameter_mm: Math.max(1, +e.target.value || 3) })} />
-              <span className="hint-text">۳mm برای نخ/سیم معمولی؛ بیشتر برای کابل شیلددار</span>
-            </div>
-            <div className="field"><label>حلقه‌های تقویت (۰..۴)</label>
+            {(project.lamp?.enabled ?? false) && (
+              <>
+                <div className="field"><label>{fa.lampHole}</label>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <input type="number" step="1" min="4" max="80"
+                      value={project.lamp?.center_hole_diameter_mm ?? 16}
+                      onChange={(e) => setLamp({ center_hole_diameter_mm: Math.max(4, +e.target.value || 16) })} />
+                    <button className="btn small" type="button" title="سوکت E14 (۲۸mm)"
+                      onClick={() => setLamp({ center_hole_diameter_mm: 28 })}>E14</button>
+                    <button className="btn small" type="button" title="سوکت E27 (۴۰mm)"
+                      onClick={() => setLamp({ center_hole_diameter_mm: 40 })}>E27</button>
+                  </div>
+                  <span className="hint-text">۸ = عبور سیم؛ ۱۶ = سوکت کوچک؛ ۲۸/۴۰ = سوکت استاندارد E14/E27</span>
+                </div>
+                <div className="field"><label>{fa.lampRings}</label>
+                  <input type="number" step="1" min="0" max="6"
+                    value={project.lamp?.socket_rings ?? 3}
+                    onChange={(e) => setLamp({ socket_rings: Math.min(6, Math.max(0, Math.round(+e.target.value) || 0)) })} />
+                  <span className="hint-text">حلقه‌های اضافه دور سوکت — گریپ مطمئن لامپ</span>
+                </div>
+                <div className="field"><label>{fa.lampSpokes}</label>
+                  <input type="number" step="1" min="3" max="12"
+                    value={project.lamp?.spokes_count ?? 4}
+                    onChange={(e) => setLamp({ spokes_count: Math.min(12, Math.max(3, Math.round(+e.target.value) || 4)) })} />
+                  <span className="hint-text">پایه‌های متصل‌کنندهٔ سوراخ سوکت به بدنه</span>
+                </div>
+                <div className="field"><label>{fa.lampSpokeW}</label>
+                  <input type="number" step="0.2" min="0.5" max="8"
+                    value={project.lamp?.spokes_width_mm ?? 2.4}
+                    onChange={(e) => setLamp({ spokes_width_mm: Math.max(0.5, +e.target.value || 2.4) })} /></div>
+                <div className="field"><label>{fa.lampSpokeStyle}</label>
+                  <select
+                    value={project.lamp?.spokes_style ?? "Parallel"}
+                    onChange={(e) => setLamp({ spokes_style: e.target.value as never })}
+                  >
+                    <option value="Parallel">پره‌های پهن موازی (مقاوم)</option>
+                    <option value="Single">تک‌خط باریک (نور بیشتر)</option>
+                    <option value="Web">شبکهٔ وب (پره + کمان)</option>
+                  </select></div>
+                <div className="field"><label>{fa.lampGap}</label>
+                  <input type="number" step="0.1" min="0.5" max="3"
+                    value={project.lamp?.floor_gap_multiplier ?? 1.6}
+                    onChange={(e) => setLamp({ floor_gap_multiplier: Math.min(3, Math.max(0.5, +e.target.value || 1.6)) })} />
+                  <span className="hint-text">بیشتر از ۱ = فاصلهٔ خطوط کف بیشتر ⇒ نور ملایم‌تر</span>
+                </div>
+                <label className="check-row">
+                  <input type="checkbox"
+                    checked={project.lamp?.recessed_socket ?? true}
+                    onChange={(e) => setLamp({ recessed_socket: e.target.checked })} />
+                  {fa.lampRecessed}
+                </label>
+                <span className="hint-text">حلقهٔ فرورفته دور سوکت در لایهٔ دوم کف — ظاهر حرفه‌ای</span>
+                {["LampWeb", "Sunburst"].includes(project.floor.pattern ?? "Rings") && (
+                  <div className="field" style={{ marginTop: 8 }}>
+                    <span className="hint-text">
+                      💡 الگوهای «وب لامپ» و «خورشیدشکاف» برای کف نور طراحی
+                      شده‌اند — تعداد پره‌ها از همین تنظیمات لامپ خوانده می‌شود
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ---- تقویت عمومی — حفظ از ۱٫۶ ---- */}
+            <div className="field"><label>حلقه‌های تقویت عمومی کف (۰..۴)</label>
               <input type="number" step="1" min="0" max="4" disabled={!project.floor.enabled}
                 value={project.floor.reinforce_rings ?? 0}
                 onChange={(e) => setFloor({ reinforce_rings: Math.min(4, Math.max(0, Math.round(+e.target.value) || 0)) })} />
               <span className="hint-text">
-                لایهٔ آخر کف ضخیم‌تر می‌شود: دور لبه (آویز سنگین‌تر)، دور سوراخ
-                مرکزی (سوکت لامپ) و دور سوراخ‌های لبه — استحکام باربری
+                لایهٔ آخر کف ضخیم‌تر می‌شود: دور لبه + سوراخ مرکزی — استحکام باربری
               </span>
             </div>
           </div>
         )}
 
-        {/* ================= گام ۵: پرینتر ================= */}
-        {step === 5 && (
+        {/* ================= گام ۶: پرینتر ================= */}
+        {step === 6 && (
           <div>
             <p className="step-note">
               {fa.printerProfileStatus}: <strong className="ltr">{project.printer.status}</strong> —
