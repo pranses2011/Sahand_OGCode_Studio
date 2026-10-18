@@ -1223,7 +1223,7 @@ dependencies = [
 
 [[package]]
 name = "gcode-cli"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "gcode-core",
  "serde",
@@ -1232,7 +1232,7 @@ dependencies = [
 
 [[package]]
 name = "gcode-core"
-version = "1.0.0"
+version = "1.7.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1249,7 +1249,7 @@ dependencies = [
 
 [[package]]
 name = "gcode-studio"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "gcode-core",
  "gcode-mail",

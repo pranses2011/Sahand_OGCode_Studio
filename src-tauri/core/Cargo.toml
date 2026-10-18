@@ -14,7 +14,7 @@
 
 [package]
 name = "gcode-core"
-version = "1.0.0"
+version = "1.7.0"
 description = "هستهٔ parser، مفسر و طراح مارپیچی G-code — خالص و قابل‌آزمون"
 edition = "2021"
 rust-version = "1.77"
