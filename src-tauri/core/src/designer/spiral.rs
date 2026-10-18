@@ -19,7 +19,8 @@
 use crate::designer::pattern::apply_patterns;
 use crate::designer::profile::{build_radius_fn, FormAdjust, ProfilePoint};
 use crate::designer::texture::apply_texture_ex;
-use crate::designer::{FloorSettings, PrinterProfile};
+use crate::designer::{FloorSettings, PendantSettings, PrinterProfile, WallSettings};
+use crate::designer::LampSettings;
 use crate::diagnostics::Diagnostic;
 use crate::toolpath::{Certainty, LayerInfo, SegmentKind, ToolpathSegment, ToolpathStats};
 use serde::{Deserialize, Serialize};
@@ -54,6 +55,12 @@ pub struct DesignerInput {
     /// ۱ = استاندارد (۲mm، اعشار ۳)؛ ۲ = ریز (۱mm)؛ ۳ = بسیار ریز (۰٫۶۷mm، اعشار ۴).
     /// تراکم نقاط مسیر (steps_per_rev) را مقیاس می‌کند؛ mesh/STL مستقل است.
     pub gcode_quality: f64,
+    /// تنظیمات دیواره (جامد/توری + سوراخ‌ها) — نسخهٔ ۱٫۷ (درخواست ۳ و ۹)
+    pub wall: WallSettings,
+    /// تنظیمات آویز حرفه‌ای — نسخهٔ ۱٫۷ (درخواست ۷)
+    pub pendant: PendantSettings,
+    /// تنظیمات حرفه‌ای لامپ — نسخهٔ ۱٫۷ (درخواست ۸)
+    pub lamp: LampSettings,
 }
 
 /// خروجی کامل موتور طراح
@@ -137,11 +144,21 @@ pub struct WallMesh {
     pub cols: usize,
     /// رأس‌های تخت (x,y,z)×۳ به‌ترتیب ردیف‌محور — گردشده به ۰٫۰۱mm
     pub positions: Vec<f64>,
+    /// ماسک هر رأس: ۱ = سطح چاپی واقعی؛ ۰ = شکاف (سوراخ/travel) — نسخهٔ ۱٫۷:
+    /// مثلث‌هایی که گوشه‌شان ماسک ۰ دارد در فرانت‌اند رندر نمی‌شوند ⇒
+    /// دهانهٔ سوراخ‌های دیواره در نمای جامد واقعاً «باز» دیده می‌شود.
+    #[serde(default)]
+    pub mask: Vec<u8>,
+    /// حالت دیواره: ۰ = جامد (نوار بین انقلاب‌ها)؛ ۱ = توری (نوار تارها در
+    /// همان انقلاب) — نسخهٔ ۱٫۷: اتصال مثلث‌ها در فرانت‌اند بر اساس حالت
+    #[serde(default)]
+    pub mode: u8,
 }
 
-/// ساخت نوار مارپیچی از نقاط واقعی دیواره — نسخهٔ ۱٫۶
+/// ساخت نوار مارپیچی از نقاط واقعی دیواره — نسخهٔ ۱٫۶ + ماسک/حالت ۱٫۷
 /// wall_points[0] = اولین نقطهٔ چاپ دیواره؛ هر spr نقطه = یک انقلاب کامل.
-fn build_wall_ribbon(wall_points: &[[f64; 3]], spr: usize) -> WallMesh {
+/// flags[i] = ۱ اگر نقطهٔ i روی «چاپ» بوده؛ ۰ اگر travel (داخل سوراخ).
+fn build_wall_ribbon(wall_points: &[[f64; 3]], flags: &[u8], spr: usize, lattice: bool) -> WallMesh {
     let total = wall_points.len();
     if spr < 8 || total < spr + 2 {
         return WallMesh::default(); // فرم خیلی کوتاه/خیلی درشت — بدون نوار
@@ -167,6 +184,7 @@ fn build_wall_ribbon(wall_points: &[[f64; 3]], spr: usize) -> WallMesh {
 
     let stride = cols + 1;
     let mut positions: Vec<f64> = Vec::with_capacity((rows + 1) * stride * 3);
+    let mut mask: Vec<u8> = Vec::with_capacity((rows + 1) * stride);
     // گردکردن به ۰٫۰۱mm — دقت نمایش؛ JSON فشرده‌تر
     let r2 = |v: f64| (v * 100.0).round() / 100.0;
     for i in 0..=rows {
@@ -175,14 +193,22 @@ fn build_wall_ribbon(wall_points: &[[f64; 3]], spr: usize) -> WallMesh {
             let idx = (base + j * col_step).min(total - 1);
             let p = wall_points[idx];
             positions.extend_from_slice(&[r2(p[0]), r2(p[1]), r2(p[2])]);
+            mask.push(*flags.get(idx).unwrap_or(&1));
         }
         // ستون بسته‌شدن: دقیقاً یک انقلاب جلوتر (هم‌زاویهٔ ستون ۰)؛
         // ردیف آخر به آخرین نقطهٔ مسیر کلمپ می‌شود (هم‌زاویه در mod 2π)
         let idx_c = (base + spr).min(total - 1);
         let p = wall_points[idx_c];
         positions.extend_from_slice(&[r2(p[0]), r2(p[1]), r2(p[2])]);
+        mask.push(*flags.get(idx_c).unwrap_or(&1));
     }
-    WallMesh { rows, cols, positions }
+    WallMesh {
+        rows,
+        cols,
+        positions,
+        mask,
+        mode: if lattice { 1 } else { 0 },
+    }
 }
 
 /// محاسبهٔ E برای یک گام مسیر — مستند در راهنما
@@ -199,6 +225,353 @@ fn extrusion_mm(
     let filament_area =
         std::f64::consts::PI * (filament_diameter_mm / 2.0).powi(2);
     (bead_area * length_mm / filament_area) * flow
+}
+
+// ============================================================================
+// توری — نسخهٔ ۱٫۷ (درخواست کاربر ۳): «چاپ توری مانند مرجع»
+// ============================================================================
+// اصل: روی استوانهٔ بازشده (u = r·θ، v = z) تارها «موج مثلثی» چاپ می‌شوند؛
+// دورهٔ موج طوری انتخاب می‌شود که هر انقلاب «نیم‌دوره» جابه‌جا باشد
+// (P_θ = 2π/(n+½)) ⇒ موج انقلاب بعدی با موج فعلی تقاطع می‌کند و در نقاط
+// تقاطع روی هم می‌نشیند (مثل بافت توری/سبد) ⇒ خانه‌های لوزی باز.
+//
+// صعود هر انقلاب Δ = rise_ratio × A است (A = ارتفاع خانه)؛
+// Δ = A/2 ⇒ الماس متقارن کلاسیک (پیش‌فرض).
+
+/// موج مثلثی دورهٔ ۱ — قله در اعداد صحیح، دره در نیم‌دوره
+#[inline]
+fn tri_wave(t: f64) -> f64 {
+    let f = t - t.floor();
+    2.0 * (f - 0.5).abs() // ∈ [0,1]
+}
+
+/// موج بر اساس سبک توری — خروجی در [−۰٫۵، +۰٫۵]
+fn lattice_wave(style: crate::designer::LatticeStyle, t: f64) -> f64 {
+    let f = t - t.floor();
+    match style {
+        // الماسی: مثلث متقارن
+        crate::designer::LatticeStyle::Diamond => tri_wave(t) - 0.5,
+        // مربعی: ذوزنقه با سکوهای بالا/پایین (۲۰٪ هر ضلع)
+        crate::designer::LatticeStyle::Square => {
+            let s = ((tri_wave(t) - 0.2) / 0.6).clamp(0.0, 1.0);
+            s - 0.5
+        }
+        // مهری: بالا رفتن تیز (۳۵٪ دوره) و پایین آمدن ملایم
+        crate::designer::LatticeStyle::Chevron => {
+            let v = if f < 0.35 { f / 0.35 } else { (1.0 - f) / 0.65 };
+            v - 0.5
+        }
+        // پیچان: مثل الماسی (شیفت فاز در آرگومان اعمال می‌شود)
+        crate::designer::LatticeStyle::Twisted => tri_wave(t) - 0.5,
+    }
+}
+
+// ============================================================================
+// سوراخ دیواره — نسخهٔ ۱٫۷ (درخواست کاربر ۹)
+// ============================================================================
+// هر سوراخ در فضای بازشدهٔ استوانه یک «مستطیل مرکزدار» است:
+//   (θc, zc, half_w_arc, half_h). آزمون عضویت شکل‌دار؛ دهانهٔ واقعی با
+//   travel عبور می‌کند و «قاب تقویتی» بسته دور آن چاپ می‌شود.
+
+/// هندسهٔ یک سوراخ دیواره (فضای بازشده)
+#[derive(Debug, Clone, Copy)]
+struct WallHoleGeom {
+    /// زاویهٔ مرکز (رادیان)
+    theta_c: f64,
+    /// ارتفاع مرکز نسبت به شروع دیواره (mm)
+    z_c: f64,
+    /// نیم‌عرض قوس (mm روی شعاع مرجع)
+    half_w: f64,
+    /// نیم‌ارتفاع (mm)
+    half_h: f64,
+}
+
+/// آزمون شکل سوراخ با مختصات نرمال‌شده (u/hw, v/hh)
+fn inside_hole_shape(shape: crate::designer::HoleShape, un: f64, vn: f64) -> bool {
+    let au = un.abs();
+    let av = vn.abs();
+    match shape {
+        crate::designer::HoleShape::Circle => un * un + vn * vn <= 1.0,
+        crate::designer::HoleShape::RoundedRect => {
+            // گوشه‌ها با شعاع ۲۵٪ کوچک‌ترین نیم‌ضلع گرد می‌شوند
+            let r = 0.25;
+            if au <= 1.0 - r || av <= 1.0 - r {
+                au <= 1.0 && av <= 1.0
+            } else {
+                let dx = au - (1.0 - r);
+                let dy = av - (1.0 - r);
+                dx * dx + dy * dy <= r * r
+            }
+        }
+        crate::designer::HoleShape::Diamond => au + av <= 1.0,
+        crate::designer::HoleShape::Hexagon => {
+            // شش‌ضلعی با راس چپ/راست: |u|≤1 و سقف |v| پله‌ای-شیبی
+            au <= 1.0 && av <= (if au <= 0.5 { 1.0 } else { 2.0 * (1.0 - au) })
+        }
+        crate::designer::HoleShape::Star => {
+            // ستارهٔ چهارپر (اضلاع مقعر): |u|^½ + |v|^½ ≤ ۱
+            au.sqrt() + av.sqrt() <= 1.0
+        }
+    }
+}
+
+/// فاصلهٔ زاویه‌ای علامت‌دار به (−π, π]
+#[inline]
+fn wrap_pi(d: f64) -> f64 {
+    (d + std::f64::consts::PI).rem_euclid(2.0 * std::f64::consts::PI)
+        - std::f64::consts::PI
+}
+
+/// آزمون: نقطهٔ (θ, z) داخل یکی از سوراخ‌هاست؟ (شعاع مرجع r_ref)
+fn point_in_holes(
+    holes: &[WallHoleGeom],
+    shape: crate::designer::HoleShape,
+    theta: f64,
+    z_wall: f64,
+    r_ref: f64,
+) -> bool {
+    if holes.is_empty() || r_ref <= 0.1 {
+        return false;
+    }
+    for h in holes {
+        let dth = wrap_pi(theta - h.theta_c);
+        let u = dth * r_ref; // فاصلهٔ قوسی از مرکز
+        let un = u / h.half_w.max(0.1);
+        let vn = (z_wall - h.z_c) / h.half_h.max(0.1);
+        if inside_hole_shape(shape, un, vn) {
+            return true;
+        }
+    }
+    false
+}
+
+/// نقطهٔ سطح دیواره در (θ, z مطلق) با الگوها — برای قاب‌های سوراخ و حلقه‌ها
+fn wall_surface_point(
+    radius_fn: &dyn Fn(f64) -> f64,
+    patterns: &[crate::designer::pattern::PatternParams],
+    theta: f64,
+    z_abs: f64,
+    z_start: f64,
+    height: f64,
+    bed_offset: [f64; 2],
+) -> [f64; 3] {
+    let zp = (z_abs - z_start).clamp(0.0, height);
+    let (r, _) = apply_patterns(radius_fn(zp), zp, theta, height, patterns);
+    let r = r.max(0.05);
+    [r * theta.cos() + bed_offset[0], r * theta.sin() + bed_offset[1], z_abs]
+}
+
+/// چاپ قاب تقویتی بستهٔ دور یک سوراخ — نسخهٔ ۱٫۷ (درخواست کاربر ۹)
+///
+/// قاب در فضای بازشدهٔ استوانه یک «کپسول/مستطیل» است (گسترش pass_offset):
+///   * شکل‌های گرد (دایره/شش‌ضلعی/ستاره/گوشه‌گرد): کپسول — دو نیم‌دایرهٔ
+///     عمودی در دو طرف + دو قوس افقی بالا/پایین؛
+///   * شکل‌های گوشه‌دار (لوزی): مستطیل ساده با ۴ گوشه.
+/// همهٔ اضلاع با زیربخش ≤ ۱٫۵mm چاپ می‌شوند و «روی سطح فرم» می‌مانند
+/// (شعاع از radius_fn + الگوها) ⇒ قاب واقعاً به دیواره می‌چسبد.
+fn emit_hole_frame(
+    ctx: &mut WallEmitCtx<'_>,
+    hole: &WallHoleGeom,
+    pass_offset: f64,
+    shape: crate::designer::HoleShape,
+) {
+    let hw = (hole.half_w + pass_offset).max(0.5);
+    let hh = (hole.half_h + pass_offset).max(0.5);
+    let zc_abs = ctx.z_start + hole.z_c;
+    let z_bottom = zc_abs - hh;
+    let z_top = zc_abs + hh;
+    let r_ref = ctx.r_ref.max(0.5);
+    let th_half = (hw / r_ref).min(std::f64::consts::PI * 0.9);
+    let th_l = hole.theta_c - th_half;
+    let th_r = hole.theta_c + th_half;
+
+    // مسیر بسته (θ, z_abs)
+    let mut path: Vec<(f64, f64)> = Vec::new();
+    let round_capsule = !matches!(shape, crate::designer::HoleShape::Diamond);
+    if round_capsule {
+        // کپسول: قوس چپ (بالا→پایین) + قوس پایین + قوس راست (پایین→بالا) + قوس بالا
+        let steps = 10;
+        // قوس چپ: از (θ_l, z+h) به (θ_l, z−h)
+        for k in 0..=steps {
+            let a = std::f64::consts::FRAC_PI_2 + k as f64 * std::f64::consts::PI / steps as f64;
+            path.push((th_l, zc_abs + hh * a.sin()));
+        }
+        // قوس پایین: از (θ_l, z−h) به (θ_r, z−h) — نیم‌دایرهٔ پایین
+        for k in 0..=steps {
+            let a = std::f64::consts::PI + k as f64 * std::f64::consts::PI / steps as f64;
+            // زاویه روی دایرهٔ سوراخ: x = cos a ∈ [−1..1]، y = sin a ≤ ۰
+            let un = a.cos();
+            let vn = a.sin();
+            let th = hole.theta_c + th_half * un;
+            let z = zc_abs + hh * vn;
+            path.push((th, z));
+        }
+        // قوس راست: از (θ_r, z−h) به (θ_r, z+h)
+        for k in 0..=steps {
+            let a = -std::f64::consts::FRAC_PI_2 + k as f64 * std::f64::consts::PI / steps as f64;
+            path.push((th_r, zc_abs + hh * a.sin()));
+        }
+        // قوس بالا: از (θ_r, z+h) به (θ_l, z+h) — نیم‌دایرهٔ بالا
+        for k in 0..=steps {
+            let a = k as f64 * std::f64::consts::PI / steps as f64;
+            let un = a.cos();
+            let vn = a.sin();
+            let th = hole.theta_c + th_half * un;
+            let z = zc_abs + hh * vn;
+            path.push((th, z));
+        }
+    } else {
+        // مستطیل ساده (لوزی‌وار برای شکل لوزی از قاب مستطیلی رد می‌شود)
+        path.push((th_l, z_bottom));
+        path.push((th_r, z_bottom));
+        path.push((th_r, z_top));
+        path.push((th_l, z_top));
+    }
+    if path.len() < 2 {
+        return;
+    }
+
+    // سفر به نقطهٔ اول + چاپ مسیر بسته
+    let first = wall_surface_point(
+        ctx.radius_fn, ctx.patterns, path[0].0, path[0].1,
+        ctx.z_start, ctx.height, ctx.bed_offset,
+    );
+    ctx.travel(first);
+    for w in path.windows(2) {
+        let (th0, z0) = w[0];
+        let (th1, z1) = w[1];
+        let du = (wrap_pi(th1 - th0) * r_ref).abs();
+        let dv = (z1 - z0).abs();
+        let n = ((du.max(dv) / 1.5).ceil() as usize).clamp(1, 64);
+        for k in 1..=n {
+            let t = k as f64 / n as f64;
+            let th = th0 + (th1 - th0) * t;
+            let z = z0 + (z1 - z0) * t;
+            let p = wall_surface_point(
+                ctx.radius_fn, ctx.patterns, th, z,
+                ctx.z_start, ctx.height, ctx.bed_offset,
+            );
+            ctx.extrude(p);
+        }
+    }
+    // بستن قاب
+    let close = wall_surface_point(
+        ctx.radius_fn, ctx.patterns, path[0].0, path[0].1,
+        ctx.z_start, ctx.height, ctx.bed_offset,
+    );
+    ctx.extrude(close);
+}
+
+/// زمینهٔ انتشار segment دیواره — ابزار مشترک قاب/حلقه
+struct WallEmitCtx<'a> {
+    out: &'a mut Vec<ToolpathSegment>,
+    next_id: &'a mut u64,
+    stats: &'a mut ToolpathStats,
+    printer: &'a PrinterProfile,
+    radius_fn: &'a dyn Fn(f64) -> f64,
+    patterns: &'a [crate::designer::pattern::PatternParams],
+    z_start: f64,
+    height: f64,
+    bed_offset: [f64; 2],
+    r_ref: f64,
+    point: [f64; 3],
+    travel_feed: f64,
+    feed: f64,
+}
+
+impl<'a> WallEmitCtx<'_> {
+    fn travel(&mut self, to: [f64; 3]) {
+        let seg = ToolpathSegment {
+            id: *self.next_id,
+            source_line_index: self.out.len(),
+            kind: SegmentKind::Travel,
+            start_mm: Some(self.point),
+            end_mm: Some(to),
+            e_delta_mm: None,
+            feedrate_mm_min: Some(self.travel_feed),
+            layer_index: None,
+            certainty: Certainty::Known,
+        };
+        *self.next_id += 1;
+        self.stats.accumulate(&seg);
+        self.out.push(seg);
+        self.point = to;
+    }
+
+    fn extrude(&mut self, to: [f64; 3]) {
+        let d = [to[0] - self.point[0], to[1] - self.point[1], to[2] - self.point[2]];
+        let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        let e = extrusion_mm(
+            len,
+            self.printer.line_width_mm,
+            self.printer.layer_height_mm,
+            self.printer.filament_diameter_mm,
+            self.printer.flow_multiplier,
+        );
+        let seg = ToolpathSegment {
+            id: *self.next_id,
+            source_line_index: self.out.len(),
+            kind: SegmentKind::Extrusion,
+            start_mm: Some(self.point),
+            end_mm: Some(to),
+            e_delta_mm: Some(e),
+            feedrate_mm_min: Some(self.feed),
+            layer_index: None,
+            certainty: Certainty::Known,
+        };
+        *self.next_id += 1;
+        self.stats.accumulate(&seg);
+        self.out.push(seg);
+        self.point = to;
+    }
+}
+
+/// چاپ حلقهٔ بستهٔ کامل در z ثابت (تقویت لبهٔ بالا — آویز) — نسخهٔ ۱٫۷
+fn emit_ring_at_z(
+    ctx: &mut WallEmitCtx<'_>,
+    z_abs: f64,
+    radius_scale: f64,
+    theta0: f64,
+) {
+    let r_ref = ctx.r_ref.max(0.5);
+    let steps = ((2.0 * std::f64::consts::PI * r_ref) / 1.8).ceil() as usize;
+    let steps = steps.clamp(48, 400);
+    let mut th = theta0;
+    let first = wall_surface_point(
+        ctx.radius_fn,
+        ctx.patterns,
+        th,
+        z_abs,
+        ctx.z_start,
+        ctx.height,
+        ctx.bed_offset,
+    );
+    // حلقه شعاع کمی بزرگ‌تر از فرم (روی لبه بنشیند): شعاع × scale
+    let first = [
+        ctx.bed_offset[0] + (first[0] - ctx.bed_offset[0]) * radius_scale,
+        ctx.bed_offset[1] + (first[1] - ctx.bed_offset[1]) * radius_scale,
+        first[2],
+    ];
+    ctx.travel(first);
+    let d = 2.0 * std::f64::consts::PI / steps as f64;
+    for k in 1..=steps {
+        th = theta0 + k as f64 * d;
+        let p = wall_surface_point(
+            ctx.radius_fn,
+            ctx.patterns,
+            th,
+            z_abs,
+            ctx.z_start,
+            ctx.height,
+            ctx.bed_offset,
+        );
+        let p = [
+            ctx.bed_offset[0] + (p[0] - ctx.bed_offset[0]) * radius_scale,
+            ctx.bed_offset[1] + (p[1] - ctx.bed_offset[1]) * radius_scale,
+            p[2],
+        ];
+        ctx.extrude(p);
+    }
 }
 
 /// اجرای کامل زنجیرهٔ طراح
@@ -298,7 +671,8 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
 
     // حرکت مارپیچ: در هر دور کامل، Z به اندازهٔ layer_height بالا می‌رود
     let total_revolutions = (height / layer_h).ceil().max(1.0);
-    let dz_per_step = layer_h / steps_per_rev as f64;
+    // نسخهٔ ۱٫۷: z از انتگرال‌گیری z_center (نرخ وابسته به توری) می‌آید؛
+    // dz_per_step ثابت قدیمی فقط مستندسازی است: layer_h / steps_per_rev
 
     // ---------- mesh پایه (برای STL) ----------
     let mesh = build_mesh(
@@ -363,6 +737,8 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     // همین نقاط در حلقهٔ مارپیچ جمع می‌شوند؛ نوار بین انقلاب‌ها = سطح چاپی
     let mut wall_points: Vec<[f64; 3]> =
         Vec::with_capacity((total_revolutions * steps_per_rev as f64) as usize + 2);
+    // ماسک چاپ هر نقطه — نسخهٔ ۱٫۷ (سوراخ دیواره): ۱ = چاپ، ۰ = دهانه
+    let mut wall_flags: Vec<u8> = Vec::with_capacity(wall_points.capacity());
 
     // travel اولیه — از آخرین نقطهٔ کف (اگر هست) وگرنه مرکز صفحه
     let mut prev_point = segments
@@ -385,20 +761,162 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
     segments.push(seg);
     prev_point = first_point;
     wall_points.push(first_point);
+    wall_flags.push(1);
 
-    // ---------- حلقهٔ مارپیچ ----------
-    let mut e_counter = 0.0f64; // برای E مطلق؛ در نسبی delta مستقیم می‌رود
-    let total_steps = (total_revolutions * steps_per_rev as f64).ceil() as usize;
+    // ---------- حلقهٔ مارپیچ — نسخهٔ ۱٫۷: توری + سوراخ دیواره ----------
+    let mut _e_counter = 0.0f64; // مستندسازی: E مطلق در خروجی‌ساز ساخته می‌شود
+    let mut total_steps = (total_revolutions * steps_per_rev as f64).ceil() as usize;
     let mut path_length = 0.0f64;
     let mut clamped_radius_events = 0usize;
     // بیشینهٔ شدت بافت دیده‌شده (۰..۱) — نسخهٔ ۱.۵: مدولاسیون سرعت
     let mut tex_intensity_max: f64 = 0.0;
 
-    for step in 1..=total_steps {
-        // θ پیوسته بالا می‌رود (از فاز شروع)؛ z خطی با گام
+    // ===== توری — نسخهٔ ۱٫۷ (درخواست کاربر ۳) =====
+    // موج مثلثی روی z با دورهٔ «n+½» در هر انقلاب ⇒ تارهای انقلاب‌های
+    // مجاور ضدفازند، همدیگر را قطع می‌کنند و در تقاطع‌ها جوش می‌کنند
+    // ⇒ خانه‌های لوزی باز مثل توری/سبد (مرجع درخواستی کاربر).
+    let lattice_on = matches!(input.wall.mode, crate::designer::WallMode::Lattice);
+    let lat = &input.wall.lattice;
+    let lat_z0 = lat.z_start_mm.clamp(0.0, height * 0.95);
+    let lat_z1 = lat
+        .z_end_mm
+        .unwrap_or(height)
+        .clamp(lat_z0.min(height), height);
+    let cell_a = lat.cell_height_mm.clamp(2.0, 80.0); // ارتفاع خانه
+    let delta_rise = (cell_a * lat.rise_ratio.clamp(0.15, 0.9)).max(layer_h * 1.5);
+    // دورهٔ زاویه‌ای موج: n+½ دوره در هر انقلاب (ضدفاز ⇒ تقاطع تارها)
+    let lat_phase = lat.phase_deg.to_radians();
+    let twist_k = if matches!(lat.style, crate::designer::LatticeStyle::Twisted) {
+        0.055 // برش آرام شبکه در ارتفاع — چرخش مارپیچی توری
+    } else {
+        0.0
+    };
+    let p_theta = {
+        let circ_mean = 2.0 * std::f64::consts::PI * r_max;
+        let n = ((circ_mean / lat.cell_width_mm.max(3.0)) - 0.5).round().max(1.0);
+        2.0 * std::f64::consts::PI / (n + 0.5)
+    };
+    // حالت موج: ۰ = جامد؛ ۱ = توری کامل (گذار نرم یک انقلاب)
+    let mut lat_s = 0.0f64;
+    // z مرکز (بدون موج) — انتگرال‌گیری تدریجی با نرخ وابسته به lat_s
+    let mut z_center = z_start;
+
+    // ===== سوراخ دیواره — نسخهٔ ۱٫۷ (درخواست کاربر ۹) =====
+    let hole_cfg = &input.wall.holes;
+    let holes_enabled = hole_cfg.enabled && hole_cfg.count_around >= 1 && hole_cfg.rows >= 1;
+    let hole_shape = hole_cfg.shape;
+    let hole_hw = (hole_cfg.width_mm * 0.5).max(1.0);
+    let hole_hh = (hole_cfg.height_mm * 0.5).max(1.0);
+    // ردیف‌ها: فاصلهٔ مرکز (خودکار = ارتفاع + ۶mm حاشیه)
+    let hole_pitch = if hole_cfg.row_pitch_mm > 0.0 {
+        hole_cfg.row_pitch_mm.max(hole_cfg.height_mm + 2.0)
+    } else {
+        hole_cfg.height_mm + 6.0
+    };
+    let hole_phase = hole_cfg.phase_deg.to_radians();
+    // شعاع مرجع برای تبدیل قوس↔زاویه (میانهٔ فرم)
+    let r_ref = {
+        let mut rr = 0.0f64;
+        for i in 0..8 {
+            rr += radius_fn(height * i as f64 / 7.0);
+        }
+        (rr / 8.0).max(1.0)
+    };
+    let mut wall_holes: Vec<WallHoleGeom> = Vec::new();
+    let mut frame_passes_of: Vec<usize> = Vec::new();
+    let mut frame_printed: Vec<bool> = Vec::new();
+    if holes_enabled {
+        let n_around = hole_cfg.count_around.clamp(1, 12) as usize;
+        let rows_n = hole_cfg.rows.clamp(1, 8) as usize;
+        for row in 0..rows_n {
+            // مرکز ردیف: از حاشیهٔ پایین + row·pitch؛ اگر از بالا بیرون زد رد می‌شود
+            let zc = hole_cfg.margin_bottom_mm.max(2.0) + row as f64 * hole_pitch;
+            if zc + hole_hh > height - hole_cfg.margin_top_mm.max(0.0) {
+                continue;
+            }
+            let stagger_off = if hole_cfg.stagger && row % 2 == 1 {
+                std::f64::consts::PI / n_around as f64
+            } else {
+                0.0
+            };
+            for k in 0..n_around {
+                let th = hole_phase + stagger_off
+                    + k as f64 * 2.0 * std::f64::consts::PI / n_around as f64;
+                wall_holes.push(WallHoleGeom {
+                    theta_c: th,
+                    z_c: zc,
+                    half_w: hole_hw,
+                    half_h: hole_hh,
+                });
+                frame_passes_of.push(hole_cfg.frame_passes.min(3) as usize);
+                frame_printed.push(false);
+            }
+        }
+    }
+    // ===== سوراخ‌های آویز بالای دیواره — نسخهٔ ۱٫۷ (درخواست کاربر ۷) =====
+    let pendant = &input.pendant;
+    let pendant_top = matches!(
+        pendant.style,
+        crate::designer::HangingStyle::TopHoles | crate::designer::HangingStyle::Both
+    );
+    let pendant_top_half = (pendant.top_hole_diameter_mm * 0.5).max(1.2);
+    if pendant_top {
+        let n = pendant.top_holes_count.clamp(2, 6) as usize;
+        // مرکز سوراخ: top_hole_from_rim زیر لبهٔ بالا
+        let zc = (height - pendant.top_hole_from_rim_mm.max(3.0))
+            .min(height - pendant_top_half - 1.0);
+        if zc - pendant_top_half > 2.0 {
+            for k in 0..n {
+                let th = phase0 + k as f64 * 2.0 * std::f64::consts::PI / n as f64;
+                wall_holes.push(WallHoleGeom {
+                    theta_c: th,
+                    z_c: zc,
+                    half_w: pendant_top_half,
+                    half_h: pendant_top_half,
+                });
+                frame_passes_of.push(if pendant.top_hole_frames { 1 } else { 0 });
+                frame_printed.push(false);
+            }
+        }
+    }
+    let n_holes = wall_holes.len();
+
+    let total_steps_cap = total_steps + steps_per_rev * 4; // سقف ایمنی
+    let mut step = 0usize;
+    // آیا قدم قبلی داخل سوراخ بود؟ (پاک‌سازی خروج از دهانه — درخواست ۹:
+    // هیچ اکستروژنی نباید از «داخل» سوراخ شروع شود و روی دهانه اثر بگذارد)
+    let mut prev_in_hole = false;
+    while step < total_steps_cap {
+        step += 1;
+        if z_center >= z_start + height {
+            break; // فرم کامل شد (توری با Δ بزرگ سریع‌تر صعود می‌کند)
+        }
+        // θ پیوسته بالا می‌رود (از فاز شروع)
         let theta = phase0 + step as f64 * d_theta;
-        let z = (z_start + step as f64 * dz_per_step).min(z_start + height);
-        // پروفایل از 0 تا height — شکل از بالای کف (z_start) شروع می‌شود
+
+        // ---------- نرخ صعود و حالت توری ----------
+        let z_profile_center = (z_center - z_start).clamp(0.0, height);
+        let s_target = if lattice_on && z_profile_center >= lat_z0 && z_profile_center < lat_z1 {
+            1.0
+        } else {
+            0.0
+        };
+        // گذار نرم: یک انقلاب کامل (steps_per_rev گام) از ۰→۱ یا ۱→۰
+        let ds = 1.0 / steps_per_rev as f64;
+        let d_s = (s_target - lat_s).clamp(-ds, ds);
+        lat_s += d_s;
+        // نرخ صعود: lerp(layer_h, Δ, s) — در هر انقلاب
+        let rise_rate = layer_h + (delta_rise - layer_h) * lat_s;
+        z_center += rise_rate / steps_per_rev as f64;
+
+        // ---------- z نهایی: مرکز + موج توری ----------
+        let z = if lat_s > 1e-6 {
+            let arg = (theta - phase0 - lat_phase) / p_theta * (1.0 + twist_k);
+            let w = lattice_wave(lat.style, arg) * cell_a * lat_s;
+            (z_center + w).clamp(z_start, z_start + height)
+        } else {
+            z_center.min(z_start + height)
+        };
         let z_for_profile = (z - z_start).clamp(0.0, height);
 
         // شعاع با الگوها
@@ -418,9 +936,8 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         // نقطهٔ خام قبل از بافت (فضای مدل — نسبت به محور مرکزی)
         let raw_point = [r * theta.cos(), r * theta.sin(), z];
         path_length += (d_theta * r).abs(); // طول قوس تقریبی این گام
-        // بافت روی طول پیموده‌شده — نسخهٔ ۱.۵: با دامنهٔ کلمپ‌شدهٔ نازل
-        // + شدت (intensity) برای مدولاسیون سرعت (مثل ویدئوهای مرجع:
-        // نازل روی فرورفتگی‌های بافت آرام‌تر می‌رود)
+        // بافت روی طول پیموده‌شده — نسخهٔ ۱٫۵: با دامنهٔ کلمپ‌شدهٔ نازل
+        // + شدت (intensity) برای مدولاسیون سرعت
         let (point_model, collided, tex_intensity) = apply_texture_ex(
             raw_point,
             path_length,
@@ -437,6 +954,73 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
             point_model[2],
         ];
 
+        // ---------- قاب سوراخ‌ها: هنگام رسیدن z مرکز به کف ردیف ----------
+        // کف قاب = zc − hh؛ چاپ وقتی z مرکز نیم‌لایه از آن گذشته باشد
+        // (قاب روی لایهٔ زیرین خود می‌نشیند و دیوارهٔ واقعی می‌سازد).
+        if n_holes > 0 {
+            let mut any_frame = false;
+            for hi in 0..n_holes {
+                if frame_printed[hi] {
+                    continue;
+                }
+                let zb = wall_holes[hi].z_c - wall_holes[hi].half_h - layer_h * 0.5;
+                if z_profile_center >= zb {
+                    // قاب‌ها با travel خودشان از نقطهٔ فعلی مسیر شروع می‌شوند و
+                    // به همان نقطه برمی‌گردند؛ سپس مارپیچ ادامه می‌یابد.
+                    // (نقطهٔ شروع پیش از ساخت زمینه خوانده می‌شود — تفکیک borrow)
+                    let start_pt = if any_frame {
+                        segments.last().and_then(|s| s.end_mm).unwrap_or(prev_point)
+                    } else {
+                        prev_point
+                    };
+                    let mut emit_ctx = WallEmitCtx {
+                        out: &mut segments,
+                        next_id: &mut next_id,
+                        stats: &mut stats,
+                        printer,
+                        radius_fn: &radius_fn,
+                        patterns: &input.patterns,
+                        z_start,
+                        height,
+                        bed_offset,
+                        r_ref,
+                        point: start_pt,
+                        travel_feed: printer.effective_travel_mm_min(),
+                        feed: printer.effective_wall_mm_min().min(900.0),
+                    };
+                    for p in 0..frame_passes_of[hi] {
+                        let off = printer.line_width_mm * 0.55 * p as f64;
+                        emit_hole_frame(&mut emit_ctx, &wall_holes[hi], off, hole_shape);
+                    }
+                    frame_printed[hi] = true;
+                    any_frame = true;
+                }
+            }
+            // ادامهٔ مسیر مارپیچ: برگشت به نقطهٔ فعلی با travel
+            if any_frame {
+                let back = prev_point;
+                let seg = ToolpathSegment {
+                    id: next_id,
+                    source_line_index: segments.len(),
+                    kind: SegmentKind::Travel,
+                    start_mm: segments.last().and_then(|s| s.end_mm),
+                    end_mm: Some(back),
+                    e_delta_mm: None,
+                    feedrate_mm_min: Some(printer.effective_travel_mm_min()),
+                    layer_index: None,
+                    certainty: Certainty::Known,
+                };
+                next_id += 1;
+                stats.accumulate(&seg);
+                segments.push(seg);
+            }
+        }
+
+        // ---------- آزمون سوراخ: نقطهٔ جاری داخل دهانه؟ ----------
+        let in_hole = n_holes > 0
+            && z_for_profile > 1.0 // لایه‌های شروع دیواره سوراخ نمی‌شوند
+            && point_in_holes(&wall_holes, hole_shape, theta, z_for_profile, r_ref);
+
         // طول واقعی این گام (پس از بافت)
         let d = [
             point[0] - prev_point[0],
@@ -445,47 +1029,128 @@ pub fn compute(input: &DesignerInput) -> DesignerOutput {
         ];
         let seg_len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
 
-        // E این گام
-        let e_delta = extrusion_mm(
-            seg_len,
-            printer.line_width_mm,
-            layer_h,
-            printer.filament_diameter_mm,
-            printer.flow_multiplier,
-        );
-        e_counter += e_delta;
-
-        // segment چاپی — ΔE مثبت؛ feedrate چاپ
-        let e_val = if printer.absolute_e { e_counter } else { e_delta };
-        let _ = e_val; // E نهایی در خروجی‌ساز G-code ساخته می‌شود؛ IR فقط delta
-        // ---------- مدولاسیون سرعت بافت — نسخهٔ ۱.۵ ----------
-        // مثل ویدئوهای مرجع: نازل روی قله/درهٔ بافت آرام می‌رود تا
-        // bead یکنواخت بماند و نازل به موج قبلی نکوبد:
-        //   F = F_wall × (۱ − ۰٫۴×شدت) — حداقل ۶۰٪ سرعت دیواره
+        // ---------- مدولاسیون سرعت بافت ۱٫۵ + توری ۱٫۷ ----------
         let wall_f = printer.effective_wall_mm_min();
-        let tex_f = wall_f * (1.0 - 0.4 * tex_intensity.clamp(0.0, 1.0));
-        let seg = ToolpathSegment {
-            id: next_id,
-            source_line_index: segments.len(),
-            kind: SegmentKind::Extrusion,
-            start_mm: Some(prev_point),
-            end_mm: Some(point),
-            e_delta_mm: Some(e_delta),
-            feedrate_mm_min: Some(tex_f.max(wall_f * 0.6)),
-            layer_index: None, // مارپیچ: لایهٔ گسسته نه (الزام)
-            certainty: Certainty::Known,
-        };
-        // اگر جابه‌جایی ناچیز است (بافت صفر و r ثابت) همچنان چاپ حساب می‌شود
-        next_id += 1;
-        stats.accumulate(&seg);
-        segments.push(seg);
-        prev_point = point;
-        wall_points.push(point);
+        let mut tex_f = wall_f * (1.0 - 0.4 * tex_intensity.clamp(0.0, 1.0));
+        if lat_s > 1e-6 {
+            // تارهای توری مورب/معلق: آرام‌تر (سرعت نسبی توری)
+            tex_f *= lat.speed_scale.clamp(0.3, 1.0).max(0.3);
+        }
+
+        if in_hole {
+            // ---------- دهانهٔ سوراخ: travel بدون اکستروژن (درخواست ۹) ----------
+            let seg = ToolpathSegment {
+                id: next_id,
+                source_line_index: segments.len(),
+                kind: SegmentKind::Travel,
+                start_mm: Some(prev_point),
+                end_mm: Some(point),
+                e_delta_mm: None,
+                feedrate_mm_min: Some(printer.effective_travel_mm_min()),
+                layer_index: None,
+                certainty: Certainty::Known,
+            };
+            next_id += 1;
+            stats.accumulate(&seg);
+            segments.push(seg);
+            prev_point = point;
+            wall_points.push(point);
+            wall_flags.push(0); // ماسک: دهانهٔ باز — مثلث رندر نشود
+            prev_in_hole = true;
+        } else if prev_in_hole {
+            // ---------- خروج از سوراخ: travel تا نقطهٔ بیرونی، سپس چاپ ----------
+            // قدم قبلی داخل دهانه بود؛ اکستروژن مستقیم یعنی شروع رشته از
+            // داخل سوراخ و اثر روی دهانه. یک گام travel تمیز می‌کند و چاپ
+            // از قدم بعد از «مرز بیرونی» آغاز می‌شود.
+            let seg = ToolpathSegment {
+                id: next_id,
+                source_line_index: segments.len(),
+                kind: SegmentKind::Travel,
+                start_mm: Some(prev_point),
+                end_mm: Some(point),
+                e_delta_mm: None,
+                feedrate_mm_min: Some(printer.effective_travel_mm_min()),
+                layer_index: None,
+                certainty: Certainty::Known,
+            };
+            next_id += 1;
+            stats.accumulate(&seg);
+            segments.push(seg);
+            prev_point = point;
+            wall_points.push(point);
+            wall_flags.push(1); // نقطهٔ بیرونی — سطح چاپی
+            prev_in_hole = false;
+        } else {
+            // ---------- چاپ عادی (جامد/توری) ----------
+            // E این گام — توری: ضریب جریان تار
+            let mut e_delta = extrusion_mm(
+                seg_len,
+                printer.line_width_mm,
+                layer_h,
+                printer.filament_diameter_mm,
+                printer.flow_multiplier,
+            );
+            if lat_s > 1e-6 {
+                e_delta *= lat.flow_scale.clamp(0.5, 2.0);
+            }
+            _e_counter += e_delta;
+
+            let seg = ToolpathSegment {
+                id: next_id,
+                source_line_index: segments.len(),
+                kind: SegmentKind::Extrusion,
+                start_mm: Some(prev_point),
+                end_mm: Some(point),
+                e_delta_mm: Some(e_delta),
+                feedrate_mm_min: Some(tex_f.max(wall_f * 0.3)),
+                layer_index: None, // مارپیچ: لایهٔ گسسته نه (الزام)
+                certainty: Certainty::Known,
+            };
+            next_id += 1;
+            stats.accumulate(&seg);
+            segments.push(seg);
+            prev_point = point;
+            wall_points.push(point);
+            wall_flags.push(1);
+        }
+    }
+    total_steps = step; // گام‌های واقعی طی‌شده (توری ممکن است زودتر تمام شود)
+
+    // ---------- حلقه‌های تقویت لبهٔ بالا — آویز (درخواست کاربر ۷) ----------
+    // لبهٔ بالای فرم تحت کشش آویز است؛ ۱..۶ حلقهٔ بسته در بالای دیواره
+    // (هر حلقه یک دور کامل در z ثابت روی خود فرم) ⇒ لبهٔ ضخیم مقاوم.
+    let pendant_any = !matches!(pendant.style, crate::designer::HangingStyle::None);
+    if pendant.rim_reinforce_rings > 0 && pendant_any {
+        let rings = pendant.rim_reinforce_rings.min(6) as usize;
+        let mut cur = prev_point;
+        for j in 0..rings {
+            let z_ring = (z_start + height - j as f64 * printer.line_width_mm * 0.9)
+                .max(z_start + height - printer.line_width_mm * 5.0);
+            let mut emit_ctx = WallEmitCtx {
+                out: &mut segments,
+                next_id: &mut next_id,
+                stats: &mut stats,
+                printer,
+                radius_fn: &radius_fn,
+                patterns: &input.patterns,
+                z_start,
+                height,
+                bed_offset,
+                r_ref,
+                point: cur,
+                travel_feed: printer.effective_travel_mm_min(),
+                feed: printer.effective_wall_mm_min(),
+            };
+            emit_ring_at_z(&mut emit_ctx, z_ring, 1.0, phase0);
+            cur = emit_ctx.point;
+        }
+        let _ = cur; // نقطهٔ پایانی حلقه‌ها — مسیر بعدی travel خودش را دارد
     }
 
-    // ---------- نوار مارپیچی پیش‌نمایش — نسخهٔ ۱٫۶ (درخواست کاربر ۱) ----------
-    // از نقاط «واقعی مسیر» → الگو و بافت هر دو در نمای جامد دیده می‌شوند
-    let wall_mesh = build_wall_ribbon(&wall_points, steps_per_rev);
+    // ---------- نوار مارپیچی پیش‌نمایش — ۱٫۶ + ماسک/حالت ۱٫۷ ----------
+    // از نقاط «واقعی مسیر» → الگو و بافت در نمای جامد دیده می‌شوند؛
+    // ماسک ۰ = دهانهٔ سوراخ؛ حالت ۱ = توری (اتصال تارها در فرانت‌اند).
+    let wall_mesh = build_wall_ribbon(&wall_points, &wall_flags, steps_per_rev, lattice_on);
 
     // ---------- هشدارها ----------
     if clamped_radius_events > 0 {
@@ -916,8 +1581,22 @@ fn build_floor(
     let layers = floor.layers.clamp(1, 12) as usize;
     let z_base = floor.z_start_mm.max(0.0);
     let r_outer = radius_fn(0.0).max(0.5);
-    let r_hole = (floor.center_hole_diameter_mm / 2.0).clamp(0.0, r_outer - 1.0);
-    let gap = floor.ring_gap_mm.max(printer.line_width_mm * 0.9);
+    // ---------- لامپ — نسخهٔ ۱٫۷ (درخواست کاربر ۸) ----------
+    // سوکت لامپ بر سوراخ مرکزی معمولی تقدم دارد؛ ضریب فاصله، کفِ
+    // «نورپذیر» بازتر می‌سازد (خطوط کمتر = عبور نور بیشتر).
+    let lamp = &input.lamp;
+    let lamp_on = lamp.enabled;
+    let r_hole = if lamp_on {
+        (lamp.center_hole_diameter_mm / 2.0).clamp(0.0, r_outer - 1.5)
+    } else {
+        (floor.center_hole_diameter_mm / 2.0).clamp(0.0, r_outer - 1.0)
+    };
+    let gap = if lamp_on {
+        (floor.ring_gap_mm * lamp.floor_gap_multiplier.clamp(0.5, 3.0))
+            .max(printer.line_width_mm * 0.9)
+    } else {
+        floor.ring_gap_mm.max(printer.line_width_mm * 0.9)
+    };
     let lw = printer.line_width_mm.max(0.1);
     let cx = bed_offset[0];
     let cy = bed_offset[1];
@@ -925,17 +1604,42 @@ fn build_floor(
     let first_feed = printer.effective_first_layer_mm_min();
     let floor_feed = printer.effective_floor_mm_min();
 
-    // ---------- سوراخ‌های لبه — نسخهٔ ۱٫۶ (درخواست ۷: آویز/لامپ) ----------
+    // ---------- سوراخ‌های لبه — ۱٫۶ + آویز حرفه‌ای ۱٫۷ (درخواست ۷) ----------
     // N سوراخ با قطر قابل‌تنظیم نزدیک لبهٔ کف؛ برای رد کردن نخ آویز،
     // سیم/کابل لامپ یا تهویه. الگوها این نقاط را خالی می‌گذارند و
     // حلقهٔ تقویت دورشان در لایهٔ آخر چاپ می‌شود.
-    let rim_holes = floor.rim_holes.min(12);
-    let hr = (floor.rim_hole_diameter_mm / 2.0).clamp(0.4, r_outer * 0.25);
+    // ۱٫۷: تنظیمات آویز (تعداد/قطر/موقعیت ٪شعاع/فاز) بر کف تقدم دارد.
+    let pendant = &input.pendant;
+    let pendant_rim = matches!(
+        pendant.style,
+        crate::designer::HangingStyle::RimHoles | crate::designer::HangingStyle::Both
+    );
+    let rim_holes = if pendant_rim {
+        pendant.rim_holes_count.min(12)
+    } else {
+        floor.rim_holes.min(12)
+    };
+    let hr = if pendant_rim {
+        (pendant.rim_hole_diameter_mm / 2.0).clamp(0.4, r_outer * 0.25)
+    } else {
+        (floor.rim_hole_diameter_mm / 2.0).clamp(0.4, r_outer * 0.25)
+    };
+    let rim_phase = if pendant_rim {
+        phase0 + pendant.rim_phase_deg.to_radians()
+    } else {
+        phase0
+    };
     let holes: Vec<(f64, f64, f64)> = if rim_holes > 0 && r_outer > hr * 3.0 {
-        let r_ring = (r_outer - hr - lw * 2.5).max(r_hole + hr + 2.0);
+        let r_ring = if pendant_rim {
+            // موقعیت ٪ شعاعی (۶۰..۹۲٪) — قابل‌تنظیم کاربر
+            (r_outer * pendant.rim_hole_radius_percent.clamp(40.0, 95.0) / 100.0)
+                .clamp(r_hole + hr + 1.0, (r_outer - hr - lw).max(r_hole + hr + 1.0))
+        } else {
+            (r_outer - hr - lw * 2.5).max(r_hole + hr + 2.0)
+        };
         (0..rim_holes)
             .map(|k| {
-                let th = phase0 + k as f64 * 2.0 * std::f64::consts::PI / rim_holes as f64;
+                let th = rim_phase + k as f64 * 2.0 * std::f64::consts::PI / rim_holes as f64;
                 (r_ring * th.cos(), r_ring * th.sin(), hr)
             })
             .collect()
@@ -967,6 +1671,18 @@ fn build_floor(
             }
             FloorPattern::Octagram => {
                 if layer_idx % 2 == 1 { std::f64::consts::PI / 8.0 } else { 0.0 }
+            }
+            FloorPattern::LampWeb | FloorPattern::Sunburst => {
+                let n = if lamp_on {
+                    lamp.spokes_count.clamp(3, 16) as f64
+                } else {
+                    floor.spokes.clamp(3, 16) as f64
+                };
+                if layer_idx % 2 == 1 {
+                    std::f64::consts::PI / n
+                } else {
+                    0.0
+                }
             }
             _ => 0.0,
         };
@@ -1252,11 +1968,81 @@ fn build_floor(
                     }
                 }
             }
+
+            // ---------------- وب لامپ — نسخهٔ ۱٫۷ (درخواست کاربر ۸) ----------------
+            // حلقه‌های هم‌مرکز درشت (با ضریب نور لامپ) + پره‌های شعاعی ⇒
+            // شبکهٔ توری نور: نور از خانه‌های باز عبور می‌کند و وزن کم است.
+            FloorPattern::LampWeb => {
+                let mut r = r_outer;
+                while r > r_hole + gap {
+                    ctx.ring(r, 0.0);
+                    r -= gap;
+                    if r <= r_hole {
+                        break;
+                    }
+                }
+                let spokes = if lamp_on {
+                    lamp.spokes_count.clamp(3, 12) as usize
+                } else {
+                    floor.spokes.clamp(3, 24) as usize
+                };
+                let r_in = r_hole.max(0.3);
+                for i in 0..spokes {
+                    let ang = i as f64 * 2.0 * std::f64::consts::PI / spokes as f64;
+                    ctx.line(
+                        r_in * ang.cos(),
+                        r_in * ang.sin(),
+                        r_outer * ang.cos(),
+                        r_outer * ang.sin(),
+                    );
+                }
+            }
+
+            // ---------------- خورشیدشکاف — نسخهٔ ۱٫۷ (درخواست کاربر ۸) ----------------
+            // پرتوهای پهن واگرا از سوکت مرکزی تا لبه (هر پرتو ۳ خط:
+            // دو لبهٔ واگرا + مرکز) — نور مستقیم و ظاهر «خورشید» کف لامپ.
+            FloorPattern::Sunburst => {
+                let rays = if lamp_on {
+                    lamp.spokes_count.clamp(4, 16) as usize
+                } else {
+                    floor.spokes.clamp(5, 16) as usize
+                };
+                let r_in = r_hole.max(0.4);
+                for i in 0..rays {
+                    let th = i as f64 * 2.0 * std::f64::consts::PI / rays as f64;
+                    let half0 = lw * 0.9;
+                    let half1 =
+                        (std::f64::consts::PI * r_outer / rays as f64) * 0.42;
+                    let (ux, uy) = (th.cos(), th.sin());
+                    let (px, py) = (-uy, ux);
+                    ctx.line(
+                        r_in * ux - half0 * px,
+                        r_in * uy - half0 * py,
+                        r_outer * ux - half1 * px,
+                        r_outer * uy - half1 * py,
+                    );
+                    ctx.line(
+                        r_in * ux + half0 * px,
+                        r_in * uy + half0 * py,
+                        r_outer * ux + half1 * px,
+                        r_outer * uy + half1 * py,
+                    );
+                    ctx.line(r_in * ux, r_in * uy, r_outer * ux, r_outer * uy);
+                }
+            }
         }
 
-        // ---------- تقویت — نسخهٔ ۱٫۶ (درخواست ۷: آویز/لامپ) ----------
+        // ---------- فرورفتگی سوکت — لایهٔ دوم (ظاهر حرفه‌ای ۱٫۷) ----------
+        if lamp_on && lamp.recessed_socket && layer_idx == 1 && layers > 1 && r_hole > 0.4 {
+            let r = r_hole + lw * 2.5;
+            if r < r_outer - lw * 2.0 {
+                ctx.ring(r, 0.0);
+            }
+        }
+
+        // ---------- تقویت — ۱٫۶ + سوکت/پرهٔ لامپ ۱٫۷ ----------
         // فقط در لایهٔ آخر کف: حلقه‌های ضخیم دور لبه (برای آویزکردن)،
-        // دور سوراخ مرکزی (گrip سوکت لامپ) و دور سوراخ‌های لبه (نخ/سیم).
+        // دور سوراخ مرکزی (گریپ سوکت لامپ) و دور سوراخ‌های لبه (نخ/سیم).
         if layer_idx == layers - 1 {
             let rr_extra = floor.reinforce_rings.min(4);
             for i in 0..rr_extra {
@@ -1265,8 +2051,15 @@ fn build_floor(
                     ctx.ring(r, 0.0);
                 }
             }
+            // حلقه‌های سوکت لامپ — «سوراخ وسط» مسلح (درخواست ۸)
+            let socket_rings = if lamp_on {
+                lamp.socket_rings.min(6)
+            } else {
+                0
+            };
             if r_hole > 0.4 {
-                for i in 0..(1 + rr_extra.min(2)) {
+                let ring_n = (1 + rr_extra.min(2) + socket_rings).min(10);
+                for i in 0..ring_n {
                     let r = r_hole + lw * (0.55 + i as f64);
                     if r < r_outer - lw {
                         ctx.ring(r, 0.0);
@@ -1276,6 +2069,58 @@ fn build_floor(
             for &(hx, hy, hrad) in &holes {
                 let r = hrad + lw * 0.55;
                 ctx.circle_around(hx, hy, r);
+            }
+
+            // ---------- پره‌های متصل‌کنندهٔ سوکت به بدنه — ۱٫۷ (درخواست ۸) ----------
+            // «پایه‌های متصل‌کنندهٔ سوراخ به بدنه»: سه سبک —
+            //   Parallel: هر پره چند خط موازی (پهن/مقاوم)؛
+            //   Single: تک‌خط باریک (نور بیشتر)؛
+            //   Web: پره + کمان‌های اتصال در دو شعاع میانی (استحکام حداکثر).
+            if lamp_on && lamp.spokes_count >= 3 && r_hole > 0.4 {
+                let n = lamp.spokes_count.clamp(3, 12) as usize;
+                let spoke_w = lamp.spokes_width_mm.max(lw);
+                let r_in = r_hole + lw * 0.6;
+                let r_out2 = (r_outer - lw * 0.6).max(r_in + 1.0);
+                let web = matches!(lamp.spokes_style, crate::designer::SpokesStyle::Web);
+                for k in 0..n {
+                    let th = phase0 + k as f64 * 2.0 * std::f64::consts::PI / n as f64;
+                    let (ux, uy) = (th.cos(), th.sin());
+                    match lamp.spokes_style {
+                        crate::designer::SpokesStyle::Parallel => {
+                            let n_lines =
+                                ((spoke_w / lw).ceil() as usize).clamp(1, 6);
+                            let half = (n_lines as f64 * lw) * 0.5;
+                            for li in 0..n_lines {
+                                let off = -half + lw * (li as f64 + 0.5);
+                                let (px, py) = (-uy, ux);
+                                ctx.line(
+                                    r_in * ux + off * px,
+                                    r_in * uy + off * py,
+                                    r_out2 * ux + off * px,
+                                    r_out2 * uy + off * py,
+                                );
+                            }
+                        }
+                        crate::designer::SpokesStyle::Single => {
+                            ctx.line(r_in * ux, r_in * uy, r_out2 * ux, r_out2 * uy);
+                        }
+                        crate::designer::SpokesStyle::Web => {
+                            ctx.line(r_in * ux, r_in * uy, r_out2 * ux, r_out2 * uy);
+                        }
+                    }
+                }
+                // شبکهٔ وب: کمان‌های اتصال بین پره‌ها در دو شعاع میانی
+                if web {
+                    let dth = 2.0 * std::f64::consts::PI / n as f64;
+                    for frac in [0.33f64, 0.66] {
+                        let r_m = r_in + (r_out2 - r_in) * frac;
+                        for k in 0..n {
+                            let th0 = phase0 + k as f64 * dth;
+                            // کمان روی ۶۵٪ گپ زاویه‌ای بین دو پرهٔ مجاور
+                            ctx.arc(r_m, th0 + dth * 0.175, th0 + dth * 0.825);
+                        }
+                    }
+                }
             }
         }
 
@@ -1359,7 +2204,343 @@ mod tests {
             printer: PrinterProfile::default(),
             mesh_quality: 1.0,
             gcode_quality: 1.0,
+            wall: crate::designer::WallSettings::default(),
+            pendant: crate::designer::PendantSettings::default(),
+            lamp: crate::designer::LampSettings::default(),
         }
+    }
+
+
+    // ================= آزمون‌های نسخهٔ ۱٫۷ =================
+
+    #[test]
+    fn test_lattice_generates_zigzag_wall() {
+        // توری (درخواست ۳): z باید هم بالا برود هم پایین (موج تارها)؛
+        // مسیر پیوسته چاپ می‌ماند و ماسک نوار = حالت توری.
+        let mut inp = base_input();
+        inp.wall.mode = crate::designer::WallMode::Lattice;
+        inp.wall.lattice.cell_width_mm = 14.0;
+        inp.wall.lattice.cell_height_mm = 12.0;
+        inp.wall.lattice.z_start_mm = 5.0;
+        let out = compute(&inp);
+        // همهٔ قطعات دیواره (بعد از travel اول) چاپ‌اند — توری پیوسته است
+        assert!(out.segments.len() > 200);
+        let mut down_moves = 0usize;
+        for w in out.segments.windows(2) {
+            let z0 = w[0].end_mm.unwrap()[2];
+            let z1 = w[1].end_mm.unwrap()[2];
+            if z1 < z0 - 0.5 {
+                down_moves += 1;
+            }
+        }
+        assert!(down_moves > 10, "توری باید حرکت نزولی موج داشته باشد: {down_moves}");
+        // حالت نوار پیش‌نمایش = توری
+        assert_eq!(out.wall_mesh.mode, 1, "نوار باید در حالت توری باشد");
+        // همهٔ ماسک‌ها ۱ (بدون سوراخ)
+        assert!(out.wall_mesh.mask.iter().all(|&m| m == 1));
+        // z در محدودهٔ فرم می‌ماند
+        for s in &out.segments {
+            if let Some(p) = s.end_mm {
+                assert!(p[2] <= 100.5, "z از فرم بیرون زد: {}", p[2]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_lattice_solid_default_unchanged() {
+        // پیش‌فرض دیوارهٔ جامد: رفتار ≤۱٫۶ (z صعودی، بدون نزول)
+        let out = compute(&base_input());
+        let mut down = 0usize;
+        for w in out.segments.windows(2) {
+            let z0 = w[0].end_mm.unwrap()[2];
+            let z1 = w[1].end_mm.unwrap()[2];
+            if z1 < z0 - 1e-9 {
+                down += 1;
+            }
+        }
+        assert_eq!(down, 0, "جامد نباید نزول داشته باشد");
+        assert_eq!(out.wall_mesh.mode, 0);
+    }
+
+    #[test]
+    fn test_wall_holes_create_real_openings() {
+        // سوراخ دیواره (درخواست ۹): travel روی دهانه + ماسک ۰ در نوار
+        let mut inp = base_input();
+        inp.wall.holes.enabled = true;
+        inp.wall.holes.count_around = 4;
+        inp.wall.holes.rows = 2;
+        inp.wall.holes.width_mm = 14.0;
+        inp.wall.holes.height_mm = 16.0;
+        inp.wall.holes.margin_bottom_mm = 15.0;
+        inp.wall.holes.frame_passes = 2;
+        let out = compute(&inp);
+        // travelهای میانه (دهانه‌ها) وجود دارند
+        let travels = out
+            .segments
+            .iter()
+            .filter(|s| s.kind == SegmentKind::Travel)
+            .count();
+        assert!(travels >= 8, "سوراخ‌ها باید travel بدهند: {travels}");
+        // ماسک نوار صفر دارد (دهانهٔ باز در پیش‌نمایش)
+        let zeros = out.wall_mesh.mask.iter().filter(|&&m| m == 0).count();
+        assert!(zeros > 0, "ماسک باید دهانهٔ باز داشته باشد: {zeros}");
+        // قاب‌ها: اکستروژن در z ثابت (کف/سقف قاب) — پربیش‌تر از حالت بدون سوراخ
+        let base = compute(&base_input());
+        assert!(
+            out.segments.len() > base.segments.len() + 50,
+            "قاب‌های تقویتی باید segment اضافه کنند: {} vs {}",
+            out.segments.len(),
+            base.segments.len()
+        );
+        // هیچ اکستروژنی «داخل» سوراخ نیست (نقطهٔ میانی segment)
+        // مدل هندسی آزمون باید «جابه‌جایی آجرچین ردیف‌های زوج» را لحاظ کند
+        // (stagger = π/۴ برای count_around=4) و r_ref واقعی هسته (~۳۴).
+        let r_ref = 34.0;
+        for s in &out.segments {
+            if s.kind != SegmentKind::Extrusion {
+                continue;
+            }
+            if let (Some(a), Some(b)) = (s.start_mm, s.end_mm) {
+                let mx = (a[0] + b[0]) / 2.0;
+                let my = (a[1] + b[1]) / 2.0;
+                let mz = (a[2] + b[2]) / 2.0;
+                // فقط ناحیهٔ دیواره (نه کف — کف خاموش است)
+                if mz < 2.0 {
+                    continue;
+                }
+                let th = ((my - 110.0).atan2(mx - 110.0)).rem_euclid(2.0 * std::f64::consts::PI);
+                for hi in 0..8usize {
+                    let row = hi / 4;
+                    let k = hi % 4;
+                    let thc = (k as f64 * std::f64::consts::FRAC_PI_2
+                        + if row % 2 == 1 {
+                            std::f64::consts::FRAC_PI_4
+                        } else {
+                            0.0
+                        })
+                    .rem_euclid(2.0 * std::f64::consts::PI);
+                    let zc = 15.0 + row as f64 * 22.0;
+                    let dth = (th - thc + std::f64::consts::PI)
+                        .rem_euclid(2.0 * std::f64::consts::PI)
+                        - std::f64::consts::PI;
+                    let u = dth * r_ref;
+                    let v = mz - zc;
+                    // ناحیهٔ «هستهٔ» سوراخ (شعاع ۰٫۵) — قاب تقویتی مجاز است
+                    // روی لبه (شعاع ~۱) باشد؛ وترهای قوس قاب کمی داخل‌تر می‌روند.
+                    // ناحیهٔ «هستهٔ» سوراخ (شعاع ۰٫۵) — قاب تقویتی مجاز است
+                    // روی لبه (شعاع ~۱) باشد؛ وترهای قوس قاب کمی داخل‌تر می‌روند.
+                    let inside = (u / 7.0) * (u / 7.0) + (v / 8.0) * (v / 8.0) <= 0.25;
+                    assert!(
+                        !inside,
+                        "اکستروژن داخل سوراخ: u={u:.1} v={v:.1} z={mz:.1}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_pendant_rim_rings_and_top_holes() {
+        // آویز (درخواست ۷): حلقه‌های تقویت لبهٔ بالا + سوراخ‌های بالای دیواره
+        let mut inp = base_input();
+        inp.pendant.style = crate::designer::HangingStyle::TopHoles;
+        inp.pendant.top_holes_count = 3;
+        inp.pendant.top_hole_diameter_mm = 6.0;
+        inp.pendant.top_hole_from_rim_mm = 8.0;
+        inp.pendant.rim_reinforce_rings = 3;
+        let out = compute(&inp);
+        // حلقه‌ها: اکستروژن‌هایی که مجموع زاویه‌شان دور کامل است در z ثابت بالا
+        let top_segs: Vec<_> = out
+            .segments
+            .iter()
+            .filter(|s| {
+                s.kind == SegmentKind::Extrusion
+                    && s.end_mm.map(|p| p[2] > 99.0).unwrap_or(false)
+            })
+            .collect();
+        assert!(
+            !top_segs.is_empty(),
+            "حلقه‌های تقویت لبه باید segment بالای فرم بسازند"
+        );
+        // سوراخ‌های بالا: travel روی دهانه‌ها نزدیک z = 100 − 8 − 3
+        let top_hole_travels = out
+            .segments
+            .iter()
+            .filter(|s| {
+                s.kind == SegmentKind::Travel
+                    && s.end_mm
+                        .map(|p| (86.0..=95.0).contains(&p[2]))
+                        .unwrap_or(false)
+            })
+            .count();
+        assert!(top_hole_travels > 0, "سوراخ‌های بالای دیواره travel دارند");
+    }
+
+    #[test]
+    fn test_pendant_none_no_extra_rings() {
+        // بدون آویز: تعداد قطعهٔ ناحیهٔ بالا همان مارپیچ کلمپ‌شده است؛
+        // با آویز (حلقه‌های تقویت) باید بیشتر شود — مقایسهٔ نسبی.
+        let base = compute(&base_input());
+        let base_top = base
+            .segments
+            .iter()
+            .filter(|s| {
+                s.kind == SegmentKind::Extrusion
+                    && s.end_mm.map(|p| p[2] >= 99.0).unwrap_or(false)
+            })
+            .count();
+        let mut inp = base_input();
+        inp.pendant.style = crate::designer::HangingStyle::RimHoles;
+        inp.pendant.rim_reinforce_rings = 4;
+        let with = compute(&inp);
+        let with_top = with
+            .segments
+            .iter()
+            .filter(|s| {
+                s.kind == SegmentKind::Extrusion
+                    && s.end_mm.map(|p| p[2] >= 99.0).unwrap_or(false)
+            })
+            .count();
+        assert!(
+            with_top > base_top,
+            "حلقه‌های تقویت باید ناحیهٔ بالا را ضخیم‌تر کنند: {with_top} vs {base_top}"
+        );
+    }
+
+    #[test]
+    fn test_lamp_floor_socket_and_spokes() {
+        // لامپ (درخواست ۸): سوکت مرکزی + پره‌های متصل‌کننده + کف نور
+        let mut inp = base_input();
+        inp.floor.enabled = true;
+        inp.floor.layers = 2;
+        inp.floor.pattern = crate::designer::FloorPattern::LampWeb;
+        inp.lamp.enabled = true;
+        inp.lamp.center_hole_diameter_mm = 20.0;
+        inp.lamp.socket_rings = 3;
+        inp.lamp.spokes_count = 5;
+        inp.lamp.spokes_width_mm = 3.0;
+        inp.lamp.spokes_style = crate::designer::SpokesStyle::Parallel;
+        inp.lamp.floor_gap_multiplier = 1.8;
+        let out = compute(&inp);
+        // کف ساخته شد و خلاصه دارد
+        assert!(out.summary_fa.contains("کف"));
+        // سوراخ سوکت: هیچ اکستروژن کفی نزدیک‌تر از شعاع سوکت به مرکز نیست
+        let vol = inp.printer.build_volume_mm;
+        let (cx, cy) = (vol[0] / 2.0, vol[1] / 2.0);
+        let r_socket = 10.0;
+        for s in &out.segments {
+            if s.end_mm.map(|p| p[2] <= 0.6).unwrap_or(false) {
+                if let Some(p) = s.end_mm {
+                    let d = ((p[0] - cx).powi(2) + (p[1] - cy).powi(2)).sqrt();
+                    assert!(
+                        d >= r_socket - 1.2,
+                        "اکستروژن داخل سوکت لامپ: d={d:.2}"
+                    );
+                }
+            }
+        }
+        // پره‌ها: نسبت به حالت بدون پره segment بیشتری در کف وجود دارد
+        let mut inp2 = inp.clone();
+        inp2.lamp.spokes_count = 0;
+        inp2.lamp.socket_rings = 0;
+        let out2 = compute(&inp2);
+        assert!(
+            out.segments.len() > out2.segments.len(),
+            "پره‌ها/حلقه‌های سوکت باید segment اضافه کنند"
+        );
+    }
+
+    #[test]
+    fn test_lamp_hole_priority_over_floor_hole() {
+        // قطر سوکت لامپ بر سوراخ مرکزی کف تقدم دارد
+        let mut inp = base_input();
+        inp.floor.enabled = true;
+        inp.floor.center_hole_diameter_mm = 8.0;
+        inp.floor.pattern = crate::designer::FloorPattern::Rings;
+        inp.lamp.enabled = true;
+        inp.lamp.center_hole_diameter_mm = 24.0;
+        let out = compute(&inp);
+        let vol = inp.printer.build_volume_mm;
+        let (cx, cy) = (vol[0] / 2.0, vol[1] / 2.0);
+        // کوچکترین فاصلهٔ اکستروژن کف از مرکز ≥ ~۱۲mm (شعاع سوکت ۲۴/۲)
+        let mut min_d = f64::MAX;
+        for s in &out.segments {
+            if s.end_mm.map(|p| p[2] <= 0.6).unwrap_or(false) {
+                if let Some(p) = s.end_mm {
+                    let d = ((p[0] - cx).powi(2) + (p[1] - cy).powi(2)).sqrt();
+                    min_d = min_d.min(d);
+                }
+            }
+        }
+        assert!(
+            min_d >= 11.0,
+            "سوکت لامپ باید بر سوراخ کف تقدم داشته باشد (min_d={min_d:.2})"
+        );
+    }
+
+    #[test]
+    fn test_hole_shapes_all_valid() {
+        // همهٔ شکل‌های سوراخ با هندسهٔ معتبر چاپ می‌شوند (بدون NaN)
+        for shape in [
+            crate::designer::HoleShape::Circle,
+            crate::designer::HoleShape::RoundedRect,
+            crate::designer::HoleShape::Diamond,
+            crate::designer::HoleShape::Hexagon,
+            crate::designer::HoleShape::Star,
+        ] {
+            let mut inp = base_input();
+            inp.wall.holes.enabled = true;
+            inp.wall.holes.shape = shape;
+            inp.wall.holes.count_around = 3;
+            inp.wall.holes.rows = 1;
+            inp.wall.holes.margin_bottom_mm = 30.0;
+            let out = compute(&inp);
+            assert!(!out.segments.is_empty(), "{shape:?} قطعه نساخت");
+            for s in &out.segments {
+                if let Some(p) = s.end_mm {
+                    assert!(p[0].is_finite() && p[1].is_finite() && p[2].is_finite());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_lattice_styles_all_valid() {
+        // همهٔ سبک‌های توری مسیر معتبر می‌سازند
+        for style in [
+            crate::designer::LatticeStyle::Diamond,
+            crate::designer::LatticeStyle::Square,
+            crate::designer::LatticeStyle::Chevron,
+            crate::designer::LatticeStyle::Twisted,
+        ] {
+            let mut inp = base_input();
+            inp.wall.mode = crate::designer::WallMode::Lattice;
+            inp.wall.lattice.style = style;
+            inp.wall.lattice.z_start_mm = 4.0;
+            let out = compute(&inp);
+            assert!(out.segments.len() > 100, "{style:?}");
+            for s in &out.segments {
+                if let Some(p) = s.end_mm {
+                    assert!(p[2] >= 0.0 && p[2] <= 100.5, "{style:?}: z={}", p[2]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_lattice_with_holes_combined() {
+        // توری + سوراخ با هم کار می‌کنند (دهانه روی تور)
+        let mut inp = base_input();
+        inp.wall.mode = crate::designer::WallMode::Lattice;
+        inp.wall.lattice.z_start_mm = 6.0;
+        inp.wall.holes.enabled = true;
+        inp.wall.holes.count_around = 3;
+        inp.wall.holes.rows = 1;
+        inp.wall.holes.margin_bottom_mm = 40.0;
+        let out = compute(&inp);
+        let zeros = out.wall_mesh.mask.iter().filter(|&&m| m == 0).count();
+        assert!(zeros > 0, "دهانه روی تور باید در ماسک دیده شود");
+        assert_eq!(out.wall_mesh.mode, 1);
     }
 
     #[test]
@@ -1946,6 +3127,9 @@ mod tests {
             FloorPattern::Star,
             FloorPattern::Snowflake,
             FloorPattern::Octagram,
+            // ---- نسخهٔ ۱٫۷: الگوهای لامپ (درخواست ۸) ----
+            FloorPattern::LampWeb,
+            FloorPattern::Sunburst,
         ] {
             let mut inp = base_input();
             inp.floor.enabled = true;

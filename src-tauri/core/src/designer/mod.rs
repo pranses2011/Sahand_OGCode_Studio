@@ -88,6 +88,10 @@ pub enum FloorPattern {
     Snowflake,
     /// گره هندسی — نسخهٔ ۱٫۶: ستارهٔ هشت‌پر تکرارشونده (نقش هندسی)
     Octagram,
+    /// وب لامپ — نسخهٔ ۱٫۷: حلقه‌های هم‌مرکز + پره‌های شعاعی (شبکهٔ نور)
+    LampWeb,
+    /// خورشیدشکاف — نسخهٔ ۱٫۷: پرتوهای پهن از سوکت مرکزی تا لبه (نور مستقیم)
+    Sunburst,
 }
 
 impl Default for FloorPattern {
@@ -110,6 +114,8 @@ impl FloorPattern {
             FloorPattern::Star => "ستاره‌ای",
             FloorPattern::Snowflake => "دانه‌برفی",
             FloorPattern::Octagram => "گره هندسی (هشت‌پر)",
+            FloorPattern::LampWeb => "وب لامپ (حلقه + پره)",
+            FloorPattern::Sunburst => "خورشیدشکاف (پرتو پهن)",
         }
     }
 }
@@ -163,6 +169,454 @@ fn default_spokes() -> u32 {
 /// پیش‌فرض تعداد لایه‌های کف — ۲ لایهٔ توپر استاندارد ظرف
 fn default_floor_layers() -> u32 {
     2
+}
+
+// ============================================================================
+// تنظیمات دیواره — نسخهٔ ۱٫۷ (درخواست کاربر ۳ و ۹)
+// ============================================================================
+
+/// حالت دیواره: جامد پیوسته یا توری (درخواست کاربر ۳ — «چاپ توری مانند مرجع»)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum WallMode {
+    /// دیوارهٔ مارپیچی پیوسته — رفتار نسخه‌های ≤۱٫۶
+    #[default]
+    Solid,
+    /// توری بافته: مسیر زیگزاگ روی سطح با خانه‌های باز (الماس/مربع/مهری)
+    Lattice,
+}
+
+impl WallMode {
+    /// نام فارسی برای UI
+    pub fn fa(&self) -> &'static str {
+        match self {
+            WallMode::Solid => "دیوارهٔ جامد",
+            WallMode::Lattice => "توری (خانه‌های باز)",
+        }
+    }
+}
+
+/// سبک بافت توری — نسخهٔ ۱٫۷
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum LatticeStyle {
+    /// الماسی: زیگزاگ متقارن — خانه‌های لوزی کلاسیک گلدان توری
+    #[default]
+    Diamond,
+    /// مربعی: زیگزاگ با سکوهای افقی بالا/پایین خانه‌ها
+    Square,
+    /// مهری: زیگزاگ تیز شخورداده (شبیه لوزی با دندانه‌ها)
+    Chevron,
+    /// پیچان: الماس با جابه‌جایی فاز هر انقلاب — چرخش مارپیچی شبکه
+    Twisted,
+}
+
+impl LatticeStyle {
+    /// نام فارسی برای UI
+    pub fn fa(&self) -> &'static str {
+        match self {
+            LatticeStyle::Diamond => "الماسی",
+            LatticeStyle::Square => "مربعی",
+            LatticeStyle::Chevron => "مهری (شخورداده)",
+            LatticeStyle::Twisted => "پیچان",
+        }
+    }
+}
+
+/// تنظیمات توری — درخواست کاربر ۳: «مسیر رو تقویت کن تا مانند مرجع
+/// بتونم بصورت توری هم چاپ بکنم و تنظیمات کامل داشته باشم»
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LatticeSettings {
+    /// سبک خانه‌ها
+    #[serde(default)]
+    pub style: LatticeStyle,
+    /// عرض خانه در طول محیط (mm) — ۶..۴۰
+    #[serde(default = "default_lat_cell_w")]
+    pub cell_width_mm: f64,
+    /// ارتفاع خانه (mm) — ۴..۳۰
+    #[serde(default = "default_lat_cell_h")]
+    pub cell_height_mm: f64,
+    /// نسبت صعود هر انقلاب به ارتفاع خانه — ۰٫۵ = الماس متقارن؛
+    /// کوچک‌تر = خانه‌های کشیده‌تر عمودی (۰٫۲..۰٫۸)
+    #[serde(default = "default_lat_rise")]
+    pub rise_ratio: f64,
+    /// سرعت تارهای توری نسبت به سرعت دیواره (۰٫۳..۱) — تارهای مورب
+    /// روی هوا چاپ می‌شوند؛ آرام‌تر = چسبندگی بهتر در تقاطع‌ها
+    #[serde(default = "default_lat_speed")]
+    pub speed_scale: f64,
+    /// ضریب جریان تارها — ۱ = مثل دیواره؛ کمی بیشتر برای پیوند قوی
+    #[serde(default = "default_lat_flow")]
+    pub flow_scale: f64,
+    /// چرخش شبکهٔ توری (درجه) — جهت تارهای مورب
+    #[serde(default)]
+    pub phase_deg: f64,
+    /// ارتفاع شروع توری (mm) — پایین دیواره جامد بماند (لبهٔ مقاوم)
+    #[serde(default = "default_lat_z0")]
+    pub z_start_mm: f64,
+    /// ارتفاع پایان توری (None = تا بالای فرم)
+    #[serde(default)]
+    pub z_end_mm: Option<f64>,
+}
+
+fn default_lat_cell_w() -> f64 {
+    12.0
+}
+fn default_lat_cell_h() -> f64 {
+    10.0
+}
+fn default_lat_rise() -> f64 {
+    0.5
+}
+fn default_lat_speed() -> f64 {
+    0.6
+}
+fn default_lat_flow() -> f64 {
+    1.1
+}
+fn default_lat_z0() -> f64 {
+    8.0
+}
+
+impl Default for LatticeSettings {
+    fn default() -> Self {
+        Self {
+            style: LatticeStyle::default(),
+            cell_width_mm: default_lat_cell_w(),
+            cell_height_mm: default_lat_cell_h(),
+            rise_ratio: default_lat_rise(),
+            speed_scale: default_lat_speed(),
+            flow_scale: default_lat_flow(),
+            phase_deg: 0.0,
+            z_start_mm: default_lat_z0(),
+            z_end_mm: None,
+        }
+    }
+}
+
+/// شکل سوراخ دیواره — درخواست کاربر ۹
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum HoleShape {
+    /// دایره
+    #[default]
+    Circle,
+    /// مستطیل با گوشهٔ گرد
+    RoundedRect,
+    /// لوزی (الماس)
+    Diamond,
+    /// شش‌ضلعی
+    Hexagon,
+    /// ستارهٔ چهارپر (برای پنجره‌های تزئینی)
+    Star,
+}
+
+impl HoleShape {
+    /// نام فارسی برای UI
+    pub fn fa(&self) -> &'static str {
+        match self {
+            HoleShape::Circle => "دایره",
+            HoleShape::RoundedRect => "مستطیل گردگوشه",
+            HoleShape::Diamond => "لوزی",
+            HoleShape::Hexagon => "شش‌ضلعی",
+            HoleShape::Star => "ستارهٔ چهارپر",
+        }
+    }
+}
+
+/// تنظیمات سوراخ دیواره — درخواست کاربر ۹:
+/// «سوراخ‌ها رو در با دیواره بساز نه اینکه فقط در لایه آخر یک دیواره
+///  روش بکشی و تنظیمات کامل براش بزار»
+///
+/// پیاده‌سازی: مارپیچ هنگام عبور از ناحیهٔ سوراک «travel» می‌شود (دهانهٔ
+/// واقعی باز می‌ماند) و دور هر سوراخ «قاب تقویتی» (حلقهٔ بستهٔ مستطیلی
+/// در فضای بازشدهٔ استوانه) چاپ می‌شود — سوراخ واقعی با لبهٔ مسلح، نه
+/// پوشش سطحی.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WallHoleSettings {
+    /// ساخت سوراخ در دیواره؟
+    #[serde(default)]
+    pub enabled: bool,
+    /// شکل سوراخ
+    #[serde(default)]
+    pub shape: HoleShape,
+    /// تعداد سوراخ دور محیط (۲..۱۲)
+    #[serde(default = "default_hole_around")]
+    pub count_around: u32,
+    /// تعداد ردیف عمودی (۱..۸)
+    #[serde(default = "default_hole_rows")]
+    pub rows: u32,
+    /// عرض سوراخ در طول محیط (mm)
+    #[serde(default = "default_hole_w")]
+    pub width_mm: f64,
+    /// ارتفاع سوراخ (mm)
+    #[serde(default = "default_hole_h")]
+    pub height_mm: f64,
+    /// فاصلهٔ مرکز ردیف‌ها (mm) — ۰ = خودکار از ارتفاع سوراخ + حاشیه
+    #[serde(default)]
+    pub row_pitch_mm: f64,
+    /// حاشیهٔ پایین اولین ردیف (mm)
+    #[serde(default = "default_hole_mb")]
+    pub margin_bottom_mm: f64,
+    /// حاشیهٔ بالای آخرین ردیف (mm)
+    #[serde(default = "default_hole_mt")]
+    pub margin_top_mm: f64,
+    /// دورهای قاب تقویتی دور هر سوراخ (۰..۳) — ۲ = لبهٔ ضخیم مقاوم
+    #[serde(default = "default_hole_frames")]
+    pub frame_passes: u32,
+    /// فاز زاویه‌ای چینش (درجه)
+    #[serde(default)]
+    pub phase_deg: f64,
+    /// ردیف‌های زوج نیم‌گام جابه‌جا شوند (چینش آجری)
+    #[serde(default = "default_true")]
+    pub stagger: bool,
+}
+
+fn default_hole_around() -> u32 {
+    4
+}
+fn default_hole_rows() -> u32 {
+    3
+}
+fn default_hole_w() -> f64 {
+    14.0
+}
+fn default_hole_h() -> f64 {
+    18.0
+}
+fn default_hole_mb() -> f64 {
+    10.0
+}
+fn default_hole_mt() -> f64 {
+    10.0
+}
+fn default_hole_frames() -> u32 {
+    2
+}
+
+impl Default for WallHoleSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            shape: HoleShape::default(),
+            count_around: default_hole_around(),
+            rows: default_hole_rows(),
+            width_mm: default_hole_w(),
+            height_mm: default_hole_h(),
+            row_pitch_mm: 0.0,
+            margin_bottom_mm: default_hole_mb(),
+            margin_top_mm: default_hole_mt(),
+            frame_passes: default_hole_frames(),
+            phase_deg: 0.0,
+            stagger: true,
+        }
+    }
+}
+
+/// تنظیمات کامل دیواره — نسخهٔ ۱٫۷
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WallSettings {
+    /// جامد یا توری
+    #[serde(default)]
+    pub mode: WallMode,
+    /// پارامترهای توری (وقتی mode = Lattice)
+    #[serde(default)]
+    pub lattice: LatticeSettings,
+    /// سوراخ‌های دیواره (در هر دو حالت کار می‌کند)
+    #[serde(default)]
+    pub holes: WallHoleSettings,
+}
+
+// ============================================================================
+// تنظیمات آویز (معلق‌کردن) — نسخهٔ ۱٫۷ (درخواست کاربر ۷)
+// ============================================================================
+
+/// سبک آویز — «تنظیمات آویز رو زیادتر و حرفه‌ای تر بکن»
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum HangingStyle {
+    /// بدون آویز
+    #[default]
+    None,
+    /// سوراخ‌های لبهٔ کف — نخ/سیم از زیر رد شود (گلدان آویز کلاسیک)
+    RimHoles,
+    /// سوراخ‌های بالای دیواره — زنجیر/نخ از لبهٔ بالا (شیک‌تر)
+    TopHoles,
+    /// ترکیبی: سوراخ بالا + سوراخ کف (تعادل ۳ نقطه‌ای و بیشتر)
+    Both,
+}
+
+impl HangingStyle {
+    /// نام فارسی برای UI
+    pub fn fa(&self) -> &'static str {
+        match self {
+            HangingStyle::None => "بدون آویز",
+            HangingStyle::RimHoles => "سوراخ لبهٔ کف (نخ از زیر)",
+            HangingStyle::TopHoles => "سوراخ بالای دیواره (زنجیر از بالا)",
+            HangingStyle::Both => "ترکیبی (کف + بالا)",
+        }
+    }
+}
+
+/// تنظیمات آویز حرفه‌ای — نسخهٔ ۱٫۷ (درخواست کاربر ۷)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendantSettings {
+    /// سبک آویز
+    #[serde(default)]
+    pub style: HangingStyle,
+    /// تعداد سوراخ کف (۳..۱۲) — برای تعادل، ۳ یا بیشتر
+    #[serde(default = "default_pen_rim_n")]
+    pub rim_holes_count: u32,
+    /// قطر سوراخ کف (mm) — ۳ = نخ؛ ۵ = سیم پارچه؛ ۸ = زنجیر ظریف
+    #[serde(default = "default_pen_rim_d")]
+    pub rim_hole_diameter_mm: f64,
+    /// موقعیت سوراخ کف (٪ شعاع — ۶۰..۹۲)؛ نزدیک لبه = گشتاور کمتر
+    #[serde(default = "default_pen_rim_pos")]
+    pub rim_hole_radius_percent: f64,
+    /// فاصلهٔ زاویه‌ای سوراخ‌های کف (درجه) — ۰ = پخش مساوی
+    #[serde(default)]
+    pub rim_phase_deg: f64,
+    /// تعداد سوراخ بالای دیواره (۲..۶)
+    #[serde(default = "default_pen_top_n")]
+    pub top_holes_count: u32,
+    /// قطر سوراخ بالای دیواره (mm)
+    #[serde(default = "default_pen_top_d")]
+    pub top_hole_diameter_mm: f64,
+    /// فاصلهٔ مرکز سوراخ‌های بالا از لبهٔ بالای فرم (mm)
+    #[serde(default = "default_pen_top_from")]
+    pub top_hole_from_rim_mm: f64,
+    /// حلقه‌های تقویت لبهٔ بالا — دورهای اضافه در انتهای مارپیچ؛
+    /// لبهٔ آویز تحت کشش است و لبهٔ ضخیم = پارگی دیرتر
+    #[serde(default = "default_pen_rings")]
+    pub rim_reinforce_rings: u32,
+    /// گوشه‌های اتصال سوراخ بالا به بدنه (ستون‌های کوچک عمودی)
+    #[serde(default = "default_true")]
+    pub top_hole_frames: bool,
+}
+
+fn default_pen_rim_n() -> u32 {
+    3
+}
+fn default_pen_rim_d() -> f64 {
+    3.0
+}
+fn default_pen_rim_pos() -> f64 {
+    85.0
+}
+fn default_pen_top_n() -> u32 {
+    3
+}
+fn default_pen_top_d() -> f64 {
+    5.0
+}
+fn default_pen_top_from() -> f64 {
+    8.0
+}
+fn default_pen_rings() -> u32 {
+    3
+}
+
+impl Default for PendantSettings {
+    fn default() -> Self {
+        Self {
+            style: HangingStyle::default(),
+            rim_holes_count: default_pen_rim_n(),
+            rim_hole_diameter_mm: default_pen_rim_d(),
+            rim_hole_radius_percent: default_pen_rim_pos(),
+            rim_phase_deg: 0.0,
+            top_holes_count: default_pen_top_n(),
+            top_hole_diameter_mm: default_pen_top_d(),
+            top_hole_from_rim_mm: default_pen_top_from(),
+            rim_reinforce_rings: default_pen_rings(),
+            top_hole_frames: true,
+        }
+    }
+}
+
+// ============================================================================
+// تنظیمات لامپ — نسخهٔ ۱٫۷ (درخواست کاربر ۸)
+// «تنظیمات لامپ رو زیادتر و حرفه‌ای تر بکن و همچنین طرح های زیادی برای
+//  کف لامپ و سوراخ وسط و پایه های متصل کننده سوراخ به بدنه»
+// ============================================================================
+
+/// سبک پره‌های متصل‌کنندهٔ سوکت به بدنه
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SpokesStyle {
+    /// هر پره چند خط موازی (پهن و محکم — پیش‌فرض)
+    #[default]
+    Parallel,
+    /// تک‌خط باریک (نور بیشتر، استحکام کمتر)
+    Single,
+    /// شبکهٔ وب: پره + کمان‌های اتصال بین پره‌ها (استحکام حداکثر)
+    Web,
+}
+
+impl SpokesStyle {
+    /// نام فارسی برای UI
+    pub fn fa(&self) -> &'static str {
+        match self {
+            SpokesStyle::Parallel => "پره‌های پهن موازی",
+            SpokesStyle::Single => "تک‌خط باریک",
+            SpokesStyle::Web => "شبکهٔ وب (پره + کمان)",
+        }
+    }
+}
+
+/// تنظیمات حرفه‌ای لامپ — نسخهٔ ۱٫۷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LampSettings {
+    /// حالت لامپ روشن؟ (کف نور + سوکت + پره‌ها فعال می‌شود)
+    #[serde(default)]
+    pub enabled: bool,
+    /// قطر سوراخ مرکزی برای سوکت/سیم (mm) —
+    /// ۸ = سیم؛ ۱۶ = سوکت کوچک؛ ۲۸/۴۰ = سوکت E14/E27 استاندارد
+    #[serde(default = "default_lamp_hole")]
+    pub center_hole_diameter_mm: f64,
+    /// حلقه‌های تقویت دور سوکت (۰..۶) — «سوراخ وسط» مسلح
+    #[serde(default = "default_lamp_rings")]
+    pub socket_rings: u32,
+    /// تعداد پره‌های متصل‌کنندهٔ سوکت به بدنه (۳..۱۲)
+    #[serde(default = "default_lamp_spokes")]
+    pub spokes_count: u32,
+    /// عرض هر پره (mm) — «پایه‌های متصل‌کننده»
+    #[serde(default = "default_lamp_spoke_w")]
+    pub spokes_width_mm: f64,
+    /// سبک پره‌ها
+    #[serde(default)]
+    pub spokes_style: SpokesStyle,
+    /// ضریب فاصلهٔ خطوط کف — بیشتر از ۱ = کفِ بازتر برای عبور نور
+    /// (مثلاً ۱٫۶ = فاصلهٔ خطوط ۶۰٪ بیشتر → نور ملایم)
+    #[serde(default = "default_lamp_gap")]
+    pub floor_gap_multiplier: f64,
+    /// حلقهٔ فرورفته دور سوکت در «لایهٔ دوم» کف (ظاهر حرفه‌ای)
+    #[serde(default = "default_true")]
+    pub recessed_socket: bool,
+}
+
+fn default_lamp_hole() -> f64 {
+    16.0
+}
+fn default_lamp_rings() -> u32 {
+    3
+}
+fn default_lamp_spokes() -> u32 {
+    4
+}
+fn default_lamp_spoke_w() -> f64 {
+    2.4
+}
+fn default_lamp_gap() -> f64 {
+    1.6
+}
+
+impl Default for LampSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            center_hole_diameter_mm: default_lamp_hole(),
+            socket_rings: default_lamp_rings(),
+            spokes_count: default_lamp_spokes(),
+            spokes_width_mm: default_lamp_spoke_w(),
+            spokes_style: SpokesStyle::default(),
+            floor_gap_multiplier: default_lamp_gap(),
+            recessed_socket: true,
+        }
+    }
 }
 
 impl Default for FloorSettings {
@@ -384,6 +838,15 @@ pub struct DesignerProject {
     pub textures: Vec<TextureParams>,
     /// کف
     pub floor: FloorSettings,
+    /// تنظیمات دیواره: جامد/توری + سوراخ‌ها — نسخهٔ ۱٫۷ (درخواست ۳ و ۹)
+    #[serde(default)]
+    pub wall: WallSettings,
+    /// تنظیمات آویز حرفه‌ای — نسخهٔ ۱٫۷ (درخواست ۷)
+    #[serde(default)]
+    pub pendant: PendantSettings,
+    /// تنظیمات حرفه‌ای لامپ — نسخهٔ ۱٫۷ (درخواست ۸)
+    #[serde(default)]
+    pub lamp: LampSettings,
     /// پروفایل پرینتر
     pub printer: PrinterProfile,
     /// فراداده
@@ -406,6 +869,9 @@ impl Default for DesignerProject {
             patterns: Vec::new(),
             textures: Vec::new(),
             floor: FloorSettings::default(),
+            wall: WallSettings::default(),
+            pendant: PendantSettings::default(),
+            lamp: LampSettings::default(),
             printer: PrinterProfile::default(),
             created_at_unix: 0,
             note: String::new(),
@@ -446,6 +912,102 @@ pub fn validate_project(json_str: &str) -> Result<DesignerProject, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ================= آزمون‌های نسخهٔ ۱٫۷ =================
+
+    #[test]
+    fn test_old_project_json_loads_with_v17_defaults() {
+        // فایل ۱٫۶ (بدون wall/pendant/lamp) باید با پیش‌فرض‌های ۱٫۷ بخواند:
+        // دیوارهٔ جامد + سوراخ خاموش + آویز none + لامپ خاموش
+        let old_json = r#"{"schema_version":1,"profile":[{"r":22.0,"h":0.0},{"r":30.0,"h":35.0},{"r":21.0,"h":100.0}],"form_height_mm":100.0,"form_bottom_diameter_mm":60.0,"form_top_diameter_mm":60.0,"taper_percent":0.0,"patterns":[],"textures":[],"floor":{"enabled":true,"center_hole_diameter_mm":8.0,"z_start_mm":0.0,"ring_gap_mm":0.45},"printer":{"name":"x","status":"unverified","build_volume_mm":[220,220,250],"nozzle_diameter_mm":0.4,"filament_diameter_mm":1.75,"line_width_mm":0.45,"layer_height_mm":0.25,"print_speed_mm_min":2400.0,"travel_speed_mm_min":6000.0,"flow_multiplier":1.0,"absolute_e":true,"start_gcode":"","end_gcode":""},"created_at_unix":0,"note":""}"#;
+        let p = validate_project(old_json).expect("پروژهٔ قدیمی ۱٫۶ باید بخواند");
+        assert_eq!(p.wall.mode, WallMode::Solid, "پیش‌فرض دیوارهٔ جامد");
+        assert!(!p.wall.holes.enabled, "پیش‌فرض سوراخ خاموش");
+        assert_eq!(p.pendant.style, HangingStyle::None);
+        assert!(!p.lamp.enabled);
+        // پیش‌فرض‌های توری معتبر
+        assert!((p.wall.lattice.cell_width_mm - 12.0).abs() < 1e-9);
+        assert!((p.wall.lattice.rise_ratio - 0.5).abs() < 1e-9);
+        assert_eq!(p.wall.holes.frame_passes, 2);
+        assert_eq!(p.pendant.rim_reinforce_rings, 3);
+        assert!((p.lamp.center_hole_diameter_mm - 16.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_project_roundtrip_v17_wall_pendant_lamp() {
+        // ذخیره/بازیابی کامل تنظیمات ۱٫۷ بدون فقدان داده
+        let mut p = DesignerProject::default();
+        p.wall.mode = WallMode::Lattice;
+        p.wall.lattice.style = LatticeStyle::Twisted;
+        p.wall.lattice.cell_width_mm = 9.5;
+        p.wall.lattice.cell_height_mm = 7.0;
+        p.wall.lattice.rise_ratio = 0.35;
+        p.wall.holes.enabled = true;
+        p.wall.holes.shape = HoleShape::Hexagon;
+        p.wall.holes.count_around = 6;
+        p.wall.holes.rows = 2;
+        p.wall.holes.stagger = false;
+        p.pendant.style = HangingStyle::TopHoles;
+        p.pendant.top_holes_count = 4;
+        p.pendant.top_hole_diameter_mm = 6.0;
+        p.lamp.enabled = true;
+        p.lamp.center_hole_diameter_mm = 28.0;
+        p.lamp.spokes_count = 6;
+        p.lamp.spokes_style = SpokesStyle::Web;
+        p.floor.pattern = FloorPattern::LampWeb;
+        let json = serde_json::to_string(&p).unwrap();
+        let back: DesignerProject = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.wall.mode, WallMode::Lattice);
+        assert_eq!(back.wall.lattice.style, LatticeStyle::Twisted);
+        assert!((back.wall.lattice.cell_width_mm - 9.5).abs() < 1e-9);
+        assert_eq!(back.wall.holes.shape, HoleShape::Hexagon);
+        assert_eq!(back.wall.holes.count_around, 6);
+        assert!(!back.wall.holes.stagger);
+        assert_eq!(back.pendant.style, HangingStyle::TopHoles);
+        assert_eq!(back.pendant.top_holes_count, 4);
+        assert!(back.lamp.enabled);
+        assert!((back.lamp.center_hole_diameter_mm - 28.0).abs() < 1e-9);
+        assert_eq!(back.lamp.spokes_style, SpokesStyle::Web);
+        assert_eq!(back.floor.pattern, FloorPattern::LampWeb);
+    }
+
+    #[test]
+    fn test_v17_fa_names_complete() {
+        // همهٔ نام‌های فارسی پر هستند (UI کارت‌ها می‌سازد)
+        for m in [WallMode::Solid, WallMode::Lattice] {
+            assert!(!m.fa().is_empty());
+        }
+        for s in [
+            LatticeStyle::Diamond,
+            LatticeStyle::Square,
+            LatticeStyle::Chevron,
+            LatticeStyle::Twisted,
+        ] {
+            assert!(!s.fa().is_empty());
+        }
+        for h in [
+            HoleShape::Circle,
+            HoleShape::RoundedRect,
+            HoleShape::Diamond,
+            HoleShape::Hexagon,
+            HoleShape::Star,
+        ] {
+            assert!(!h.fa().is_empty());
+        }
+        for h in [
+            HangingStyle::None,
+            HangingStyle::RimHoles,
+            HangingStyle::TopHoles,
+            HangingStyle::Both,
+        ] {
+            assert!(!h.fa().is_empty());
+        }
+        for s in [SpokesStyle::Parallel, SpokesStyle::Single, SpokesStyle::Web] {
+            assert!(!s.fa().is_empty());
+        }
+        assert!(!FloorPattern::LampWeb.fa().is_empty());
+        assert!(!FloorPattern::Sunburst.fa().is_empty());
+    }
 
     #[test]
     fn test_project_roundtrip() {
