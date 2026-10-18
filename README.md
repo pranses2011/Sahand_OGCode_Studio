@@ -16,7 +16,7 @@
 [![windows-build](https://github.com/pranses2011/Sahand_OGCode_Studio/actions/workflows/windows-build.yml/badge.svg?branch=main)](https://github.com/pranses2011/Sahand_OGCode_Studio/actions/workflows/windows-build.yml)
 [![پلتفرم](https://img.shields.io/badge/%D9%BE%D9%84%D8%AA%D9%81%D8%B1%D9%85-Windows%2010%2F11%20x64-blue?style=flat-square)](https://github.com/pranses2011/Sahand_OGCode_Studio/releases)
 [![آزمون هسته](https://img.shields.io/badge/cargo%20test-235%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src-tauri/core)
-[![آزمون UI](https://img.shields.io/badge/Vitest-76%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src/lib/tauri.test.ts)
+[![آزمون UI](https://img.shields.io/badge/Vitest-77%20%D8%B3%D8%A8%D8%B2-46c878?style=flat-square)](src/lib/tauri.test.ts)
 [![آفلاین](https://img.shields.io/badge/%D9%BE%D8%B1%D8%AF%D8%A7%D8%B2%D8%B4-%DA%A9%D8%A7%D9%85%D9%84%D8%A7%20%D9%85%D8%AD%D9%84%DB%8C-e05252?style=flat-square)](Docs/SAFETY.md)
 [![مجوز](https://img.shields.io/badge/%D9%85%D8%AC%D9%88%D8%B2-%D9%85%D8%B7%D8%A7%D8%A8%D9%82%20LICENSE-7d8392?style=flat-square)](LICENSE)
 
@@ -84,6 +84,16 @@
 | گام ۵: ۲۰ پریست پرینتر واقعی | ۸ تم رنگی + ۱۰ رنگ رشتهٔ چاپ |
 |:---:|:---:|
 | <img src="Docs/screenshots/designer-step5-printer.png" width="480" alt="انتخاب پرینتر Bambu Lab P1S از فهرست ۲۰ مدل"/> | <img src="Docs/screenshots/theme-colors.png" width="480" alt="تم رنگی سایان با رشتهٔ چاپ فیروزه‌ای"/> |
+
+## 🆕 نسخهٔ ۱٫۷٫۱ — رفع باگ‌های «متن به گلدان» (اسکرول/پیش‌نمایش/IPC)
+
+| رفع باگ | توضیح |
+|---|---|
+| **🖱️ اسکرول پنل تنظیمات (گزارش کاربر)** | کلاس `designer-page` در CSS تعریف نشده بود ⇒ پنل تنظیمات صفحهٔ «متن به گلدان» اسکرول نمی‌شد و دکمه‌های «ذخیرهٔ G-code»/«ارسال به ویرایشگر» بیرون از دید می‌ماندند. اکنون پنل مستقل اسکرول می‌شود و **نوار اقدام چسبان** پایین پنل همیشه در دید است |
+| **👁️ پیش‌نمایش ۳بعدی (گزارش کاربر)** | با همان ریشهٔ CSS، پیش‌نمایش به ارتفاع صفر فرو می‌افتاد و هیچ‌چیز رندر نمی‌شد. اکنون مسیر چاپ واقعی (اکستروژن سبز + travel) دیده می‌شود |
+| **🔗 مسیر IPC استاندارد** | محاسبات text2vase از مسیر سه‌گانهٔ استاندارد برنامه می‌گذرند (پوسته / پل توسعه / خطای صادقانه) + ترتیب پاسخ‌ها هنگام تایپ سریع با sequence-guard تضمین شد |
+| **🔤 مسابقهٔ فونت** | فونت انتخابی (مثل وزیرمتن باندل‌شده) با `document.fonts.load` قبل از استخراج کانتور آماده می‌شود — اولین پیش‌نمایش دیگر از فونت جایگزین نمی‌آمد |
+| **🧪 پل توسعهٔ CLI** | دستورهای `text2vase_compute`/`text2vase_export_gcode` به gcode-cli اضافه شدند — تست سرتاسری مرورگر با هستهٔ واقعی Rust (تأییدشده: متن «سعید» → ۴ کانتور → G-code ۱۶۰هزارخطی در ویرایشگر) |
 
 ## 🆕 نسخهٔ ۱.۷.۰ — توری، سوراخ دیواره، لامپ/آویز حرفه‌ای، متن به گلدان، رفع ایمیل
 
