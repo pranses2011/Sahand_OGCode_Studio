@@ -2,15 +2,17 @@
 //! lib.rs — پوستهٔ Tauri: بوت‌استرپ، state و ثبت دستورهای IPC
 //! ============================================================================
 //! وظایف این فایل:
-//!   ۱) راه‌اندازی Tauri با پلاگین دیالوگ native (Open/Save) و
-//!      پلاگین HTTP با دامنهٔ محدود (فقط ارسال بازخورد/گزارش خطا —
-//!      نسخهٔ ۱٫۶، درخواست کاربر ۹)؛
+//!   ۱) راه‌اندازی Tauri با پلاگین دیالوگ native (Open/Save)،
+//!      پلاگین HTTP با دامنهٔ محدود (بازخورد/گزارش خطا — نسخهٔ ۱٫۶) و
+//!      پلاگین Opener (بازکردن mailto:/https برای پشتیبان ارسال — ۱٫۷)؛
 //!   ۲) ثبت دستورهای دامنه‌ای محدود از src/commands؛
 //!   ۳) بدون plugin shell/updater/fs — الزام امنیتی PROMPT_04 §2.
 //!
 //! «این برنامه هیچ اتصال شبکه‌ای ندارد» — به‌روزرسانی ۱٫۶: تنها استثنا
-//! ارسال «بازخورد/گزارش خطا» به سرویس formsubmit.co است که کاربر خودش
-//! از فرم داخل برنامه آغاز می‌کند (دامنه در tauri.conf.json محدود است).
+//! ارسال «بازخورد/گزارش خطا» است که کاربر خودش از فرم داخل برنامه
+//! آغاز می‌کند. به‌روزرسانی ۱٫۷ (درخواست کاربر ۱۰): ارسال بازخورد
+//! حالا «مستقیم SMTP» از خود برنامه انجام می‌شود (crate gcode-mail)؛
+//! formsubmit فقط پشتیبان است و وضعیت هر کانال صادقانه گزارش می‌شود.
 //! ============================================================================
 
 pub mod commands;
@@ -27,6 +29,10 @@ pub fn run() {
         .plugin(
             tauri_plugin_http::init(),
         )
+        // بازکردن mailto: و https با برنامهٔ پیش‌فرض سیستم — نسخهٔ ۱٫۷:
+        // پشتیبان «ارسال با برنامهٔ ایمیل خودم» + لینک وب‌سایت سازنده.
+        // دامنه‌ها در capabilities/default.json محدود شده‌اند.
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             // ---- ویرایشگر G-code ----
             commands::parse_gcode,
@@ -52,6 +58,12 @@ pub fn run() {
             commands::save_printer_profile,
             commands::list_printer_profiles,
             commands::delete_printer_profile,
+            // ---- نسخهٔ ۱٫۷: ایمیل SMTP مستقیم (درخواست کاربر ۱۰) ----
+            commands::smtp_get_config,
+            commands::smtp_save_config,
+            commands::smtp_clear_config,
+            commands::smtp_test,
+            commands::smtp_send_feedback,
         ])
         .setup(|app| {
             // عنوان پنجره با شمارهٔ نسخه (درخواست کاربر: «نسخه در عنوان»)

@@ -11,7 +11,7 @@
 
 [workspace]
 resolver = "2"
-members = ["core", "cli"]
+members = ["core", "cli", "mail"]
 
 # ---------- تنظیمات مشترک release برای باینری نهایی ویندوز ----------
 [profile.release]
@@ -56,6 +56,13 @@ tauri-plugin-dialog = "2"
 # HTTP با دامنهٔ محدود — فقط ارسال بازخورد/گزارش خطا به ایمیل سازنده
 # (نسخهٔ ۱٫۶، درخواست کاربر ۹)؛ دامنه در tauri.conf.json/capabilities محدود است
 tauri-plugin-http = "2"
+# بازکردن mailto: و https با برنامهٔ پیش‌فرض سیستم — نسخهٔ ۱٫۷:
+# پشتیبان «ارسال با برنامهٔ ایمیل خودم» در فرم بازخورد (درخواست کاربر ۱۰)
+tauri-plugin-opener = "2"
+
+# ارسال ایمیل SMTP مستقیم — نسخهٔ ۱٫۷ (رفع باگ «ایمیل نمی‌رسد»):
+# crate خالص بدون وابستگی به Tauri؛ rustls ⇒ بدون openssl روی ویندوز CI
+gcode-mail = { path = "mail" }
 
 # سریال‌سازی داده بین Rust و WebView
 serde = { version = "1", features = ["derive"] }

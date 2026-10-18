@@ -187,3 +187,101 @@ fn profiles_base_dir(app: &tauri::AppHandle) -> Result<String, String> {
         .map(|p| p.to_string_lossy().into_owned())
         .map_err(|e| format!("دسترسی به مسیر دادهٔ برنامه ناموفق بود: {e}"))
 }
+
+// ============================================================================
+// دستورهای نسخهٔ ۱٫۷ — ایمیل SMTP مستقیم (درخواست کاربر ۱۰)
+// ============================================================================
+// رفع باگ ۱٫۶: formsubmit «موفق» جواب می‌داد ولی تا فعال‌سازی یک‌بارهٔ
+// مالک ایمیل، هیچی تحویل نمی‌شد. حالا برنامه خودش SMTP مستقیم می‌زند؛
+// تنظیمات در app_data/smtp.json (crate gcode-mail — بدون وابستگی Tauri).
+
+use gcode_mail::{SmtpConfig, SmtpConfigView};
+
+/// پیکربندی جاری SMTP — نمای بی‌رمز (رمز هرگز به WebView نمی‌رسد)
+#[tauri::command]
+pub fn smtp_get_config(app: tauri::AppHandle) -> Result<SmtpConfigView, String> {
+    let dir = profiles_base_dir(&app)?;
+    let cfg: SmtpConfig = gcode_mail::load_config(&dir)?;
+    Ok(cfg.masked())
+}
+
+/// ذخیرهٔ پیکربندی SMTP — رمز فقط در فایل محلی می‌ماند
+#[tauri::command]
+pub fn smtp_save_config(
+    app: tauri::AppHandle,
+    host: String,
+    port: u16,
+    username: String,
+    password: String,
+    from_name: Option<String>,
+    to_email: Option<String>,
+) -> Result<SmtpConfigView, String> {
+    let cfg = SmtpConfig {
+        host,
+        port,
+        username,
+        password,
+        from_name: from_name.unwrap_or_else(|| "Sahand GCode Studio".into()),
+        to_email: to_email.unwrap_or_else(|| "Pranses2011@GMail.com".into()),
+    };
+    gcode_mail::save_config(&profiles_base_dir(&app)?, &cfg)?;
+    Ok(cfg.masked())
+}
+
+/// حذف کامل پیکربندی SMTP
+#[tauri::command]
+pub fn smtp_clear_config(app: tauri::AppHandle) -> Result<(), String> {
+    gcode_mail::clear_config(&profiles_base_dir(&app)?)
+}
+
+/// ارسال ایمیل آزمایشی — دکمهٔ «تست» در تنظیمات ایمیل
+#[tauri::command]
+pub fn smtp_test(app: tauri::AppHandle) -> Result<gcode_mail::MailSendReport, String> {
+    let dir = profiles_base_dir(&app)?;
+    let cfg: SmtpConfig = gcode_mail::load_config(&dir)?;
+    gcode_mail::send_test_email(&cfg)
+}
+
+/// ارسال بازخورد/گزارش خطا با SMTP مستقیم — HTML فارسی RTL
+#[tauri::command]
+pub fn smtp_send_feedback(
+    app: tauri::AppHandle,
+    kind: String,
+    message: String,
+    from_name: Option<String>,
+    reply_email: Option<String>,
+    context: Option<String>,
+    detail: Option<String>,
+    app_version: Option<String>,
+) -> Result<gcode_mail::MailSendReport, String> {
+    let dir = profiles_base_dir(&app)?;
+    let cfg: SmtpConfig = gcode_mail::load_config(&dir)?;
+    if !cfg.is_ready() {
+        return Err("SMTP تنظیم نشده است — از «تنظیمات ایمیل» آن را کامل کنید".into());
+    }
+    let subject = if kind == "error" {
+        format!(
+            "گزارش خودکار خطا — Sahand GCode Studio v{}",
+            app_version.unwrap_or_default()
+        )
+    } else {
+        format!(
+            "بازخورد کاربر — Sahand GCode Studio v{}",
+            app_version.unwrap_or_default()
+        )
+    };
+    let html = gcode_mail::build_feedback_html(
+        &kind,
+        from_name.as_deref().unwrap_or("کاربر ناشناس"),
+        reply_email.as_deref().unwrap_or("—"),
+        context.as_deref().unwrap_or("—"),
+        &message,
+        detail.as_deref().unwrap_or(""),
+        &format!(
+            "Sahand GCode Studio v{} · ارسال مستقیم SMTP از {}",
+            app_version.unwrap_or_default(),
+            cfg.from_name
+        ),
+    );
+    gcode_mail::send_feedback_email(&cfg, &subject, &html, reply_email.as_deref())
+}
