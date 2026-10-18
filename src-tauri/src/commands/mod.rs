@@ -262,12 +262,12 @@ pub fn smtp_send_feedback(
     let subject = if kind == "error" {
         format!(
             "گزارش خودکار خطا — Sahand GCode Studio v{}",
-            app_version.unwrap_or_default()
+            app_version.as_deref().unwrap_or("")
         )
     } else {
         format!(
             "بازخورد کاربر — Sahand GCode Studio v{}",
-            app_version.unwrap_or_default()
+            app_version.as_deref().unwrap_or("")
         )
     };
     let html = gcode_mail::build_feedback_html(
@@ -279,7 +279,7 @@ pub fn smtp_send_feedback(
         detail.as_deref().unwrap_or(""),
         &format!(
             "Sahand GCode Studio v{} · ارسال مستقیم SMTP از {}",
-            app_version.unwrap_or_default(),
+            app_version.as_deref().unwrap_or(""),
             cfg.from_name
         ),
     );
