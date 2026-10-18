@@ -250,6 +250,25 @@ table.state th { color: var(--fg-1); background: var(--bg-2); font-weight: 400; 
 }
 .designer-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
+/* ---------- متن به گلدان (نسخهٔ ۱٫۷ — رفع ۱٫۷٫۱) ----------
+   باگ: کلاس .designer-page در CSS تعریف نشده بود → گرید بدون ارتفاع
+   محدود ⇒ پنل تنظیمات اسکرول نمی‌شد و پیش‌نمایش ۳بعدی (flex:1) به
+   ارتفاع صفر فرو می‌افتاد. قاعدهٔ minmax(0,…) ستون/ردیف هر دو لازم‌اند:
+   بدون minmax(0,1fr) آیتم گرید از محتوایش کوچک‌تر نمی‌شود. */
+.designer-page {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1; /* پرکردن باقی‌ماندهٔ ارتفاع app-shell (ستون flex) */
+  min-height: 0;
+}
+.designer-page > .designer-side {
+  width: auto; /* عرض از گرید می‌آید نه از قاعدهٔ flex */
+  min-height: 0;
+  overflow-y: auto; /* اسکرول مستقل پنل تنظیمات */
+}
+.designer-page > .designer-main { min-height: 0; overflow: hidden; }
+
 .steps { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .step-btn {
   flex: 1; min-width: 100px; background: var(--bg-2); color: var(--fg-1);
@@ -352,6 +371,10 @@ table.state th { color: var(--fg-1); background: var(--bg-2); font-weight: 400; 
   .work .col { min-height: 240px; }
   .designer-layout { flex-direction: column; overflow-y: auto; }
   .designer-side { width: auto; border-inline-end: none; border-bottom: 1px solid var(--line); }
+  /* متن به گلدان در پنجرهٔ باریک: تک‌ستونه و اسکرول صفحه‌ای */
+  .designer-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; overflow-y: auto; }
+  .designer-page > .designer-side { min-height: 0; overflow-y: visible; border-inline-end: none; border-bottom: 1px solid var(--line); }
+  .designer-page > .designer-main { min-height: 420px; overflow: visible; }
 }
 
 /* ============================================================================
