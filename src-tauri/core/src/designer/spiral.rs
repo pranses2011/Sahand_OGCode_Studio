@@ -214,7 +214,8 @@ fn build_wall_ribbon(wall_points: &[[f64; 3]], flags: &[u8], spr: usize, lattice
 /// محاسبهٔ E برای یک گام مسیر — مستند در راهنما
 /// فرمول: E = (line_width × layer_height × طول) / (π × (d/2)²) × flow
 /// مساحت مقطع فیلامنت از قطر فیلامنت پروفایل می‌آید.
-fn extrusion_mm(
+/// عمومی crate — text2vase هم از همان فرمول واحد استفاده می‌کند.
+pub(crate) fn extrusion_mm(
     length_mm: f64,
     line_width_mm: f64,
     layer_height_mm: f64,

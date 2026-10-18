@@ -64,6 +64,9 @@ pub fn run() {
             commands::smtp_clear_config,
             commands::smtp_test,
             commands::smtp_send_feedback,
+            // ---- نسخهٔ ۱٫۷: متن به گلدان (درخواست کاربر ۱۱) ----
+            commands::text2vase_compute,
+            commands::text2vase_export_gcode,
         ])
         .setup(|app| {
             // عنوان پنجره با شمارهٔ نسخه (درخواست کاربر: «نسخه در عنوان»)

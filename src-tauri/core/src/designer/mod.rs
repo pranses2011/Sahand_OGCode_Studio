@@ -21,6 +21,7 @@ pub mod pattern;
 pub mod printer_presets;
 pub mod profile;
 pub mod spiral;
+pub mod text2vase;
 pub mod texture;
 
 // re-export های پرکاربرد

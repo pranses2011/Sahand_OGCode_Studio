@@ -285,3 +285,24 @@ pub fn smtp_send_feedback(
     );
     gcode_mail::send_feedback_email(&cfg, &subject, &html, reply_email.as_deref())
 }
+
+// ============================================================================
+// دستورهای نسخهٔ ۱٫۷ — متن به گلدان (درخواست کاربر ۱۱)
+// ============================================================================
+
+/// محاسبهٔ متن‌به‌گلدان برای پیش‌نمایش 3D
+#[tauri::command]
+pub fn text2vase_compute(
+    params: gcode_core::designer::text2vase::TextVaseParams,
+) -> gcode_core::ipc::TextVaseViewport {
+    gcode_core::ipc::text2vase_compute(params)
+}
+
+/// تولید G-code کامل متن‌به‌گلدان — quality: None|۱ = استاندارد
+#[tauri::command]
+pub fn text2vase_export_gcode(
+    params: gcode_core::designer::text2vase::TextVaseParams,
+    quality: Option<f64>,
+) -> Result<String, String> {
+    gcode_core::ipc::text2vase_export_gcode(params, quality)
+}

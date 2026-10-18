@@ -554,6 +554,10 @@ fn eval_patterns_grid() -> std::collections::BTreeMap<String, PreviewGrid> {
         PatternKind::Pineapple, PatternKind::Lotus, PatternKind::TwistedFlute,
         PatternKind::Pearl, PatternKind::Meander, PatternKind::Brick,
         PatternKind::Spikes,
+        // ---- نسخهٔ ۱٫۷ (درخواست ۵) ----
+        PatternKind::Gothic, PatternKind::Moorish, PatternKind::Bamboo,
+        PatternKind::Colosseum, PatternKind::RopeSpiral, PatternKind::Checker,
+        PatternKind::Sunray, PatternKind::Cartouche,
     ] {
         // پارامترهای نمایشی استاندارد — همان پیش‌فرض UI
         let params = crate::designer::pattern::PatternParams {
@@ -592,6 +596,10 @@ fn eval_textures_grid() -> std::collections::BTreeMap<String, PreviewGrid> {
         TextureKind::SpiralGroove, TextureKind::Hammered, TextureKind::Basket,
         TextureKind::WoodGrain, TextureKind::Leather, TextureKind::Knurl,
         TextureKind::Ocean, TextureKind::Bubbles, TextureKind::Rows,
+            // ---- نسخهٔ ۱٫۷ (درخواست ۶) ----
+        TextureKind::Carbon, TextureKind::Herringbone, TextureKind::Cobblestone,
+        TextureKind::Crackle, TextureKind::FishScale, TextureKind::Sand,
+        TextureKind::Ridges, TextureKind::Pores,
     ] {
         let t = crate::designer::texture::TextureParams {
             kind,
@@ -794,6 +802,105 @@ pub fn delete_printer_profile(base_dir: String, name: String) -> Result<(), Stri
 // ============================================================================
 // آزمون‌های داخلی IPC — داده‌های فشرده و رفتار Save As
 // ============================================================================
+
+// ============================================================================
+// دستورهای نسخهٔ ۱٫۷ — متن به گلدان (درخواست کاربر ۱۱)
+// ============================================================================
+// کانتورها از فرانت‌اند می‌آیند (Canvas + ردیاب کانتور — هر فونت ویندوزی
+// و فارسی RTL درست رندر می‌شود)؛ اینجا مسیر چاپ ساخته می‌شود.
+
+/// پیلود viewport متن‌به‌گلدان — همان قالب FastViewport (رندر یکسان UI)
+#[derive(Debug, Clone, Serialize)]
+pub struct TextVaseViewport {
+    pub revision: u32,
+    pub count: usize,
+    pub positions: Vec<f64>,
+    pub kinds: Vec<u8>,
+    pub feedrates: Vec<f64>,
+    /// جعبهٔ متن (mm — فضای صفحه)
+    pub bbox: [f64; 4],
+    pub summary_fa: String,
+    pub stats: crate::toolpath::ToolpathStats,
+    pub diagnostics: Vec<crate::diagnostics::Diagnostic>,
+}
+
+/// محاسبهٔ متن‌به‌گلدان + فشرده‌سازی برای viewport
+pub fn text2vase_compute(params: crate::designer::text2vase::TextVaseParams) -> TextVaseViewport {
+    use crate::toolpath::SegmentKind;
+    let r = crate::designer::text2vase::compute(&params);
+    let n = r.segments.len();
+    let mut positions = Vec::with_capacity(n * 6);
+    let mut kinds = Vec::with_capacity(n);
+    let mut feedrates = Vec::with_capacity(n);
+    for s in &r.segments {
+        let st = s.start_mm.unwrap_or([0.0; 3]);
+        let en = s.end_mm.unwrap_or(st);
+        positions.extend_from_slice(&[r3(st[0]), r3(st[1]), r3(st[2])]);
+        positions.extend_from_slice(&[r3(en[0]), r3(en[1]), r3(en[2])]);
+        kinds.push(match s.kind {
+            SegmentKind::Extrusion => 0,
+            SegmentKind::Travel => 1,
+            SegmentKind::Retract => 2,
+            SegmentKind::Unretract => 3,
+            SegmentKind::Arc => 4,
+            SegmentKind::Unknown => 5,
+        });
+        feedrates.push(s.feedrate_mm_min.unwrap_or(0.0));
+    }
+    TextVaseViewport {
+        revision: 1,
+        count: n,
+        positions,
+        kinds,
+        feedrates,
+        bbox: r.bbox,
+        summary_fa: r.summary_fa,
+        stats: r.stats,
+        diagnostics: r.diagnostics,
+    }
+}
+
+/// تولید G-code کامل متن‌به‌گلدان — از همان serialize_gcode هسته:
+/// دما/رتراکشن/کد شروع و پایان کاربر/پایان استاندارد
+/// (رتراکشن → خاموشی بستر/نازل/فن → Z+1 نسبی → هوم X بدون پایین‌آمدن → M84)
+pub fn text2vase_export_gcode(
+    params: crate::designer::text2vase::TextVaseParams,
+    quality: Option<f64>,
+) -> Result<String, String> {
+    let r = crate::designer::text2vase::compute(&params);
+    if r.segments.is_empty() {
+        return Err("متنی برای چاپ نیست — کانتوری استخراج نشد".into());
+    }
+    // ورودی مصنوعی: فقط تنظیمات پرینتر معنا دارد (بقیه خنثی)
+    let input = crate::designer::spiral::DesignerInput {
+        profile: vec![
+            crate::designer::profile::ProfilePoint { r: 1.0, h: 0.0, m: None },
+            crate::designer::profile::ProfilePoint { r: 1.0, h: 1.0, m: None },
+        ],
+        form: crate::designer::profile::FormAdjust {
+            height_mm: params.height_mm.max(1.0),
+            bottom_diameter_mm: 10.0,
+            top_diameter_mm: 10.0,
+            taper_percent: 0.0,
+            smoothing_passes: 0,
+            interpolation: crate::designer::profile::Interpolation::Linear,
+        },
+        patterns: Vec::new(),
+        textures: Vec::new(),
+        floor: crate::designer::FloorSettings::default(),
+        wall: crate::designer::WallSettings::default(),
+        pendant: crate::designer::PendantSettings::default(),
+        lamp: crate::designer::LampSettings::default(),
+        center_on_bed: params.center_on_bed,
+        phase_start_deg: 0.0,
+        printer: params.printer.clone(),
+        mesh_quality: 1.0,
+        gcode_quality: quality.unwrap_or(1.0).clamp(0.25, 4.0),
+    };
+    let output = crate::designer::text2vase::to_designer_output(&r);
+    Ok(crate::export::serialize_gcode(&input, &output))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
