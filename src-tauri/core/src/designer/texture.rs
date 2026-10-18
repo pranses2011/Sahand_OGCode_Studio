@@ -42,6 +42,23 @@ pub enum TextureKind {
     Bubbles,
     /// تخته‌ای (rows): شیارهای افقی قوسی مثل ردیف تخته‌ها
     Rows,
+    // ---------- نسخهٔ ۱٫۷ (درخواست کاربر ۶: بافت‌های بیشتر) ----------
+    /// کربنی: بافت تویل ریز متقاطع (پنل کربن)
+    Carbon,
+    /// ست‌فقرات ماهی (herringbone): ستون‌های زیگزاگ متناوب جهت
+    Herringbone,
+    /// سنگ‌فرش: سنگ‌های گرد درهم (کف سنگی)
+    Cobblestone,
+    /// کراکله: شبکهٔ ترک‌های ریز (سرامیک ترک‌خورده)
+    Crackle,
+    /// فلس ماهی: کاسه‌های هم‌پوشان با آفست ردیفی
+    FishScale,
+    /// شنی: نویز ریز دو-اکتاوی ملایم (سطح شن)
+    Sand,
+    /// شیار عمودی ریز: رگه‌های عمودی ظریف (چین‌های پارچه)
+    Ridges,
+    /// منافذ اسفنجی: گودی‌های ریز پراکنده (اسفنج/متخلخل)
+    Pores,
 }
 
 impl TextureKind {
@@ -60,6 +77,14 @@ impl TextureKind {
             TextureKind::Ocean => "موج دریا",
             TextureKind::Bubbles => "حباب",
             TextureKind::Rows => "تخته‌ای",
+            TextureKind::Carbon => "کربنی (تویل)",
+            TextureKind::Herringbone => "ست‌فقرات ماهی",
+            TextureKind::Cobblestone => "سنگ‌فرش",
+            TextureKind::Crackle => "کراکله (ترک‌خورده)",
+            TextureKind::FishScale => "فلس ماهی",
+            TextureKind::Sand => "شنی",
+            TextureKind::Ridges => "شیار عمودی ریز",
+            TextureKind::Pores => "منافذ اسفنجی",
         }
     }
 }
@@ -331,6 +356,99 @@ pub fn apply_texture_ex(
             TextureKind::Rows => {
                 let bands = (100.0 / t.period_mm.max(0.5)).clamp(2.0, 80.0);
                 (std::f64::consts::PI * z_norm * bands).sin().abs() * 2.0 - 1.0
+            }
+            // ---------------- نسخهٔ ۱٫۷: ۸ بافت جدید (درخواست ۶) ----------------
+            // کربنی: تویل متقاطع ریز — دو موج متراکم با نسبت نامتناسب؛
+            // الگوی ۲×۲ تویل کربنی (مورب‌های پلکانی)
+            TextureKind::Carbon => {
+                let a = (u + ph).sin();
+                let b = (u * 1.37 + ph + theta * 2.0).sin();
+                (a * b * 2.4).tanh()
+            }
+            // ست‌فقرات ماهی: ستون‌های زیگزاگ که جهتشان پالا-پایین عوض می‌شود —
+            // هر ستون زاویه‌ای نصف‌دور، شیب مثلثی وارونه
+            TextureKind::Herringbone => {
+                let col = ((theta / std::f64::consts::PI).floor() as i64).rem_euclid(2);
+                let tri = (2.0 / std::f64::consts::PI)
+                    * (u + ph).sin().asin();
+                if col == 0 { tri } else { -tri }
+            }
+            // سنگ‌فرش: سنگ‌های گرد درهم — سلول‌های (زاویه، ارتفاع) با
+            // پروفایل گرد پهن (مثل حباب اما درشت‌تر و پهن‌تر)
+            TextureKind::Cobblestone => {
+                let cells_theta = ((2.0 * std::f64::consts::PI) / (t.period_mm * 0.6 + 1e-9))
+                    .clamp(5.0, 32.0);
+                let cells_z = (100.0 / (t.period_mm * 1.4).max(1.0)).clamp(3.0, 40.0);
+                let gx = (theta + std::f64::consts::PI) * cells_theta / (2.0 * std::f64::consts::PI);
+                let gy = z_norm * cells_z;
+                let ci = gx.floor() as i64;
+                let cj = gy.floor() as i64;
+                let ox = deterministic_hash(ci, cj) as f64 / i32::MAX as f64 * 0.5 - 0.25;
+                let oy = deterministic_hash(ci + 733, cj - 733) as f64 / i32::MAX as f64 * 0.5 - 0.25;
+                let dx = (gx - ci as f64) - 0.5 - ox;
+                let dy = (gy - cj as f64) - 0.5 - oy;
+                let d = (dx * dx + dy * dy).sqrt();
+                (1.0 - 2.4 * d).clamp(-1.0, 1.0)
+            }
+            // کراکله: ترک‌های ریز — «لبهٔ» سلول‌ها برجسته می‌شود (شبکهٔ
+            // voronoi ساده: حلقه در d≈۰٫۴۲ هر سلول)
+            TextureKind::Crackle => {
+                let cells_theta = ((2.0 * std::f64::consts::PI) / (t.period_mm * 0.5 + 1e-9))
+                    .clamp(8.0, 48.0);
+                let cells_z = (100.0 / t.period_mm).clamp(6.0, 60.0);
+                let gx = (theta + std::f64::consts::PI) * cells_theta / (2.0 * std::f64::consts::PI);
+                let gy = z_norm * cells_z;
+                let ci = gx.floor() as i64;
+                let cj = gy.floor() as i64;
+                let dx = (gx - ci as f64) - 0.5;
+                let dy = (gy - cj as f64) - 0.5;
+                let d = (dx * dx + dy * dy).sqrt();
+                // حلقهٔ ترک دور مرکز سلول — باریک و تیز
+                (1.0 - (d - 0.42).abs() * 4.5).clamp(-1.0, 1.0)
+            }
+            // فلس ماهی: کاسه‌های هم‌پوشان — |sin| زاویه‌ای با آفست نصف‌سلول
+            // در هر ردیف ارتفاعی (مثل فلس‌های واقعی که روی هم می‌افتند)
+            TextureKind::FishScale => {
+                let rows = (100.0 / t.period_mm.max(1.0)).clamp(4.0, 50.0);
+                let row = (z_norm * rows).floor();
+                let cols = 6.0;
+                let x = theta * cols / (2.0 * std::f64::consts::PI)
+                    + row as f64 * 0.5
+                    + ph;
+                let a = (std::f64::consts::PI * x.fract()).sin();
+                a * 2.0 - 1.0
+            }
+            // شنی: نویز دو-اکتاوی ریز و ملایم — سطح شن نرم
+            TextureKind::Sand => {
+                let n1 = value_noise_2d(theta * 9.0, z_norm * 18.0) * 2.0 - 1.0;
+                let n2 = value_noise_2d(theta * 21.0 + 3.3, z_norm * 42.0) * 2.0 - 1.0;
+                (n1 * 0.7 + n2 * 0.3) * 0.9
+            }
+            // شیار عمودی ریز: رگه‌های عمودی ظریف — cos² زاویه‌ای متراکم
+            TextureKind::Ridges => {
+                let c = (theta * 10.0 + ph).cos();
+                c * c * 2.0 - 1.0
+            }
+            // منافذ اسفنجی: گودی‌های ریز پراکنده — فقط سلول‌های «منتخب» hash
+            // گودی دارند (سطح متخلخل)
+            TextureKind::Pores => {
+                let cells_theta = ((2.0 * std::f64::consts::PI) / (t.period_mm * 0.4 + 1e-9))
+                    .clamp(10.0, 64.0);
+                let cells_z = (100.0 / t.period_mm).clamp(8.0, 80.0);
+                let gx = (theta + std::f64::consts::PI) * cells_theta / (2.0 * std::f64::consts::PI);
+                let gy = z_norm * cells_z;
+                let ci = gx.floor() as i64;
+                let cj = gy.floor() as i64;
+                let hfrac = deterministic_hash(ci, cj) as f64 / i32::MAX as f64;
+                if hfrac < 0.35 {
+                    let dx = (gx - ci as f64) - 0.5;
+                    let dy = (gy - cj as f64) - 0.5;
+                    let d = (dx * dx + dy * dy).sqrt();
+                    // گودی (منفی) فقط در مرکز سلول‌های منتخب
+                    -(1.0 - 3.2 * d).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                }
             }
         };
         let amount = v * t.amplitude_mm * w;
@@ -608,7 +726,20 @@ mod tests {
     #[test]
     fn test_all_new_textures_affect_some_point() {
         // هر بافت جدید باید در برخی نقاط اثر داشته باشد
-        for kind in [TextureKind::SpiralGroove, TextureKind::Hammered, TextureKind::Basket] {
+        for kind in [
+            TextureKind::SpiralGroove,
+            TextureKind::Hammered,
+            TextureKind::Basket,
+            // ---- نسخهٔ ۱٫۷: ۸ بافت جدید (درخواست ۶) ----
+            TextureKind::Carbon,
+            TextureKind::Herringbone,
+            TextureKind::Cobblestone,
+            TextureKind::Crackle,
+            TextureKind::FishScale,
+            TextureKind::Sand,
+            TextureKind::Ridges,
+            TextureKind::Pores,
+        ] {
             let t = TextureParams {
                 kind,
                 amplitude_mm: 1.0,

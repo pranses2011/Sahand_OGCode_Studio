@@ -295,6 +295,196 @@ impl ProfilePreset {
             ProfilePoint { r: 11.0, h: 98.0, m: None },
         ]
     }
+
+    // ================= ۱۴ پریست جدید — نسخهٔ ۱٫۷ (درخواست کاربر ۴) =================
+
+    /// گلدان چینی مِین‌پینگ (meiping): پایهٔ کشیده، شانهٔ پهن، گردن کوتاه
+    pub fn meiping() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 14.0, h: 0.0, m: None },
+            ProfilePoint { r: 17.0, h: 6.0, m: None },
+            ProfilePoint { r: 22.0, h: 25.0, m: None },
+            ProfilePoint { r: 24.5, h: 55.0, m: None },
+            ProfilePoint { r: 22.0, h: 75.0, m: None },
+            ProfilePoint { r: 15.0, h: 92.0, m: None },
+            ProfilePoint { r: 14.5, h: 100.0, m: None },
+        ]
+    }
+
+    /// جام یونانی (greek urn): بدنهٔ دو‌شکمه با دهانهٔ پهن و قاعدهٔ پله‌ای
+    pub fn greek_urn() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 16.0, h: 0.0, m: None },
+            ProfilePoint { r: 14.0, h: 5.0, m: None },
+            ProfilePoint { r: 22.0, h: 30.0, m: None },
+            ProfilePoint { r: 23.0, h: 55.0, m: None },
+            ProfilePoint { r: 19.0, h: 75.0, m: None },
+            ProfilePoint { r: 20.0, h: 90.0, m: None },
+            ProfilePoint { r: 26.0, h: 100.0, m: None },
+        ]
+    }
+
+    /// قطره‌ای (teardrop): پایهٔ نوک‌تیز و بدنهٔ گِرد یک‌شکمه
+    pub fn teardrop() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 6.0, h: 0.0, m: None },
+            ProfilePoint { r: 12.0, h: 12.0, m: None },
+            ProfilePoint { r: 22.0, h: 45.0, m: None },
+            ProfilePoint { r: 24.0, h: 65.0, m: None },
+            ProfilePoint { r: 20.0, h: 85.0, m: None },
+            ProfilePoint { r: 12.0, h: 97.0, m: None },
+            ProfilePoint { r: 8.0, h: 100.0, m: None },
+        ]
+    }
+
+    /// تُردِه/برگردنی (art deco): پله‌های تخت عمودی — سبک آرت‌دکو
+    pub fn art_deco() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 18.0, h: 0.0, m: None },
+            ProfilePoint { r: 18.0, h: 20.0, m: None },
+            ProfilePoint { r: 20.5, h: 20.5, m: None },
+            ProfilePoint { r: 20.5, h: 45.0, m: None },
+            ProfilePoint { r: 23.5, h: 45.5, m: None },
+            ProfilePoint { r: 23.5, h: 70.0, m: None },
+            ProfilePoint { r: 26.0, h: 70.5, m: None },
+            ProfilePoint { r: 26.0, h: 92.0, m: None },
+            ProfilePoint { r: 27.5, h: 92.5, m: None },
+            ProfilePoint { r: 27.5, h: 100.0, m: None },
+        ]
+    }
+
+    /// قارچی (mushroom): کلاهک گِرد روی ساقهٔ باریک
+    pub fn mushroom() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 12.0, h: 0.0, m: None },
+            ProfilePoint { r: 9.0, h: 25.0, m: None },
+            ProfilePoint { r: 8.0, h: 50.0, m: None },
+            ProfilePoint { r: 10.0, h: 62.0, m: None },
+            ProfilePoint { r: 22.0, h: 78.0, m: None },
+            ProfilePoint { r: 26.0, h: 92.0, m: None },
+            ProfilePoint { r: 24.0, h: 100.0, m: None },
+        ]
+    }
+
+    /// لاله‌ای (tulip): پیچهٔ باز لاله‌مانند با لبِ موج‌دار
+    pub fn tulip() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 14.0, h: 15.0, m: None },
+            ProfilePoint { r: 21.0, h: 50.0, m: None },
+            ProfilePoint { r: 24.0, h: 75.0, m: None },
+            ProfilePoint { r: 22.0, h: 92.0, m: None },
+            ProfilePoint { r: 17.0, h: 100.0, m: None },
+        ]
+    }
+
+    /// برجی (tower): دیوارهٔ تقریباً مستقیم و بلند با تاج
+    pub fn tower() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 17.0, h: 0.0, m: None },
+            ProfilePoint { r: 18.5, h: 40.0, m: None },
+            ProfilePoint { r: 19.5, h: 80.0, m: None },
+            ProfilePoint { r: 21.0, h: 95.0, m: None },
+            ProfilePoint { r: 20.0, h: 100.0, m: None },
+        ]
+    }
+
+    /// لبهٔ موج‌دار (wave rim): بدنهٔ ساده با لبِ گرد برگشته
+    pub fn wave_rim() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 16.0, h: 0.0, m: None },
+            ProfilePoint { r: 20.0, h: 30.0, m: None },
+            ProfilePoint { r: 23.0, h: 65.0, m: None },
+            ProfilePoint { r: 22.5, h: 80.0, m: None },
+            ProfilePoint { r: 25.5, h: 95.0, m: None },
+            ProfilePoint { r: 24.0, h: 100.0, m: None },
+        ]
+    }
+
+    /// شهدستان (honey jar): کوزهٔ گِرد کم‌قد با لبِ غلتان
+    pub fn honey_jar() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 17.0, h: 0.0, m: None },
+            ProfilePoint { r: 21.0, h: 10.0, m: None },
+            ProfilePoint { r: 24.0, h: 38.0, m: None },
+            ProfilePoint { r: 23.0, h: 62.0, m: None },
+            ProfilePoint { r: 25.0, h: 82.0, m: None },
+            ProfilePoint { r: 24.0, h: 88.0, m: None },
+        ]
+    }
+
+    /// دوشکمه (double bulge): دو شکمهٔ روی هم (کدوی عروسکی)
+    pub fn double_bulge() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 12.0, h: 0.0, m: None },
+            ProfilePoint { r: 20.0, h: 22.0, m: None },
+            ProfilePoint { r: 15.0, h: 45.0, m: None },
+            ProfilePoint { r: 22.0, h: 70.0, m: None },
+            ProfilePoint { r: 20.0, h: 92.0, m: None },
+            ProfilePoint { r: 21.5, h: 100.0, m: None },
+        ]
+    }
+
+    /// پهن و کوتاه (low bowl): کاسهٔ پهن کم‌ارتفاع
+    pub fn low_bowl() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 10.0, h: 0.0, m: None },
+            ProfilePoint { r: 14.0, h: 4.0, m: None },
+            ProfilePoint { r: 26.0, h: 28.0, m: None },
+            ProfilePoint { r: 31.0, h: 48.0, m: None },
+            ProfilePoint { r: 32.0, h: 55.0, m: None },
+        ]
+    }
+
+    /// گلدان سترگ (grand vase): شکمهٔ بزرگ با گردن بلند — مجسمه‌وار
+    pub fn grand_vase() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 20.0, h: 0.0, m: None },
+            ProfilePoint { r: 26.0, h: 12.0, m: None },
+            ProfilePoint { r: 33.0, h: 42.0, m: None },
+            ProfilePoint { r: 30.0, h: 70.0, m: None },
+            ProfilePoint { r: 20.0, h: 92.0, m: None },
+            ProfilePoint { r: 19.0, h: 118.0, m: None },
+            ProfilePoint { r: 23.0, h: 128.0, m: None },
+        ]
+    }
+
+    /// سنگ‌شکسته (geometric): چندوجهی تیز — شکم هشت‌ضلعی‌وار
+    pub fn geometric() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 15.0, h: 0.0, m: None },
+            ProfilePoint { r: 19.0, h: 18.0, m: None },
+            ProfilePoint { r: 25.0, h: 45.0, m: None },
+            ProfilePoint { r: 24.0, h: 70.0, m: None },
+            ProfilePoint { r: 18.0, h: 90.0, m: None },
+            ProfilePoint { r: 22.0, h: 100.0, m: None },
+        ]
+    }
+
+    /// شمعدان بلند (tall candle): استوانهٔ باریک بلند با پیچ ملایم
+    pub fn tall_candle() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 11.0, h: 0.0, m: None },
+            ProfilePoint { r: 12.0, h: 30.0, m: None },
+            ProfilePoint { r: 13.5, h: 75.0, m: None },
+            ProfilePoint { r: 14.0, h: 105.0, m: None },
+            ProfilePoint { r: 13.0, h: 110.0, m: None },
+        ]
+    }
+
+    /// اُرگ‌دهنی (rippled column): ستون با موج‌های شعاعی متراکم
+    pub fn rippled_column() -> Vec<ProfilePoint> {
+        vec![
+            ProfilePoint { r: 15.0, h: 0.0, m: None },
+            ProfilePoint { r: 18.0, h: 15.0, m: None },
+            ProfilePoint { r: 16.5, h: 30.0, m: None },
+            ProfilePoint { r: 18.5, h: 45.0, m: None },
+            ProfilePoint { r: 17.0, h: 60.0, m: None },
+            ProfilePoint { r: 18.5, h: 75.0, m: None },
+            ProfilePoint { r: 17.0, h: 90.0, m: None },
+            ProfilePoint { r: 19.0, h: 100.0, m: None },
+        ]
+    }
 }
 
 /// اعتبارسانی نقاط پروفایل — شعاع منفی و NaN رد می‌شود (گارد ایمنی)
@@ -695,11 +885,27 @@ mod tests {
 
     #[test]
     fn test_preset_profiles_valid() {
-        // هر سه preset باید اعتبارسانی و مرتب باشند
+        // همهٔ پریست‌ها باید اعتبارسانی و مرتب باشند — ۱۴ مورد جدید ۱٫۷ هم
         for pts in [
             ProfilePreset::vase_default(),
             ProfilePreset::lampshade(),
             ProfilePreset::planter(),
+            // ---- نسخهٔ ۱٫۷ (درخواست کاربر ۴) ----
+            ProfilePreset::meiping(),
+            ProfilePreset::greek_urn(),
+            ProfilePreset::teardrop(),
+            ProfilePreset::art_deco(),
+            ProfilePreset::mushroom(),
+            ProfilePreset::tulip(),
+            ProfilePreset::tower(),
+            ProfilePreset::wave_rim(),
+            ProfilePreset::honey_jar(),
+            ProfilePreset::double_bulge(),
+            ProfilePreset::low_bowl(),
+            ProfilePreset::grand_vase(),
+            ProfilePreset::geometric(),
+            ProfilePreset::tall_candle(),
+            ProfilePreset::rippled_column(),
         ] {
             assert!(validate_profile(&pts).is_ok(), "پروفایل نامعتبر");
             // ارتفاع‌ها صعودی‌اند

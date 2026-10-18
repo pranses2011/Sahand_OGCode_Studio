@@ -51,6 +51,23 @@ pub enum PatternKind {
     Brick,
     /// خاردار (spikes): خارهای مثلثی تیز دور فرم
     Spikes,
+    // ---------- نسخهٔ ۱٫۷ (درخواست کاربر ۵: الگوهای بیشتر) ----------
+    /// گوتیک: قوس‌های تیزه‌دار عمودی (ستون‌های کلیسای گوتیک)
+    Gothic,
+    /// موریسکی: لوب‌های تیز هلالی (طاق نعل‌اسبی اسلامی)
+    Moorish,
+    /// بامبو: گره‌های بامبو — برجستگی‌های پهن با گُره‌های تیز
+    Bamboo,
+    /// کولوسئومی: نوارهای افقی مربعی (ردیف سنگ‌های آمفی‌تئاتر)
+    Colosseum,
+    /// طناب مارپیچ: یک تار ضخیم پیوسته که دور فرم می‌پیچد
+    RopeSpiral,
+    /// شطرنجی: بلوک‌های متناوب ریز (بازوی مورب)
+    Checker,
+    /// پرتو خورشید: اشعه‌های عمودی پهن و نرم
+    Sunray,
+    /// کارتوش: قرص‌های کشیده عمودی با ردیف‌های متناوب (نقش ایرانی)
+    Cartouche,
 }
 
 impl PatternKind {
@@ -74,6 +91,14 @@ impl PatternKind {
             PatternKind::Meander => "یونانی",
             PatternKind::Brick => "آجری",
             PatternKind::Spikes => "خاردار",
+            PatternKind::Gothic => "گوتیک (قوس تیزه‌دار)",
+            PatternKind::Moorish => "موریسکی (طاق هلالی)",
+            PatternKind::Bamboo => "بامبو (گره‌دار)",
+            PatternKind::Colosseum => "کولوسئومی (نوار مربعی)",
+            PatternKind::RopeSpiral => "طناب مارپیچ",
+            PatternKind::Checker => "شطرنجی",
+            PatternKind::Sunray => "پرتو خورشید",
+            PatternKind::Cartouche => "کارتوش (قرص ایرانی)",
         }
     }
 }
@@ -309,6 +334,60 @@ fn pattern_value(p: &PatternParams, z: f64, theta: f64, total_height: f64) -> f6
                 .rem_euclid(1.0);
             1.0 - 4.0 * (x - 0.5).abs()
         }
+        // ---------------- نسخهٔ ۱٫۷: ۸ الگوی جدید (درخواست ۵) ----------------
+        // گوتیک: در هر بخش kتایی یک قوس تیزه‌دار عمودی — نمای |x|^p با
+        // p<1 قوس را تیز (شکسته) می‌کند (قوس گوتیک دو-مرکزه)
+        PatternKind::Gothic => {
+            let m = ((k * theta + phase) / (2.0 * std::f64::consts::PI))
+                .rem_euclid(1.0)
+                * 2.0
+                - 1.0; // −1..1 داخل بخش
+            (1.0 - m.abs().powf(0.65)) * 2.0 - 1.0
+        }
+        // موریسکی: لوب‌های تیز هلالی — |sin|^۰٫۴ شکل طاق نعل‌اسبی می‌دهد
+        PatternKind::Moorish => {
+            let s = (k * theta * 0.5 + phase).sin();
+            s.abs().powf(0.4) * 2.0 - 1.0
+        }
+        // بامبو: گره‌های پهن با گردن تیز — سینوس با توان <۱ روی |نمایی|
+        PatternKind::Bamboo => {
+            let s = (2.0 * std::f64::consts::PI * p.frequency.max(0.5) * zn + phase).sin();
+            s.signum() * s.abs().powf(0.5)
+        }
+        // کولوسئومی: نوارهای افقی مربعی — تان‌هش سینوس = موج مربعی نرم
+        PatternKind::Colosseum => {
+            ((2.0 * std::f64::consts::PI * p.frequency.max(0.5) * zn + phase).sin() * 3.5).tanh()
+        }
+        // طناب مارپیچ: یک تار مثلثی ضخیم در هر k بخش که با ارتفاع می‌پیچد
+        PatternKind::RopeSpiral => {
+            let x = ((k * theta + phase) / (2.0 * std::f64::consts::PI)
+                + p.frequency * zn)
+                .rem_euclid(1.0);
+            1.0 - 4.0 * (x - 0.5).abs()
+        }
+        // شطرنجی: بلوک‌های متناوب ریز — حاصل‌ضرب دو موج مربعی نرم
+        PatternKind::Checker => {
+            let t = 2.0 * std::f64::consts::PI * p.frequency * zn;
+            ((k * theta + phase).sin() * 4.0).tanh() * (t.sin() * 4.0).tanh()
+        }
+        // پرتو خورشید: اشعه‌های عمودی پهن — |sin|^۰٫۳۵ اشعه‌های نرم پهن
+        PatternKind::Sunray => {
+            let s = (k * theta + phase).sin();
+            s.abs().powf(0.35) * 2.0 - 1.0
+        }
+        // کارتوش: قرص‌های کشیده عمودی با ردیف‌های متناوب — قرص (1−m²)⁺
+        // در هر بخش + دروازهٔ ردیف زوج/فرد
+        PatternKind::Cartouche => {
+            let m = ((k * theta + phase) / (2.0 * std::f64::consts::PI))
+                .rem_euclid(1.0)
+                * 2.0
+                - 1.0;
+            let pill = (1.0 - m * m / 0.64).max(0.0); // قرص بیضی
+            let rows = (p.frequency.max(1.0) * 3.0).round().max(1.0);
+            let row = (zn * rows).floor() as i64;
+            let gate = if row.rem_euclid(2) == 0 { 1.0 } else { 0.35 };
+            pill * gate * 2.0 - 1.0
+        }
     };
     v * p.amplitude_mm * w
 }
@@ -355,6 +434,10 @@ mod tests {
             PatternKind::Braid, PatternKind::Pineapple, PatternKind::Lotus,
             PatternKind::TwistedFlute, PatternKind::Pearl, PatternKind::Meander,
             PatternKind::Brick, PatternKind::Spikes,
+            // ---- نسخهٔ ۱٫۷ ----
+            PatternKind::Gothic, PatternKind::Moorish, PatternKind::Bamboo,
+            PatternKind::Colosseum, PatternKind::RopeSpiral, PatternKind::Checker,
+            PatternKind::Sunray, PatternKind::Cartouche,
         ]
         {
             let p = base_pattern(kind);
