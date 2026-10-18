@@ -21,7 +21,7 @@ import {
   text2vaseExportGcode,
   saveFileDialog,
   writeTextFile,
-  runningInDesktop,
+  coreAvailable,
   type PrinterProfile,
   type SegmentsPayload,
   type TextVaseParams,
@@ -87,17 +87,29 @@ export function TextVasePage(props: {
   const [status, setStatus] = useState<string>("");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const debounceRef = useRef<number | null>(null);
+  // رفع ۱٫۷٫۱: ترتیب پاسخ‌های IPC — پاسخ کهنهٔ محاسبهٔ قبلی نباید پیش‌نمایش
+  // تازه را بازنویسی کند (تایپ سریع ⇒ چند compute هم‌زمان در پرواز)
+  const computeSeqRef = useRef(0);
 
   const set = <K extends keyof TextForm>(k: K, v: TextForm[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   // ---------- استخراج کانتور (debounce) ----------
+  // رفع ۱٫۷٫۱: قبل از رندر بوم، فونت انتخابی با document.fonts.load آماده
+  // می‌شود — وگرنه در اولین استخراجِ وزیرمتنِ باندل‌شده، @font-face هنوز
+  // بارگذاری نشده و کانتور از فونت جایگزین گرفته می‌شد (پیش‌نمایش ناهمگون).
   useEffect(() => {
     if (debounceRef.current !== null) {
       window.clearTimeout(debounceRef.current);
     }
-    debounceRef.current = window.setTimeout(() => {
+    debounceRef.current = window.setTimeout(async () => {
       try {
+        const spec = `${form.fontWeight} 64px "${form.fontFamily}", "Vazirmatn"`;
+        try {
+          await document.fonts.load(spec, form.text || "Sahand");
+        } catch {
+          /* فونت سیستم/نامعتبر — رندر با جایگزین، اشکالی ندارد */
+        }
         const r = extractTextContours({
           text: form.text,
           fontFamily: form.fontFamily,
@@ -128,7 +140,10 @@ export function TextVasePage(props: {
     form.pxPerMm,
   ]);
 
-  // ---------- محاسبه در هسته (debounce) ----------
+  // ---------- محاسبه در هسته (رفع ۱٫۷٫۱) ----------
+  // قبلاً گیت runningInDesktop() بود و تابع هم invoke خام می‌زد ⇒ در dev
+  // مرورگر پیش‌نمایش هیچ‌وقت ساخته نمی‌شد. حالا گیت coreAvailable() است
+  // (دسکتاپ یا پل توسعه) و مسیر سه‌گانهٔ callCore رعایت می‌شود.
   useEffect(() => {
     if (contours.length === 0) {
       setParams(null);
@@ -145,15 +160,16 @@ export function TextVasePage(props: {
       printer,
     };
     setParams(p);
-    if (!runningInDesktop()) {
-      // محیط dev مرورگر — بدون هستهٔ Rust محاسبه نمی‌شود (صداقت)
+    if (!coreAvailable()) {
+      // محیط تولیدی مرورگر — بدون هستهٔ Rust محاسبه نمی‌شود (صداقت)
       setViewport(null);
       return;
     }
     let alive = true;
+    const seq = ++computeSeqRef.current;
     text2vaseCompute(p)
       .then((v) => {
-        if (!alive) return;
+        if (!alive || seq !== computeSeqRef.current) return; // پاسخ کهنه
         setViewport({
           positions: v.positions,
           kinds: v.kinds,
@@ -164,7 +180,10 @@ export function TextVasePage(props: {
           bbox: v.bbox,
         });
       })
-      .catch((e) => setStatus(`خطای محاسبه: ${String(e)}`));
+      .catch((e) => {
+        if (!alive) return;
+        setStatus(`خطای محاسبه: ${String(e)}`);
+      });
     return () => {
       alive = false;
     };
@@ -285,8 +304,12 @@ export function TextVasePage(props: {
   const nHoles = contours.filter((c) => c.is_hole).length;
 
   return (
-    <div className="designer-page" style={{ gridTemplateColumns: "340px 1fr" }}>
-      {/* ================= پنل تنظیمات ================= */}
+    <div className="designer-page">
+      {/* ================= پنل تنظیمات =================
+          رفع ۱٫۷٫۱: ستون‌ها از CSS (.designer-page) می‌آیند — قبلاً
+          inline gridTemplateColumns بود و چون کلاسی در CSS وجود نداشت،
+          ارتفاع گرید نامحدود می‌شد: پنل اسکرول نمی‌شد و پیش‌نمایش ۳بعدی
+          (flex:1) به ارتفاع صفر فرو می‌افتاد. */}
       <div className="designer-side">
         <div className="designer-head">
           <h3 style={{ marginTop: 0, color: "var(--accent)", marginBottom: 0 }}>
@@ -420,11 +443,29 @@ export function TextVasePage(props: {
           </select>
         </div>
 
-        <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+        {/* نوار اقدام چسبان — رفع ۱٫۷٫۱: همیشه در دید، حتی وقتی پنل
+            تنظیمات دراز است و کاربر پایین اسکرول نکرده (باگ «دکمه
+            بیرون از دسترس») */}
+        <div
+          className="textvase-actions"
+          style={{
+            position: "sticky",
+            bottom: 0,
+            display: "flex",
+            gap: 6,
+            marginTop: 10,
+            padding: "10px 0 2px",
+            background: "var(--bg-1)",
+            borderTop: "1px solid var(--line)",
+            zIndex: 2,
+          }}
+        >
           <button className="btn primary" disabled={busy || contours.length === 0} onClick={exportGcode}>
             💾 ذخیرهٔ G-code
           </button>
-          <button className="btn" disabled={busy || contours.length === 0 || !runningInDesktop()} onClick={sendToEditor}>
+          {/* رفع ۱٫۷٫۱: ارسال به ویرایشگر فقط به هسته نیاز دارد، نه پوسته —
+              در dev با پل CLI هم کار می‌کند */}
+          <button className="btn" disabled={busy || contours.length === 0 || !coreAvailable()} onClick={sendToEditor}>
             ➡️ ارسال به ویرایشگر
           </button>
         </div>
@@ -460,11 +501,11 @@ export function TextVasePage(props: {
               segments={segPayload}
               highlightIds={new Set<number>()}
               filter={{ mode: "all", upToId: 0 }}
-              buildVolume={runningInDesktop() ? printer.build_volume_mm : null}
+              buildVolume={printer.build_volume_mm}
               emptyMessage={
-                runningInDesktop()
+                coreAvailable()
                   ? "متن را بنویسید تا پیش‌نمایش سه‌بعدی ساخته شود"
-                  : "پیش‌نمایش هستهٔ Rust فقط در برنامهٔ دسکتاپ فعال است"
+                  : "پیش‌نمایش هستهٔ Rust فقط در برنامهٔ دسکتاپ یا حالت توسعه فعال است"
               }
               webglMessage="مرورگر WebGL را پشتیبانی نمی‌کند"
             />
