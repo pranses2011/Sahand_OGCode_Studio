@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { GcodeEditorPage } from "../features/gcode-editor/GcodeEditorPage";
 import { SpiralDesignerPage } from "../features/spiral-designer/SpiralDesignerPage";
+// ۱٫۷ (درخواست کاربر ۱۱): صفحهٔ «متن به گلدان» — کانتور متن → دیوارهٔ مارپیچی
+import { TextVasePage } from "../features/text-vase/TextVasePage";
 import { ColorBar, storedFilamentColor } from "../components/ColorBar";
 import { AboutModal } from "../components/AboutModal";
 import { fa } from "../i18n/fa";
@@ -21,13 +23,42 @@ import { flushFeedbackQueue, installGlobalErrorReporter } from "../lib/feedback"
 // درخواست کاربر ۱.۵: «نسخه برنامه در عنوان باشه».
 import pkg from "../../package.json";
 
-type Tab = "editor" | "designer";
+type Tab = "editor" | "designer" | "textvase";
 
 /** تحویل G-code طراح به ویرایشگر — seq تضمین می‌کند هر ارسال، remount تازه بگیرد */
 interface DesignerHandoff {
   content: string;
   seq: number;
+  /** نام پیشنهادی فایل تحویلی — ۱٫۷: متن به گلدان */
+  note?: string;
 }
+
+/** پروفایل پرینتر پیش‌فرض برای صفحهٔ متن (کاربر در طراح تنظیمات را تنظیم می‌کند) */
+const DEFAULT_PRINTER = {
+  name: "Custom / Unverified",
+  status: "unverified",
+  build_volume_mm: [220, 220, 250] as [number, number, number],
+  nozzle_diameter_mm: 0.4,
+  filament_diameter_mm: 1.75,
+  line_width_mm: 0.45,
+  layer_height_mm: 0.25,
+  print_speed_mm_min: 2400,
+  travel_speed_mm_min: 6000,
+  flow_multiplier: 1.0,
+  absolute_e: true,
+  nozzle_temp_c: 200,
+  bed_temp_c: 60,
+  fan_percent: 100,
+  wait_for_temps: true,
+  wall_speed_mm_s: 40,
+  first_layer_speed_mm_s: 20,
+  floor_speed_mm_s: 30,
+  travel_speed_mm_s: 100,
+  retract_mm: 0.8,
+  retract_speed_mm_s: 40,
+  start_gcode: "",
+  end_gcode: "",
+} as const;
 
 export function App() {
   const [tab, setTab] = useState<Tab>("editor");
@@ -54,12 +85,18 @@ export function App() {
     setTab("editor");
   }, []);
 
+  /** دریافت G-code «متن به گلدان» و پرش به ویرایشگر — ۱٫۷ */
+  const handleTextToEditor = useCallback((gcode: string, note: string) => {
+    setHandoff((h) => ({ content: gcode, seq: (h?.seq ?? 0) + 1, note }));
+    setTab("editor");
+  }, []);
+
   return (
     <div className="app-shell">
       <div className="topbar">
         <span className="brand">
           <img
-            src="brand-icon.svg"
+            src="brand-icon.png"
             alt="نشان Sahand GCode Studio"
             className="brand-icon"
             width={22}
@@ -85,6 +122,15 @@ export function App() {
           >
             {fa.navDesigner}
           </button>
+          {/* متن به گلدان — نسخهٔ ۱٫۷ (درخواست کاربر ۱۱) */}
+          <button
+            className={`tab-btn ${tab === "textvase" ? "active" : ""}`}
+            role="tab"
+            aria-selected={tab === "textvase"}
+            onClick={() => setTab("textvase")}
+          >
+            ✍️ متن به گلدان
+          </button>
           {/* دربارهٔ برنامه + بازخورد مستقیم به سازنده — نسخهٔ ۱٫۶ (درخواست ۹) */}
           <button
             className="btn small about-btn"
@@ -105,9 +151,11 @@ export function App() {
         <GcodeEditorPage
           key={handoff ? `handoff-${handoff.seq}` : "normal"}
           initialContent={handoff?.content ?? null}
-          initialName={handoff ? "spiral-designer-output.gcode" : null}
+          initialName={handoff ? (handoff.note ?? "text-vase-output.gcode") : null}
           extrusionColor={filamentColor}
         />
+      ) : tab === "textvase" ? (
+        <TextVasePage printer={DEFAULT_PRINTER} onGcode={handleTextToEditor} />
       ) : (
         <SpiralDesignerPage
           onSendToEditor={handleSendToEditor}

@@ -97,7 +97,7 @@ export function AboutModal(props: AboutModalProps) {
           <div className="about-body">
             <div className="about-brand">
               <div className="about-logo" aria-hidden="true">
-                <img src="brand-icon.svg" alt="" width={64} height={64} />
+                <img src="brand-icon.png" alt="" width={64} height={64} />
               </div>
               <div>
                 <h2 className="about-title">Sahand GCode Studio</h2>
