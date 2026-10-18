@@ -154,6 +154,32 @@ fn dispatch(cmd: &str, args: &serde_json::Value) -> serde_json::Value {
                 Err(e) => err_json(e),
             }
         }
+        // ---- متن به گلدان — نسخهٔ ۱٫۷ (درخواست کاربر ۱۱) ----
+        // رفع ۱٫۷٫۱: نبود این دو دستور یعنی پیش‌نمایش/خروجی صفحهٔ «متن به
+        // گلدان» در dev مرورگر هیچ‌وقت محاسبه نمی‌شد (پل، دستور ناشناخته
+        // را خطا می‌داد). حالا همان ipc هسته سرو می‌شود.
+        "text2vase_compute" => {
+            let v = args.get("params").cloned().unwrap_or_else(|| args.clone());
+            let params: gcode_core::designer::text2vase::TextVaseParams =
+                match serde_json::from_value(v) {
+                    Ok(p) => p,
+                    Err(e) => return err_json(format!("پارامترهای متن‌به‌گلدان نامعتبر: {e}")),
+                };
+            to_json(ipc::text2vase_compute(params))
+        }
+        "text2vase_export_gcode" => {
+            let v = args.get("params").cloned().unwrap_or_else(|| args.clone());
+            let params: gcode_core::designer::text2vase::TextVaseParams =
+                match serde_json::from_value(v) {
+                    Ok(p) => p,
+                    Err(e) => return err_json(format!("پارامترهای متن‌به‌گلدان نامعتبر: {e}")),
+                };
+            let quality = args.get("quality").and_then(|q| q.as_f64());
+            match ipc::text2vase_export_gcode(params, quality) {
+                Ok(s) => serde_json::Value::String(s),
+                Err(e) => err_json(e),
+            }
+        }
         _ => err_json(format!("دستور ناشناخته: {cmd}")),
     }
 }
