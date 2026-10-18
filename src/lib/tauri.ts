@@ -790,14 +790,17 @@ export interface TextVaseViewport {
 export async function text2vaseCompute(
   params: TextVaseParams
 ): Promise<TextVaseViewport> {
-  return invoke("text2vase_compute", { params });
+  // رفع ۱٫۷٫۱: قبلاً invoke خام بود ⇒ در dev مرورگر پل هسته نقض می‌شد و
+  // پیش‌نمایش هیچ‌وقت ساخته نمی‌شد؛ حالا همان سه‌مسیرهٔ استاندارد برنامه:
+  // دسکتاپ (invoke) / dev (POST /api/ipc) / غیره (خطای صادقانه).
+  return callCore<TextVaseViewport>("text2vase_compute", { params });
 }
 
 export async function text2vaseExportGcode(
   params: TextVaseParams,
   quality?: number
 ): Promise<string> {
-  return invoke("text2vase_export_gcode", { params, quality });
+  return callCore<string>("text2vase_export_gcode", { params, quality });
 }
 
 export function runningInDesktop(): boolean {
