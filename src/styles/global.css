@@ -44,6 +44,47 @@
 :root[data-accent="blue"]   { --accent: #60a5fa; --accent-dim: #1d4ed8; }
 :root[data-accent="red"]    { --accent: #f87171; --accent-dim: #b91c1c; }
 
+/* ---------- فونت وزیرمتن — باندل داخلی (درخواست کاربر ۱، نسخهٔ ۱٫۷) ----------
+   فایل‌های woff2 داخل public/fonts بسته‌بندی می‌شوند؛ حتی اگر فونت در
+   ویندوز کاربر نصب نباشد رابط فارسی درست و یکدست نمایش داده می‌شود.
+   ۵ وزن: Light ۳۰۰ / Regular ۴۰۰ / Medium ۵۰۰ / Bold ۷۰۰ / ExtraBold ۸۰۰
+   v33.003 — rastikerdar/vazirmatn (OFL) — کاملاً آفلاین، بدون CDN. */
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/vazirmatn-300.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/vazirmatn-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/vazirmatn-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/vazirmatn-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/vazirmatn-800.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ---------- ریست پایه ---------- */
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; padding: 0; }
