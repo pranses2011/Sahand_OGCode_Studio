@@ -9,12 +9,13 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { DesignerProject } from "./tauri";
+import type { DesignerProject, TextVaseParams } from "./tauri";
 import {
   parseGcode, explainLine, saveAs, validateGcode,
   designerCompute, designerExportGcode, designerExportStl,
   saveProject, loadProject, readTextFile,
   openFileDialog, saveFileDialog, runningInDesktop,
+  text2vaseCompute, text2vaseExportGcode,
 } from "./tauri";
 import { fa } from "../i18n/fa";
 import { ALL_FIXTURES } from "../test-fixtures";
@@ -69,6 +70,27 @@ describe("پل IPC در محیط غیر-دسکتاپ (صداقت بدون داد
     await expect(readTextFile("nope.gcode")).rejects.toThrow();
     await expect(openFileDialog()).rejects.toThrow();
     await expect(saveFileDialog("x.gcode", "gcode")).rejects.toThrow();
+  });
+
+  // رفع ۱٫۷٫۱ — رگرسیون متن‌به‌گلدان: قبلاً text2vase با invoke خام بود؛
+  // حالا باید همان مسیر صدقانهٔ callCore را طی کند (در node: خطای صریح).
+  it("text2vaseCompute/text2vaseExportGcode خطای صریح می‌دهند (نه دادهٔ جعلی)", async () => {
+    const params: TextVaseParams = {
+      contours: [{ points: [[-20, -10], [20, -10], [20, 10], [-20, 10]], is_hole: false }],
+      height_mm: 40,
+      floor_layers: 2,
+      quality_step_mm: 1.1,
+      center_on_bed: true,
+      speed_scale: 0.8,
+      printer: {
+        name: "x", status: "unverified", build_volume_mm: [220, 220, 250],
+        nozzle_diameter_mm: 0.4, filament_diameter_mm: 1.75, line_width_mm: 0.45,
+        layer_height_mm: 0.25, print_speed_mm_min: 2400, travel_speed_mm_min: 6000,
+        flow_multiplier: 1, absolute_e: true, start_gcode: "", end_gcode: "",
+      },
+    };
+    await expect(text2vaseCompute(params)).rejects.toThrow("دسکتاپ");
+    await expect(text2vaseExportGcode(params, 1)).rejects.toThrow("دسکتاپ");
   });
 });
 
