@@ -42,7 +42,9 @@ describe("بازخورد و گزارش خطا (درخواست کاربر ۹)", (
     vi.stubGlobal("fetch", fetchMock);
     const r = await sendFeedback({ kind: "feedback", message: "سلام تست" });
     expect(r.ok).toBe(true);
-    expect(r.queued).toBe(false);
+    // ۱٫۷: کانال formsubmit + پیام صادقانه (نه queued)
+    expect(r.channel).toBe("formsubmit");
+    expect(r.messageFa).toContain("سرویس فرم");
     expect(feedbackQueueSize()).toBe(0);
     expect(fetchMock).toHaveBeenCalledOnce();
     // بدنهٔ درخواست: ایمیل مقصد formsubmit با _subject
@@ -58,7 +60,9 @@ describe("بازخورد و گزارش خطا (درخواست کاربر ۹)", (
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const r = await sendFeedback({ kind: "error", message: "خطای آزمون" });
     expect(r.ok).toBe(false);
-    expect(r.queued).toBe(true);
+    // ۱٫۷: صف = کانال queued با پیام صادقانه
+    expect(r.channel).toBe("queued");
+    expect(r.messageFa).toContain("صف محلی");
     expect(feedbackQueueSize()).toBe(1);
     // ۲) اتصال برمی‌گردد — flush صف
     const fetchMock = vi.fn().mockResolvedValue(
@@ -71,6 +75,14 @@ describe("بازخورد و گزارش خطا (درخواست کاربر ۹)", (
     // بدنهٔ خطای صف‌شده همان پیام بود
     const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
     expect(body["پیام"]).toContain("خطای آزمون");
+  });
+
+  it("لینک mailto پشتیسان ساخته می‌شود (درخواست ۱۰)", async () => {
+    const { buildMailtoLink } = await import("./feedback");
+    const link = buildMailtoLink({ kind: "feedback", message: "سلام" });
+    expect(link.startsWith("mailto:Pranses2011@GMail.com")).toBe(true);
+    expect(link).toContain("subject=");
+    expect(link).toContain("body=");
   });
 
   it("حذف توکن/مسیر از متن خطا (حریم خصوصی)", async () => {

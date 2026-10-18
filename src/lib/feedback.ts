@@ -1,21 +1,21 @@
 /**
  * ============================================================================
- * lib/feedback.ts — بازخورد و گزارش خطا به ایمیل سازنده (نسخهٔ ۱٫۶)
+ * lib/feedback.ts — بازخورد و گزارش خطا به ایمیل سازنده (نسخهٔ ۱٫۷)
  * ============================================================================
- * درخواست کاربر ۹:
- *   «هنگام خطا دادن، متن و توضیح خطا را به ایمیلم ارسال کن تا اصلاحش کنم؛
- *    و کاربران بتوانند نظرات و پیشنهاداتشان را از داخل خود برنامه بفرستند
- *    (نه با نرم‌افزار ایمیل).»
+ * رفع باگ ۱٫۶ (درخواست کاربر ۱۰):
+ *   «ایمیل ارسال نمیشود (پیام موفقیت آمیز بودن رو میگه ولی هیچی به ایمیلم
+ *    نمیاد)» — علت: سرویس formsubmit «پاسخ موفق» می‌داد ولی تا فعال‌سازی
+ *    یک‌بارهٔ مالک ایمیل، هیچ ایمیلی تحویل نمی‌شد.
  *
- * سازوکار صادقانه و بدون نیاز به رمز SMTP:
- *   POST https://formsubmit.co/ajax/Pranses2011@GMail.com — سرویس فرم‌به‌ایمیل.
- *   * نخستین ارسال نیازمند تأیید یک‌بارهٔ مالک ایمیل است (ایمیل فعال‌سازی
- *     formsubmit به Pranses2011@GMail.com می‌آید) — پس از آن همه‌چیز خودکار است.
- *   * اگر ارسال شکست خورد (بدون اینترنت/فعال‌سازی)، گزارش در صف محلی
- *     (localStorage) می‌ماند و دفعات بعد دوباره تلاش می‌شود.
- *   * دامنهٔ HTTP در capabilities/tauri.conf به همین سرویس محدود است.
+ * زنجیرهٔ صادقانهٔ ۱٫۷ — هر کانال واقعاً چه کرد گزارش می‌شود:
+ *   ۱) SMTP مستقیم (قابل‌اتکا): تنظیمات در «تنظیمات ایمیل» ذخیره می‌شود و
+ *      ارسال مستقیماً از سرور خود سازنده انجام می‌شود (crate gcode-mail)؛
+ *   ۲) FormSubmit (پیش‌فرض بدون تنظیمات): تحویل به سرویس فرم — برای قطعی
+ *      شدن دریافت، سازنده باید یک‌بار ایمیل فعال‌سازی را تأیید کند؛
+ *   ۳) mailto: پشتیبان دکمه‌ای — برنامهٔ ایمیل خود کاربر باز می‌شود؛
+ *   ۴) صف محلی: در نبود اینترنت گزارش می‌ماند و بوت بعدی دوباره تلاش می‌کند.
  *
- * انواع پیام: feedback (بازخورد دستی کاربر) · error (گزارش خودکار خطا)
+ * «موفق» فقط وقتی گزارش می‌شود که کانال واقعاً تأیید کند؛ queued ≠ موفق.
  * ============================================================================
  */
 
@@ -37,6 +37,9 @@ const QUEUE_KEY = "sahand-gcode-studio:feedback-outbox";
 
 export type FeedbackKind = "feedback" | "error";
 
+/** کانال ارسال — برای گزارش صادقانه در UI */
+export type SendChannel = "smtp" | "formsubmit" | "queued";
+
 export interface FeedbackPayload {
   kind: FeedbackKind;
   /** پیام اصلی (متن بازخورد یا متن خطا) */
@@ -49,6 +52,14 @@ export interface FeedbackPayload {
   detail?: string;
   /** چه بخشی از برنامه */
   context?: string;
+}
+
+/** نتیجهٔ صادقانهٔ ارسال */
+export interface SendResult {
+  ok: boolean;
+  channel: SendChannel;
+  /** پیام فارسی وضعیت — دقیقاً همان‌چه اتفاق افتاد */
+  messageFa: string;
 }
 
 interface QueuedItem {
@@ -72,13 +83,51 @@ function environmentLine(): string {
   return `Sahand GCode Studio v${pkg.version} · ${ua}`;
 }
 
-async function postForm(payload: FeedbackPayload): Promise<{ ok: boolean; reason?: string }> {
-  const subject =
-    payload.kind === "error"
-      ? `گزارش خودکار خطا — Sahand GCode Studio v${pkg.version}`
-      : `بازخورد کاربر — Sahand GCode Studio v${pkg.version}`;
+/** آیا در پوستهٔ دسکتاپ هستیم؟ */
+function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+// ============================================================================
+// کانال ۱: SMTP مستقیم — از تنظیمات ذخیره‌شدهٔ برنامه (crate gcode-mail)
+// ============================================================================
+
+async function sendViaSmtp(payload: FeedbackPayload): Promise<SendResult | null> {
+  if (!isTauri()) return null; // فقط دسکتاپ
+  try {
+    const { smtpSendFeedback } = await import("./tauri");
+    const report = await smtpSendFeedback({
+      kind: payload.kind,
+      message: sanitize(payload.message),
+      from_name: payload.fromName,
+      reply_email: payload.replyEmail,
+      context: payload.context,
+      detail: payload.detail ? sanitize(payload.detail) : undefined,
+      app_version: pkg.version,
+    });
+    if (report.ok) {
+      return {
+        ok: true,
+        channel: "smtp",
+        messageFa: "ایمیل مستقیماً از سرور SMTP شما ارسال و تحویل داده شد ✅",
+      };
+    }
+    return null; // خطای SMTP → کانال بعدی
+  } catch {
+    return null; // SMTP تنظیم نشده/خطا → کانال بعدی
+  }
+}
+
+// ============================================================================
+// کانال ۲: FormSubmit — پشتیبان بدون تنظیمات (نیازمند فعال‌سازی یک‌باره)
+// ============================================================================
+
+async function sendViaFormSubmit(payload: FeedbackPayload): Promise<SendResult> {
   const body = {
-    _subject: subject,
+    _subject:
+      payload.kind === "error"
+        ? `گزارش خودکار خطا — Sahand GCode Studio v${pkg.version}`
+        : `بازخورد کاربر — Sahand GCode Studio v${pkg.version}`,
     _template: "table",
     نوع: payload.kind === "error" ? "گزارش خطای خودکار" : "بازخورد کاربر",
     از: payload.fromName || "کاربر ناشناس",
@@ -89,11 +138,8 @@ async function postForm(payload: FeedbackPayload): Promise<{ ok: boolean; reason
     محیط: environmentLine(),
   };
   try {
-    // در پوستهٔ دسکتاپ: fetch پلاگین HTTP با دامنهٔ مجاز؛ در dev: fetch مرورگر
     let res: Response;
-    const isTauri =
-      typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    if (isTauri) {
+    if (isTauri()) {
       const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
       res = await tauriFetch(ENDPOINT, {
         method: "POST",
@@ -107,14 +153,33 @@ async function postForm(payload: FeedbackPayload): Promise<{ ok: boolean; reason
         body: JSON.stringify(body),
       });
     }
-    if (!res.ok) {
-      return { ok: false, reason: `پاسخ سرویس: ${res.status}` };
+    if (res.ok) {
+      // صادقانه: تحویل به سرویس فرم انجام شد؛ دریافت نهایی به فعال‌سازی
+      // یک‌بارهٔ سازنده وابسته است — این را شفاف می‌گوییم (رفع باگ ۱٫۶).
+      return {
+        ok: true,
+        channel: "formsubmit",
+        messageFa:
+          "به سرویس فرم تحویل شد ✅ — دریافت قطعی نیازمند تأیید یک‌بارهٔ ایمیل فعال‌سازی است (اگر هنوز تأیید نکرده‌اید، پوشهٔ اسپم Pranses2011@GMail.com را ببینید)؛ برای ارسال همیشه-قطعی «تنظیمات ایمیل ← SMTP» را کامل کنید",
+      };
     }
-    return { ok: true };
+    return {
+      ok: false,
+      channel: "formsubmit",
+      messageFa: `سرویس فرم پاسخ ${res.status} داد`,
+    };
   } catch (e) {
-    return { ok: false, reason: String(e) };
+    return {
+      ok: false,
+      channel: "formsubmit",
+      messageFa: `ارتباط برقرار نشد: ${String(e)}`,
+    };
   }
 }
+
+// ============================================================================
+// صف محلی — نبود اینترنت/خطا ⇒ گزارش می‌ماند و بعداً تلاش می‌شود
+// ============================================================================
 
 function readQueue(): QueuedItem[] {
   try {
@@ -133,14 +198,25 @@ function writeQueue(q: QueuedItem[]) {
   }
 }
 
-/** ارسال بازخورد/گزارش — در شکست، به صف محلی می‌رود */
-export async function sendFeedback(payload: FeedbackPayload): Promise<{ ok: boolean; queued: boolean; reason?: string }> {
-  const r = await postForm(payload);
-  if (r.ok) return { ok: true, queued: false };
+/** ارسال بازخورد/گزارش — زنجیرهٔ صادقانه: SMTP → FormSubmit → صف */
+export async function sendFeedback(payload: FeedbackPayload): Promise<SendResult> {
+  // ۱) SMTP مستقیم (اگر تنظیم شده)
+  const smtp = await sendViaSmtp(payload);
+  if (smtp) return smtp;
+
+  // ۲) FormSubmit
+  const fs = await sendViaFormSubmit(payload);
+  if (fs.ok) return fs;
+
+  // ۳) صف محلی — честно: ارسال نشد
   const q = readQueue();
   q.push({ payload, queuedAt: Date.now() });
   writeQueue(q);
-  return { ok: false, queued: true, reason: r.reason };
+  return {
+    ok: false,
+    channel: "queued",
+    messageFa: `${fs.messageFa} — گزارش در صف محلی ذخیره شد و با اتصال اینترنت دوباره تلاش می‌شود`,
+  };
 }
 
 /** تلاش دوباره برای صف محلی — هنگام بوت برنامه صدا زده می‌شود */
@@ -149,8 +225,10 @@ export async function flushFeedbackQueue(): Promise<number> {
   if (q.length === 0) return 0;
   const remaining: QueuedItem[] = [];
   for (const item of q) {
-    const r = await postForm(item.payload);
-    if (!r.ok) remaining.push(item);
+    const smtp = await sendViaSmtp(item.payload);
+    if (smtp?.ok) continue;
+    const fs = await sendViaFormSubmit(item.payload);
+    if (!fs.ok) remaining.push(item);
   }
   writeQueue(remaining);
   return q.length - remaining.length;
@@ -159,6 +237,26 @@ export async function flushFeedbackQueue(): Promise<number> {
 /** تعداد موارد در انتظار (نمایش وضعیت در UI) */
 export function feedbackQueueSize(): number {
   return readQueue().length;
+}
+
+/** ساخت لینک mailto: پشتیبان — «ارسال با برنامهٔ ایمیل خودم» */
+export function buildMailtoLink(payload: FeedbackPayload): string {
+  const subject =
+    payload.kind === "error"
+      ? `گزارش خودکار خطا — Sahand GCode Studio v${pkg.version}`
+      : `بازخورد کاربر — Sahand GCode Studio v${pkg.version}`;
+  const lines = [
+    payload.message,
+    "",
+    "— — —",
+    payload.fromName ? `از: ${payload.fromName}` : "",
+    payload.replyEmail ? `ایمیل پاسخ: ${payload.replyEmail}` : "",
+    payload.context ? `بخش برنامه: ${payload.context}` : "",
+    environmentLine(),
+    payload.detail ? `جزئیات فنی:\n${sanitize(payload.detail)}` : "",
+  ].filter(Boolean);
+  const body = encodeURIComponent(lines.join("\n"));
+  return `mailto:${AUTHOR.email}?subject=${encodeURIComponent(subject)}&body=${body}`;
 }
 
 /** شنود سراسری خطاهای JS — گزارش خودکار (درخواست کاربر ۹) */
